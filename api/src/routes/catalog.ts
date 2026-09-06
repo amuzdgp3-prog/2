@@ -1,0 +1,909 @@
+import type { FastifyInstance } from 'fastify';
+import { pool, withTransaction } from '../db/pool.js';
+import {
+  applyDivisorToHistory,
+  installMachine,
+  moveMachine,
+  replaceMachine,
+  updateMachine,
+  updateMachineAddress,
+} from '../commands/machines.js';
+import { closeLocation, createLocation, setLocationStatus, updateLocation } from '../commands/locations.js';
+import {
+  addLocationToClassifier,
+  createClassifier,
+  deleteClassifier,
+  grantClassifierScope,
+  removeLocationFromClassifier,
+  revokeClassifierScope,
+} from '../commands/classifiers.js';
+import { bindTerminal, createTerminal, unbindTerminal } from '../commands/terminals.js';
+import { previewMachineChain } from '../domain/counterChain.js';
+import { resolveServiceInterval } from '../domain/serviceIntervals.js';
+import { auditDelete, auditInsert, auditUpdate } from '../lib/audit.js';
+import { hashPassword } from '../lib/password.js';
+import { deleteStaff, setStaffPassword, updateStaffProfile } from '../commands/staff.js';
+import { notFound } from '../lib/errors.js';
+import {
+  applyToySetInBulk,
+  assignToySetToMachine,
+  createToySet,
+  updateToySet,
+} from '../commands/toySets.js';
+import {
+  assertAdmin,
+  assertMachineInScope,
+  listScopedMachineNumbers,
+  machineScopePredicate,
+} from '../lib/scope.js';
+
+const machineBodySchema = {
+  type: 'object',
+  properties: {
+    machineType: { type: 'string' },
+    model: { type: 'string' },
+    pricePerGame: { type: ['number', 'string'] },
+    counterDivisor: { type: ['number', 'string'] },
+    minServiceDays: { type: ['integer', 'null'] },
+    maxServiceDays: { type: ['integer', 'null'] },
+    status: { type: 'string', enum: ['ACTIVE', 'RETIRED'] },
+  },
+} as const;
+
+export async function registerCatalogRoutes(app: FastifyInstance): Promise<void> {
+  const auth = { preHandler: app.authenticate };
+
+  // ---------------------------------------------------------------- locations
+  app.get('/api/locations', auth, async () => {
+    const result = await pool.query(
+      `SELECT id, parent_id, name, address, timezone, status,
+              min_service_days, max_service_days, closed_at
+       FROM locations ORDER BY name`,
+    );
+    return result.rows;
+  });
+
+  app.post<{ Body: Parameters<typeof createLocation>[2] }>(
+    '/api/locations',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['name', 'timezone'],
+          properties: {
+            name: { type: 'string', minLength: 1 },
+            address: { type: 'string' },
+            timezone: { type: 'string', minLength: 1 },
+            parentId: { type: ['integer', 'null'] },
+            minServiceDays: { type: ['integer', 'null'] },
+            maxServiceDays: { type: ['integer', 'null'] },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) => createLocation(client, request.actor, request.body)),
+  );
+
+  app.patch<{ Params: { id: string }; Body: Parameters<typeof updateLocation>[3] }>(
+    '/api/locations/:id',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        updateLocation(client, request.actor, Number(request.params.id), request.body),
+      ),
+  );
+
+  app.post<{ Params: { id: string }; Body: { status: 'ACTIVE' | 'DEACTIVATED' } }>(
+    '/api/locations/:id/status',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        setLocationStatus(client, request.actor, Number(request.params.id), request.body.status),
+      ),
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: { occurredAt: string; finalCounters: Parameters<typeof closeLocation>[4] };
+  }>('/api/locations/:id/close', auth, async (request) =>
+    withTransaction((client) =>
+      closeLocation(
+        client,
+        request.actor,
+        Number(request.params.id),
+        request.body.occurredAt,
+        request.body.finalCounters ?? [],
+      ),
+    ),
+  );
+
+  // ------------------------------------------------------------- classifiers
+  app.get('/api/classifiers', auth, async (request) => {
+    assertAdmin(request.actor);
+    const classifiers = await pool.query('SELECT id, name FROM classifiers ORDER BY name');
+    const memberships = await pool.query(
+      `SELECT lc.classifier_id, l.id AS location_id, l.name AS location_name
+       FROM location_classifiers lc JOIN locations l ON l.id = lc.location_id
+       ORDER BY l.name`,
+    );
+    const byClassifier = new Map<number, Array<{ id: number; name: string }>>();
+    for (const row of memberships.rows) {
+      const list = byClassifier.get(row.classifier_id) ?? [];
+      list.push({ id: row.location_id, name: row.location_name });
+      byClassifier.set(row.classifier_id, list);
+    }
+    return classifiers.rows.map((c) => ({ ...c, locations: byClassifier.get(c.id) ?? [] }));
+  });
+
+  app.post<{ Body: { name: string } }>('/api/classifiers', auth, async (request) =>
+    withTransaction((client) => createClassifier(client, request.actor, request.body.name)),
+  );
+
+  app.delete<{ Params: { id: string } }>('/api/classifiers/:id', auth, async (request) => {
+    await withTransaction((client) => deleteClassifier(client, request.actor, Number(request.params.id)));
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string }; Body: { locationId: number } }>(
+    '/api/classifiers/:id/locations',
+    auth,
+    async (request) => {
+      await withTransaction((client) =>
+        addLocationToClassifier(client, request.actor, Number(request.params.id), request.body.locationId),
+      );
+      return { ok: true };
+    },
+  );
+
+  app.delete<{ Params: { id: string }; Body: { locationId: number } }>(
+    '/api/classifiers/:id/locations',
+    auth,
+    async (request) => {
+      await withTransaction((client) =>
+        removeLocationFromClassifier(client, request.actor, Number(request.params.id), request.body.locationId),
+      );
+      return { ok: true };
+    },
+  );
+
+  // ----------------------------------------------------------------- machines
+  /**
+   * Scoped machine list. It carries everything the PWA needs to work offline: the current
+   * counters to compare against, the machine price and the counter divisor for the technician's
+   * reference calculation, and the resolved service interval.
+   */
+  app.get('/api/machines', auth, async (request) => {
+    const scope = machineScopePredicate(request.actor, 'm.machine_number', 1);
+    const result = await pool.query(
+      `SELECT m.machine_number, m.machine_type, m.model, m.price_per_game, m.counter_divisor,
+              m.status, m.min_service_days, m.max_service_days,
+              p.id AS placement_id, p.started_at AS placement_started_at, p.address,
+              p.initial_game_counter, p.initial_prize_counter,
+              l.id AS location_id, l.name AS location_name, l.timezone, l.status AS location_status,
+              last.occurred_at AS last_service_at,
+              COALESCE(last.game_counter, p.initial_game_counter)   AS previous_game_counter,
+              COALESCE(last.prize_counter, p.initial_prize_counter) AS previous_prize_counter,
+              last.new_games AS last_new_games,
+              last.revenue AS last_revenue,
+              last.toy_cost AS last_toy_cost,
+              last.revenue_to_cost_ratio AS last_revenue_to_cost_ratio,
+              last_toys.items AS last_toy_quantities,
+              ts.id AS default_toy_set_id, ts.name AS default_toy_set_name,
+              default_set_items.items AS default_toy_set_items,
+              term.id AS terminal_id, term.serial AS terminal_serial,
+              binding.started_at AS terminal_bound_since
+       FROM machines m
+       LEFT JOIN toy_sets ts ON ts.id = m.default_toy_set_id
+       LEFT JOIN LATERAL (
+         SELECT jsonb_object_agg(tsi.toy_id, tsi.quantity) AS items
+         FROM toy_set_items tsi WHERE tsi.set_id = m.default_toy_set_id
+       ) default_set_items ON TRUE
+       LEFT JOIN machine_placements p
+              ON p.machine_number = m.machine_number AND p.ended_at IS NULL
+       LEFT JOIN locations l ON l.id = p.location_id
+       LEFT JOIN LATERAL (
+         -- По номеру аппарата, а не по текущему размещению: moveMachine переносит аппарат на
+         -- новую точку, открывая новое размещение с нулём обслуживаний в нём, но это тот же
+         -- физический аппарат — «обслуживание ещё не было» после простого переноса было бы
+         -- неправдой, вся реальная история должна остаться видна.
+         SELECT s.id, s.occurred_at, s.game_counter, s.prize_counter,
+                s.new_games, s.revenue, s.toy_cost, s.revenue_to_cost_ratio
+         FROM services s
+         WHERE s.machine_number = m.machine_number
+         ORDER BY s.occurred_at DESC, s.id DESC
+         LIMIT 1
+       ) last ON TRUE
+       LEFT JOIN LATERAL (
+         -- Предыдущее количество каждой игрушки на этом аппарате — «было N» в форме
+         -- обслуживания (без этого техник не видит, сколько игрушек было в прошлый раз).
+         SELECT jsonb_object_agg(td.toy_id, td.quantity) AS items
+         FROM toy_distributions td
+         WHERE td.service_id = last.id
+       ) last_toys ON TRUE
+       LEFT JOIN terminal_bindings binding
+              ON binding.machine_number = m.machine_number AND binding.ended_at IS NULL
+       LEFT JOIN terminals term ON term.id = binding.terminal_id
+       WHERE ${scope.sql}
+       ORDER BY m.machine_number`,
+      scope.params,
+    );
+    return result.rows;
+  });
+
+  /**
+   * Последние N значений ROI аппарата — для спарклайна в форме обслуживания.
+   * Не пересчитывает метрику: отдаёт то же revenue_to_cost_ratio, что хранится на Service.
+   */
+  app.get<{ Params: { machineNumber: string }; Querystring: { limit?: string } }>(
+    '/api/machines/:machineNumber/roi-trend',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
+      } finally {
+        client.release();
+      }
+
+      const limit = Math.min(Number(request.query.limit ?? 8), 30);
+      const result = await pool.query(
+        `SELECT service_date, revenue_to_cost_ratio
+         FROM services
+         WHERE machine_number = $1
+         ORDER BY occurred_at DESC, id DESC
+         LIMIT $2`,
+        [request.params.machineNumber, limit],
+      );
+      return result.rows.reverse();
+    },
+  );
+
+  /**
+   * Контекст аппарата на произвольный момент времени — что технику показать как «было N»,
+   * если он вводит обслуживание задним числом или между уже существующими записями.
+   * Без этого форма всегда предлагала бы последнее ПО ВРЕМЕНИ обслуживание, а не то, что
+   * реально предшествует выбранной дате, и подсказка вводила бы в заблуждение при вставке
+   * записи в середину истории (хотя пересчёт цепочки на сервере в любом случае верен).
+   */
+  app.get<{ Params: { machineNumber: string }; Querystring: { occurredAt: string } }>(
+    '/api/machines/:machineNumber/context-at',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
+
+        const placement = await client.query(
+          `SELECT id, initial_game_counter, initial_prize_counter, started_at
+           FROM machine_placements WHERE machine_number = $1 AND ended_at IS NULL`,
+          [request.params.machineNumber],
+        );
+        if (placement.rowCount === 0) return { previous: null, next: null, placementStartedAt: null };
+
+        const occurredAt = request.query.occurredAt;
+        const previous = await client.query(
+          `SELECT occurred_at, game_counter, prize_counter FROM services
+           WHERE placement_id = $1 AND occurred_at < $2::timestamptz
+           ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+          [placement.rows[0].id, occurredAt],
+        );
+        const next = await client.query(
+          `SELECT occurred_at, game_counter FROM services
+           WHERE placement_id = $1 AND occurred_at > $2::timestamptz
+           ORDER BY occurred_at ASC, id ASC LIMIT 1`,
+          [placement.rows[0].id, occurredAt],
+        );
+
+        return {
+          previous: previous.rows[0] ?? {
+            occurred_at: placement.rows[0].started_at,
+            game_counter: placement.rows[0].initial_game_counter,
+            prize_counter: placement.rows[0].initial_prize_counter,
+          },
+          next: next.rows[0] ?? null,
+        };
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/interval',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        return await resolveServiceInterval(client, request.params.machineNumber);
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/chain',
+    auth,
+    async (request) => {
+      assertAdmin(request.actor);
+      const client = await pool.connect();
+      try {
+        return await previewMachineChain(client, request.params.machineNumber);
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  app.post<{ Body: Parameters<typeof installMachine>[2] }>(
+    '/api/machines/install',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          required: [
+            'machineNumber',
+            'pricePerGame',
+            'locationId',
+            'startedAt',
+            'initialGameCounter',
+            'initialPrizeCounter',
+          ],
+          properties: {
+            ...machineBodySchema.properties,
+            machineNumber: { type: 'string', minLength: 1 },
+            locationId: { type: 'integer' },
+            startedAt: { type: 'string' },
+            initialGameCounter: { type: 'integer', minimum: 0 },
+            initialPrizeCounter: { type: 'integer', minimum: 0 },
+            address: { type: ['string', 'null'] },
+            initialToys: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['toyId', 'quantity'],
+                properties: { toyId: { type: 'integer' }, quantity: { type: 'integer', minimum: 1 } },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) => installMachine(client, request.actor, request.body)),
+  );
+
+  app.patch<{ Params: { machineNumber: string }; Body: Parameters<typeof updateMachine>[3] }>(
+    '/api/machines/:machineNumber',
+    { ...auth, schema: { body: machineBodySchema } },
+    async (request) =>
+      withTransaction((client) =>
+        updateMachine(client, request.actor, request.params.machineNumber, request.body),
+      ),
+  );
+
+  /**
+   * Deliberate correction of history after a wrongly configured divisor. Editing the machine
+   * alone never rewrites past revenue.
+   */
+  app.post<{ Params: { machineNumber: string }; Body: { from?: string } }>(
+    '/api/machines/:machineNumber/apply-divisor-to-history',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        applyDivisorToHistory(
+          client,
+          request.actor,
+          request.params.machineNumber,
+          request.body?.from,
+        ),
+      ),
+  );
+
+  app.post<{ Body: Parameters<typeof replaceMachine>[2] }>(
+    '/api/machines/replace',
+    auth,
+    async (request) =>
+      withTransaction((client) => replaceMachine(client, request.actor, request.body)),
+  );
+
+  /**
+   * Moves a machine to a different Location — a pure administrative reassignment (e.g.
+   * reorganising a location hierarchy after the fact), not a service visit: no photo, no final
+   * counter reading, the machine_number is never retired. See moveMachine's own comment for why
+   * this exists.
+   */
+  app.post<{ Params: { machineNumber: string }; Body: Parameters<typeof moveMachine>[3] }>(
+    '/api/machines/:machineNumber/move',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        moveMachine(client, request.actor, request.params.machineNumber, request.body),
+      ),
+  );
+
+  app.patch<{ Params: { machineNumber: string }; Body: { address: string | null } }>(
+    '/api/machines/:machineNumber/address',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        updateMachineAddress(client, request.actor, request.params.machineNumber, request.body.address),
+      ),
+  );
+
+  // --------------------------------------------------------------------- toys
+  app.get('/api/toys', auth, async () => {
+    const result = await pool.query('SELECT * FROM toys ORDER BY is_active DESC, name');
+    return result.rows;
+  });
+
+  app.post<{ Body: { name: string; unitCost: string | number } }>(
+    '/api/toys',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        assertAdmin(request.actor);
+        const inserted = await client.query(
+          'INSERT INTO toys (name, unit_cost) VALUES ($1, $2) RETURNING *',
+          [request.body.name, String(request.body.unitCost)],
+        );
+        await auditInsert(client, request.actor, 'toy', inserted.rows[0].id, inserted.rows[0]);
+        return inserted.rows[0];
+      }),
+  );
+
+  app.patch<{
+    Params: { id: string };
+    Body: { name?: string; unitCost?: string | number; isActive?: boolean };
+  }>('/api/toys/:id', auth, async (request) =>
+    withTransaction(async (client) => {
+      assertAdmin(request.actor);
+      const id = Number(request.params.id);
+      const before = await client.query('SELECT * FROM toys WHERE id = $1', [id]);
+      if (before.rowCount === 0) throw notFound('игрушка не существует');
+
+      const after = await client.query(
+        `UPDATE toys SET
+           name      = COALESCE($2, name),
+           unit_cost = COALESCE($3, unit_cost),
+           is_active = COALESCE($4, is_active)
+         WHERE id = $1 RETURNING *`,
+        [
+          id,
+          request.body.name ?? null,
+          request.body.unitCost === undefined ? null : String(request.body.unitCost),
+          request.body.isActive ?? null,
+        ],
+      );
+      await auditUpdate(client, request.actor, 'toy', id, before.rows[0], after.rows[0]);
+      return after.rows[0];
+    }),
+  );
+
+  // ----------------------------------------------------------------- toy sets
+  app.get('/api/toy-sets', auth, async () => {
+    const result = await pool.query(
+      `SELECT ts.id, ts.name,
+              COALESCE(jsonb_agg(jsonb_build_object('toyId', tsi.toy_id, 'name', t.name, 'quantity', tsi.quantity)
+                       ORDER BY t.name) FILTER (WHERE tsi.toy_id IS NOT NULL), '[]') AS items
+       FROM toy_sets ts
+       LEFT JOIN toy_set_items tsi ON tsi.set_id = ts.id
+       LEFT JOIN toys t ON t.id = tsi.toy_id
+       GROUP BY ts.id, ts.name
+       ORDER BY ts.name`,
+    );
+    return result.rows;
+  });
+
+  app.post<{ Body: { name: string; items: Array<{ toyId: number; quantity: number }> } }>(
+    '/api/toy-sets',
+    auth,
+    async (request) => withTransaction((client) => createToySet(client, request.actor, request.body)),
+  );
+
+  app.patch<{
+    Params: { id: string };
+    Body: { name?: string; items?: Array<{ toyId: number; quantity: number }> };
+  }>('/api/toy-sets/:id', auth, async (request) =>
+    withTransaction((client) => updateToySet(client, request.actor, Number(request.params.id), request.body)),
+  );
+
+  app.post<{ Params: { machineNumber: string }; Body: { setId: number | null } }>(
+    '/api/machines/:machineNumber/toy-set',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        await assignToySetToMachine(client, request.actor, request.params.machineNumber, request.body.setId);
+        return { ok: true };
+      }),
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: { machineType?: string; routeId?: number; locationId?: number; machineNumbers?: string[] };
+  }>('/api/toy-sets/:id/apply-bulk', auth, async (request) =>
+    withTransaction((client) => applyToySetInBulk(client, request.actor, Number(request.params.id), request.body)),
+  );
+
+  // ------------------------------------------------------------------- routes
+  app.get('/api/routes', auth, async () => {
+    const result = await pool.query('SELECT * FROM routes ORDER BY sort_order, id');
+    return result.rows;
+  });
+
+  app.post<{
+    Body: { name: string; sortOrder?: number; minServiceDays?: number; maxServiceDays?: number };
+  }>('/api/routes', auth, async (request) =>
+    withTransaction(async (client) => {
+      assertAdmin(request.actor);
+      const inserted = await client.query(
+        `INSERT INTO routes (name, sort_order, min_service_days, max_service_days)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [
+          request.body.name,
+          request.body.sortOrder ?? 0,
+          request.body.minServiceDays ?? null,
+          request.body.maxServiceDays ?? null,
+        ],
+      );
+      await auditInsert(client, request.actor, 'route', inserted.rows[0].id, inserted.rows[0]);
+      return inserted.rows[0];
+    }),
+  );
+
+  /** Маршруты, к которым привязан конкретный аппарат — вкладка «Маршруты» карточки аппарата. */
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/routes',
+    auth,
+    async (request) => {
+      const result = await pool.query(
+        `SELECT r.* FROM machine_routes mr
+         JOIN routes r ON r.id = mr.route_id
+         WHERE mr.machine_number = $1
+         ORDER BY r.sort_order, r.id`,
+        [request.params.machineNumber],
+      );
+      return result.rows;
+    },
+  );
+
+  /**
+   * Техники, которые могут обслуживать этот аппарат: через дерево точек (scope) или через
+   * точечное назначение — обе ветки формируют один и тот же реальный доступ на сервере.
+   */
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/technicians',
+    auth,
+    async (request) => {
+      assertAdmin(request.actor);
+      const result = await pool.query(
+        `WITH RECURSIVE machine_location AS (
+           SELECT location_id FROM machine_placements
+           WHERE machine_number = $1 AND ended_at IS NULL
+         ),
+         location_ancestors AS (
+           SELECT l.id, l.parent_id FROM locations l
+           WHERE l.id IN (SELECT location_id FROM machine_location)
+           UNION ALL
+           SELECT parent.id, parent.parent_id FROM locations parent
+           JOIN location_ancestors child ON parent.id = child.parent_id
+         )
+         SELECT DISTINCT st.id, st.full_name, st.login,
+                CASE WHEN mt.staff_id IS NOT NULL THEN 'machine' ELSE 'location' END AS source
+         FROM staff st
+         LEFT JOIN staff_location_scope sls ON sls.staff_id = st.id AND sls.location_id IN (SELECT id FROM location_ancestors)
+         LEFT JOIN machine_technicians mt ON mt.staff_id = st.id AND mt.machine_number = $1
+         WHERE st.role = 'TECHNICIAN' AND (sls.staff_id IS NOT NULL OR mt.staff_id IS NOT NULL)
+         ORDER BY st.full_name`,
+        [request.params.machineNumber],
+      );
+      return result.rows;
+    },
+  );
+
+  /** Начальные игрушки текущей установки аппарата — вкладка «Игрушки» карточки аппарата. */
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/initial-toys',
+    auth,
+    async (request) => {
+      const result = await pool.query(
+        `SELECT t.id AS toy_id, t.name, pit.quantity, pit.unit_cost_snapshot
+         FROM machine_placements p
+         JOIN placement_initial_toys pit ON pit.placement_id = p.id
+         JOIN toys t ON t.id = pit.toy_id
+         WHERE p.machine_number = $1 AND p.ended_at IS NULL
+         ORDER BY t.name`,
+        [request.params.machineNumber],
+      );
+      return result.rows;
+    },
+  );
+
+  app.post<{ Body: { machineNumber: string; routeId: number } }>(
+    '/api/routes/assign',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        assertAdmin(request.actor);
+        const inserted = await client.query(
+          `INSERT INTO machine_routes (machine_number, route_id) VALUES ($1, $2)
+           ON CONFLICT DO NOTHING RETURNING *`,
+          [request.body.machineNumber, request.body.routeId],
+        );
+        if (inserted.rowCount) {
+          await auditInsert(
+            client,
+            request.actor,
+            'machine_route',
+            `${request.body.machineNumber}:${request.body.routeId}`,
+            inserted.rows[0],
+          );
+        }
+        return { assigned: true };
+      }),
+  );
+
+  app.delete<{ Body: { machineNumber: string; routeId: number } }>(
+    '/api/routes/assign',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        assertAdmin(request.actor);
+        const removed = await client.query(
+          'DELETE FROM machine_routes WHERE machine_number = $1 AND route_id = $2 RETURNING *',
+          [request.body.machineNumber, request.body.routeId],
+        );
+        if (removed.rowCount) {
+          await auditDelete(
+            client,
+            request.actor,
+            'machine_route',
+            `${request.body.machineNumber}:${request.body.routeId}`,
+            removed.rows[0],
+          );
+        }
+        return { unassigned: true };
+      }),
+  );
+
+  // -------------------------------------------------------------------- staff
+  app.get('/api/staff', auth, async (request) => {
+    assertAdmin(request.actor);
+    const result = await pool.query(
+      'SELECT id, login, full_name, role, is_active FROM staff ORDER BY full_name',
+    );
+    return result.rows;
+  });
+
+  app.patch<{
+    Params: { id: string };
+    Body: { fullName?: string; role?: 'ADMIN' | 'TECHNICIAN' | 'BOSS'; isActive?: boolean };
+  }>('/api/staff/:id', auth, async (request) =>
+    withTransaction((client) =>
+      updateStaffProfile(client, request.actor, Number(request.params.id), request.body),
+    ),
+  );
+
+  app.delete<{ Params: { id: string } }>('/api/staff/:id', auth, async (request) => {
+    await withTransaction((client) => deleteStaff(client, request.actor, Number(request.params.id)));
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string }; Body: { password: string } }>(
+    '/api/staff/:id/password',
+    auth,
+    async (request) => {
+      await withTransaction((client) =>
+        setStaffPassword(client, request.actor, Number(request.params.id), request.body.password),
+      );
+      return { ok: true };
+    },
+  );
+
+  app.post<{
+    Body: { login: string; fullName: string; role: 'ADMIN' | 'TECHNICIAN' | 'BOSS'; password: string };
+  }>('/api/staff', auth, async (request) => {
+    assertAdmin(request.actor);
+    const passwordHash = await hashPassword(request.body.password);
+    return withTransaction(async (client) => {
+      const inserted = await client.query(
+        `INSERT INTO staff (login, full_name, role, password_hash)
+         VALUES ($1, $2, $3::staff_role, $4)
+         RETURNING id, login, full_name, role, is_active`,
+        [request.body.login, request.body.fullName, request.body.role, passwordHash],
+      );
+      await auditInsert(client, request.actor, 'staff', inserted.rows[0].id, inserted.rows[0]);
+      return inserted.rows[0];
+    });
+  });
+
+  app.post<{ Body: { staffId: number; locationId?: number; classifierId?: number; machineNumber?: string } }>(
+    '/api/staff/scope',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        assertAdmin(request.actor);
+        if (request.body.locationId) {
+          const inserted = await client.query(
+            `INSERT INTO staff_location_scope (staff_id, location_id) VALUES ($1, $2)
+             ON CONFLICT DO NOTHING RETURNING *`,
+            [request.body.staffId, request.body.locationId],
+          );
+          if (inserted.rowCount) {
+            await auditInsert(
+              client,
+              request.actor,
+              'staff_location_scope',
+              `${request.body.staffId}:${request.body.locationId}`,
+              inserted.rows[0],
+            );
+          }
+        }
+        if (request.body.classifierId) {
+          await grantClassifierScope(client, request.actor, request.body.staffId, request.body.classifierId);
+        }
+        if (request.body.machineNumber) {
+          const inserted = await client.query(
+            `INSERT INTO machine_technicians (machine_number, staff_id) VALUES ($1, $2)
+             ON CONFLICT DO NOTHING RETURNING *`,
+            [request.body.machineNumber, request.body.staffId],
+          );
+          if (inserted.rowCount) {
+            await auditInsert(
+              client,
+              request.actor,
+              'machine_technician',
+              `${request.body.machineNumber}:${request.body.staffId}`,
+              inserted.rows[0],
+            );
+          }
+        }
+        return { ok: true };
+      }),
+  );
+
+  /** What a technician can actually reach, so the admin can see and correct it. */
+  app.get<{ Params: { id: string } }>('/api/staff/:id/scope', auth, async (request) => {
+    assertAdmin(request.actor);
+    const staffId = Number(request.params.id);
+
+    const locations = await pool.query(
+      `SELECT l.id, l.name FROM staff_location_scope s
+       JOIN locations l ON l.id = s.location_id
+       WHERE s.staff_id = $1 ORDER BY l.name`,
+      [staffId],
+    );
+    const classifiers = await pool.query(
+      `SELECT c.id, c.name FROM staff_classifier_scope s
+       JOIN classifiers c ON c.id = s.classifier_id
+       WHERE s.staff_id = $1 ORDER BY c.name`,
+      [staffId],
+    );
+    const machines = await pool.query(
+      `SELECT machine_number FROM machine_technicians WHERE staff_id = $1 ORDER BY machine_number`,
+      [staffId],
+    );
+    const reachable = await pool.query(
+      `WITH RECURSIVE scope_tree AS (
+         SELECT l.id FROM staff_location_scope s JOIN locations l ON l.id = s.location_id
+         WHERE s.staff_id = $1
+         UNION
+         SELECT child.id FROM locations child JOIN scope_tree parent ON child.parent_id = parent.id
+       ),
+       classifier_locations AS (
+         SELECT lc.location_id AS id FROM staff_classifier_scope scs
+         JOIN location_classifiers lc ON lc.classifier_id = scs.classifier_id
+         WHERE scs.staff_id = $1
+       )
+       SELECT p.machine_number FROM machine_placements p
+       WHERE p.location_id IN (SELECT id FROM scope_tree)
+          OR p.location_id IN (SELECT id FROM classifier_locations)
+       UNION
+       SELECT mt.machine_number FROM machine_technicians mt WHERE mt.staff_id = $1
+       ORDER BY 1`,
+      [staffId],
+    );
+
+    return {
+      locations: locations.rows,
+      classifiers: classifiers.rows,
+      machines: machines.rows.map((row) => row.machine_number),
+      reachableMachines: reachable.rows.map((row) => row.machine_number),
+    };
+  });
+
+  app.delete<{ Body: { staffId: number; locationId?: number; classifierId?: number; machineNumber?: string } }>(
+    '/api/staff/scope',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        assertAdmin(request.actor);
+        if (request.body.locationId) {
+          const removed = await client.query(
+            'DELETE FROM staff_location_scope WHERE staff_id = $1 AND location_id = $2 RETURNING *',
+            [request.body.staffId, request.body.locationId],
+          );
+          for (const row of removed.rows) {
+            await auditDelete(
+              client,
+              request.actor,
+              'staff_location_scope',
+              `${request.body.staffId}:${request.body.locationId}`,
+              row,
+            );
+          }
+        }
+        if (request.body.classifierId) {
+          await revokeClassifierScope(client, request.actor, request.body.staffId, request.body.classifierId);
+        }
+        if (request.body.machineNumber) {
+          const removed = await client.query(
+            'DELETE FROM machine_technicians WHERE staff_id = $1 AND machine_number = $2 RETURNING *',
+            [request.body.staffId, request.body.machineNumber],
+          );
+          for (const row of removed.rows) {
+            await auditDelete(
+              client,
+              request.actor,
+              'machine_technician',
+              `${request.body.machineNumber}:${request.body.staffId}`,
+              row,
+            );
+          }
+        }
+        return { ok: true };
+      }),
+  );
+
+  app.get('/api/staff/my-machines', auth, async (request) => {
+    const client = await pool.connect();
+    try {
+      return await listScopedMachineNumbers(client, request.actor);
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------------------------------------------------------------- terminals
+  app.get('/api/terminals', auth, async () => {
+    const result = await pool.query(
+      `SELECT t.*, b.machine_number AS bound_machine, b.started_at AS bound_since
+       FROM terminals t
+       LEFT JOIN terminal_bindings b ON b.terminal_id = t.id AND b.ended_at IS NULL
+       ORDER BY t.serial`,
+    );
+    return result.rows;
+  });
+
+  app.post<{ Body: { serial: string; provider: string; label?: string } }>(
+    '/api/terminals',
+    auth,
+    async (request) =>
+      withTransaction((client) => createTerminal(client, request.actor, request.body)),
+  );
+
+  app.post<{ Body: { terminalId: number; machineNumber: string; startedAt: string } }>(
+    '/api/terminals/bind',
+    auth,
+    async (request) =>
+      withTransaction((client) => bindTerminal(client, request.actor, request.body)),
+  );
+
+  app.post<{ Body: { terminalId: number; endedAt: string } }>(
+    '/api/terminals/unbind',
+    auth,
+    async (request) =>
+      withTransaction((client) => unbindTerminal(client, request.actor, request.body)),
+  );
+
+  app.get<{ Params: { id: string } }>('/api/terminals/:id/history', auth, async (request) => {
+    const result = await pool.query(
+      `SELECT * FROM terminal_bindings WHERE terminal_id = $1 ORDER BY started_at`,
+      [Number(request.params.id)],
+    );
+    return result.rows;
+  });
+}

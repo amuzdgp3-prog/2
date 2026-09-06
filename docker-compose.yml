@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: site2-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: apixspb
+      POSTGRES_USER: apixspb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apixspb -d apixspb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+    container_name: site2-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://apixspb:${POSTGRES_PASSWORD}@db:5432/apixspb
+      JWT_SECRET: ${JWT_SECRET}
+      PHOTO_DIR: /data/photos
+      ADMIN_LOGIN: ${ADMIN_LOGIN}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      TZ: UTC
+    volumes:
+      - ./data/photos:/data/photos
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+    container_name: site2-web
+    restart: unless-stopped
+    networks:
+      - web
+      - internal
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.site2.rule=Host(`2.apixspb.ru`)"
+      - "traefik.http.routers.site2.entrypoints=websecure"
+      - "traefik.http.routers.site2.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.site2.tls.domains[0].main=apixspb.ru"
+      - "traefik.http.routers.site2.tls.domains[0].sans=*.apixspb.ru"
+      - "traefik.http.services.site2.loadbalancer.server.port=80"
+
+networks:
+  web:
+    external: true
+  internal:
+
+volumes:
+  db-data:

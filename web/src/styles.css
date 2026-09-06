@@ -1,0 +1,686 @@
+/* ============================================================
+   SLOT MANAGER — ДИЗАЙН-СИСТЕМА
+   Источник: docs/design/mockups/00_design_system.html (эталон).
+   Идея: язык монетных автоматов — латунный жетон, штампованная
+   табличка с номером аппарата (.tag-plate), механический счётчик-
+   одометр (.odometer). Инструмент техника в поле и плотная
+   админ-панель, а не витрина.
+   Перенесено дословно как единый источник правды — не редактировать
+   точечно под одну страницу, только здесь.
+   ============================================================ */
+:root {
+  /* --- Цвет --- */
+  --ink:        #1B1C18;   /* основной текст, тёмные поверхности */
+  --ink-soft:   #565A4E;   /* вторичный текст */
+  --ink-faint:  #8B8F80;   /* третичный текст, плейсхолдеры */
+  --paper:      #ECE8DB;   /* фон приложения — тёплый, не кремовый-клише */
+  --paper-deep: #E1DCC9;   /* фон приложения, углублённый (полосы таблиц) */
+  --surface:    #FBFAF5;   /* карточки/поверхности поверх paper */
+  --surface-ink:#22241E;   /* тёмные панели (шапка техника, счётчики) */
+  --line:       #CFC9B2;   /* границы */
+  --line-soft:  #DDD8C6;
+
+  --brass:      #A8762C;   /* латунный жетон — основной акцент бренда */
+  --brass-deep: #7C551E;
+  --brass-soft: #EFE1C4;
+
+  /* Единственные носители смысла: ROI и статус «работает/не работает».
+     Больше нигде в интерфейсе эти четыре цвета не используются. */
+  --good:       #2E6B4C;
+  --good-soft:  #DCE9DD;
+  --warn:       #B0862E;
+  --warn-soft:  #F1E6C8;
+  --bad:        #A23F30;
+  --bad-soft:   #F2DCD5;
+  --neutral-badge: #6B6656;
+
+  /* --- Типографика --- */
+  --f-display: 'Space Grotesk', sans-serif;
+  --f-body:    'Inter', sans-serif;
+  --f-mono:    'IBM Plex Mono', monospace;
+
+  /* --- Форма --- */
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--f-display);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* Любое число, которое сверяют с показанием на корпусе аппарата —
+   номер, счётчик, деньги, дата — набирается моноширинным с табличными цифрами. */
+.mono {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Фирменные знаки ---------- */
+
+/* Штампованная табличка с номером аппарата — сквозной опознавательный знак. */
+.tag-plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--f-mono);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid #000;
+  letter-spacing: .02em;
+}
+.tag-plate .hash { color: var(--brass-soft); opacity: .85; }
+
+/* Механический счётчик-одометр — показания игровых/призовых счётчиков. */
+.odometer {
+  display: inline-flex;
+  background: var(--surface-ink);
+  color: #F3EFE0;
+  font-family: var(--f-mono);
+  font-size: 20px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  letter-spacing: .06em;
+  border: 1px solid #000;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
+}
+
+/* ---------- Кнопки ---------- */
+.btn {
+  font-family: var(--f-body);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 11px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: filter .12s ease;
+}
+.btn:active { filter: brightness(0.93); }
+.btn-primary { background: var(--brass); color: #fff; }
+.btn-primary:hover { background: var(--brass-deep); }
+.btn-dark { background: var(--ink); color: var(--paper); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn-ghost:hover { background: var(--surface); }
+.btn-danger-ghost { background: transparent; color: var(--bad); border-color: var(--bad); }
+.btn-block { width: 100%; }
+.btn-lg { padding: 15px 20px; font-size: 15px; }
+
+/* ---------- Карточки — плоские, с линией, без «мыльных» теней ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.card-pad { padding: 16px; }
+
+/* ---------- Значки статуса ----------
+   .badge-good/warn/bad закреплены ИСКЛЮЧИТЕЛЬНО за ROI и статусом
+   «работает/не работает» — см. принцип «Цвет — только сигнал». */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-family: var(--f-body);
+}
+.badge-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.badge-good { background: var(--good-soft); color: var(--good); }
+.badge-good .badge-dot { background: var(--good); }
+.badge-warn { background: var(--warn-soft); color: var(--warn); }
+.badge-warn .badge-dot { background: var(--warn); }
+.badge-bad { background: var(--bad-soft); color: var(--bad); }
+.badge-bad .badge-dot { background: var(--bad); }
+.badge-neutral { background: var(--paper-deep); color: var(--neutral-badge); }
+.badge-neutral .badge-dot { background: var(--neutral-badge); }
+
+/* ---------- Поля форм ---------- */
+label.field-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 5px;
+  font-family: var(--f-mono);
+}
+input[type=text], input[type=number], input[type=date], input[type=time],
+input[type=password], textarea, select {
+  width: 100%;
+  font-family: var(--f-body);
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 11px 12px;
+  outline: none;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--brass); }
+input[type=number].mono-input { font-family: var(--f-mono); font-size: 18px; font-weight: 600; }
+
+/* Разделитель секции формы — нумерованные шаги (см. форму обслуживания). */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 26px 0 12px;
+}
+.section-head .num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.section-head h3 { font-size: 15px; font-weight: 600; font-family: var(--f-body); }
+.section-head .line { flex: 1; height: 1px; background: var(--line); }
+
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+/* ============================================================
+   ПРИЛОЖЕНИЕ — компоновка экранов поверх токенов выше.
+   Использует классы .card/button/.badge и т.д.; будет постранично
+   переверстано по макетам 01–08 на следующем шаге.
+   ============================================================ */
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 14px 92px;
+}
+
+/* Постоянный сайдбар на широком экране; на телефоне остаётся нижняя навигация. */
+.sidebar { display: none; }
+
+@media (min-width: 900px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 224px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 18px 12px;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    z-index: 30;
+  }
+
+  .sidebar .brand {
+    font-family: var(--f-display);
+    font-size: 20px;
+    font-weight: 700;
+    padding: 0 10px 14px;
+    letter-spacing: -0.3px;
+  }
+
+  .sidebar a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--r-md);
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 14px;
+  }
+
+  .sidebar a:hover { background: var(--paper-deep); color: var(--ink); }
+  .sidebar a.active { background: var(--brass-soft); color: var(--brass-deep); }
+  .sidebar .spacer { flex: 1; }
+
+  .sidebar .user {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    margin-top: 8px;
+  }
+
+  .app {
+    margin-left: 224px;
+    max-width: 1100px;
+    padding-bottom: 40px;
+  }
+
+  .nav { display: none; }
+  .mobile-only { display: none !important; }
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 0 10px;
+  background: linear-gradient(var(--paper) 75%, transparent);
+}
+
+.topbar h1 { font-family: var(--f-display); font-size: 19px; margin: 0; letter-spacing: -0.2px; }
+
+/* Связь — тоже статус аппарата на связи/не на связи по смыслу, поэтому
+   осознанно использует good/warn наравне с ROI и статусом «работает».
+   Счётчик очереди отправки — не статус, а количество, остаётся нейтральным. */
+.badge.online { color: var(--good); border-color: var(--good); background: var(--good-soft); }
+.badge.offline { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.badge.queue { color: var(--ink); border-color: var(--line); background: var(--surface); }
+.badge:not([class*="badge-"]) {
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.card.tappable:active { background: var(--paper-deep); }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.stack { display: grid; gap: 10px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.muted { color: var(--ink-soft); font-size: 13px; }
+.big { font-family: var(--f-display); font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
+.right { text-align: right; }
+
+label {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 5px;
+}
+
+/* Карточки и поля формы приложения используют .card/input и т.п. выше;
+   здесь — только то, что специфично для текущей раскладки экранов. */
+.card:not(.card-pad) { padding: 14px; margin-bottom: 12px; }
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button.primary { background: var(--brass); border-color: var(--brass); color: #fff; width: 100%; }
+button.primary:hover { background: var(--brass-deep); }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Unconditional (no @media guard) and declared AFTER the `@media (min-width: 900px) { .nav {
+   display: none } }` rule above — same specificity, later in source order wins, so this was
+   silently re-enabling the bottom bar on desktop right on top of the sidebar. Guarding the
+   display/position declarations here to the same breakpoint the sidebar uses removes the
+   ambiguity instead of depending on file ordering. */
+@media (max-width: 899px) {
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-around;
+  background: rgba(251, 250, 245, 0.97);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+  z-index: 20;
+}
+
+.nav a {
+  flex: 1;
+  text-align: center;
+  padding: 6px 2px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-radius: var(--r-md);
+}
+
+.nav a.active { color: var(--brass-deep); background: var(--brass-soft); }
+.nav a span { display: block; font-size: 18px; line-height: 1.2; }
+}
+
+.alert {
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  font-size: 14px;
+  margin-bottom: 12px;
+  border: 1px solid;
+}
+
+/* Алерты формы (ошибка/предупреждение/успех) — прямая обратная связь по
+   действию, а не декор, поэтому используют те же good/warn/bad. */
+.alert.error { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+.alert.warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.alert.ok { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+}
+
+.tabs button { white-space: nowrap; padding: 8px 13px; font-size: 13px; }
+.tabs button.active { background: var(--brass); border-color: var(--brass); color: #fff; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+th { color: var(--ink-soft); font-weight: 500; }
+.scroll-x { overflow-x: auto; }
+
+.login { min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
+.login form { width: 100%; max-width: 340px; }
+
+.photo-thumb {
+  width: 100%;
+  max-width: 260px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  display: block;
+  margin-top: 10px;
+}
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+.chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip button { padding: 0; border: 0; background: none; color: var(--bad); font-size: 14px; line-height: 1; }
+
+/* Коэффициент счётчика — не ROI и не статус, поэтому латунный (брендовый),
+   а не один из четырёх сигнальных цветов. */
+.divisor-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--brass-soft);
+  color: var(--brass-deep);
+  border: 1px solid var(--brass);
+}
+
+/* ============================================================
+   Классы из экранных макетов 01/02 (не входят в 00_design_system.html,
+   были объявлены в стилях самих страниц) — перенесены сюда, чтобы
+   Machines/ServiceForm/Forgotten/Queue могли на них полагаться.
+   ============================================================ */
+
+.section-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-faint);
+  letter-spacing: .03em;
+  margin: 4px 2px 8px;
+}
+
+.readonly-prev {
+  margin: 0 0 14px;
+  background: var(--paper-deep);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 13px;
+}
+.readonly-prev .lbl { font-size: 11px; font-weight: 700; color: var(--ink-faint); letter-spacing: .03em; margin-bottom: 8px; }
+.readonly-prev .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.readonly-prev .cell b { display: block; font-size: 14px; font-weight: 600; }
+.readonly-prev .cell span { font-size: 10.5px; color: var(--ink-soft); }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.row3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+
+.counter-field { position: relative; }
+
+.roi-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 13px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.roi-card .val { text-align: center; }
+.roi-card .val .num { font-family: var(--f-mono); font-size: 26px; font-weight: 700; color: var(--good); }
+.roi-card .val .lbl { font-size: 10px; color: var(--ink-faint); margin-top: 2px; }
+.roi-card .spark { flex: 1; }
+.roi-card .trend { font-size: 11.5px; font-weight: 600; }
+
+.preview-card {
+  background: var(--brass-soft);
+  border: 1px solid #D8C387;
+  border-radius: var(--r-md);
+  padding: 13px;
+  margin-bottom: 4px;
+}
+.preview-card .lbl { font-size: 11px; font-weight: 700; color: var(--brass-deep); letter-spacing: .02em; margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+.preview-card .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 8px; }
+.preview-card .cell b { display: block; font-family: var(--f-mono); font-size: 15px; font-weight: 700; color: var(--ink); }
+.preview-card .cell span { font-size: 10px; color: var(--brass-deep); }
+
+.toy-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.toy-row:last-child { border-bottom: none; }
+.toy-row .info { flex: 1; min-width: 0; }
+.toy-row .info select { width: auto; max-width: 100%; }
+.toy-row .price { font-size: 11.5px; color: var(--ink-faint); }
+.toy-row .qty { width: 64px; flex-shrink: 0; text-align: center; font-size: 16px; font-weight: 700; padding: 9px 4px; }
+.toy-row .prevqty { font-size: 10px; color: var(--ink-faint); width: 48px; flex-shrink: 0; text-align: center; }
+.toy-total { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1.5px solid var(--ink); }
+.toy-total .lbl { font-size: 13px; font-weight: 600; }
+.toy-total .val { font-size: 18px; font-weight: 700; }
+
+.photo-slot {
+  aspect-ratio: 3 / 4;
+  max-height: 150px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--surface);
+  color: var(--ink-faint);
+  text-align: center;
+  padding: 6px;
+}
+.photo-slot .ic { font-size: 22px; }
+.photo-slot .lbl { font-size: 10.5px; font-weight: 600; line-height: 1.25; }
+
+.formbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding: 11px 14px calc(11px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 10px;
+  z-index: 15;
+}
+
+@media (min-width: 900px) {
+  .formbar { left: 224px; max-width: 1100px; margin: 0 auto; }
+}
+
+/* ============================================================
+   Классы из админ-экранов макетов 05-08 (общий блок, дублировался
+   одинаково в стилях каждой страницы). Рельса/шапка админки уже есть
+   в приложении как .sidebar/.topbar — здесь только контентные классы.
+   ============================================================ */
+
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+@media (max-width: 700px) { .kpi-row { grid-template-columns: 1fr 1fr; } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 17px; }
+.kpi .lbl { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+.kpi .val { font-family: var(--f-display); font-size: 26px; font-weight: 600; margin-top: 6px; }
+.kpi .sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; font-family: var(--f-mono); }
+
+.table-wrap { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.table-wrap table { background: var(--surface); margin-bottom: 0; }
+.table-wrap th { border-bottom: 1.5px solid var(--ink); background: var(--surface); }
+.table-wrap tbody tr:hover { background: var(--paper-deep); }
+/* A plain `width:100%` table never overflows its own wrapper, so `.scroll-x`'s overflow-x had
+   nothing to scroll — columns just got crushed until numbers collided on narrow (phone) screens.
+   Letting the table size to its own content, floored at the wrapper's full width, means it only
+   grows past the viewport when it genuinely needs to — and then the wrapper scrolls instead of
+   squeezing every column. */
+/* `.table-wrap` itself sets `overflow: hidden` (for the plain, no-scroll variant) and, being a
+   single-class rule declared after `.scroll-x`'s own `overflow-x: auto` earlier in this file,
+   silently won that tie on source order alone — clipping the table instead of scrolling it. The
+   compound selector here has higher specificity than either single-class rule, so it wins
+   regardless of where either one sits in the file. */
+.table-wrap.scroll-x { overflow-x: auto; }
+.table-wrap.scroll-x table { width: max-content; min-width: 100%; }
+.table-wrap.scroll-x td, .table-wrap.scroll-x th { white-space: nowrap; }
+.table-wrap.scroll-x td.wrap { white-space: normal; max-width: 240px; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); }
+
+.filters-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.filters-panel .fld label { font-size: 11px; font-weight: 600; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+
+.pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.pagination .info { font-size: 12.5px; color: var(--ink-faint); }
+.pagination .pg { display: flex; gap: 6px; }
+.pagination .pg button {
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); background: var(--surface);
+  border-radius: var(--r-sm); font-size: 12.5px; font-family: var(--f-mono); cursor: pointer;
+}
+.pagination .pg button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.icon-btn {
+  width: 28px; height: 28px; padding: 0; border-radius: var(--r-sm); border: 1px solid var(--line);
+  background: var(--surface); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--ink-soft);
+}
+.icon-btn.danger { color: var(--bad); border-color: var(--bad-soft); }
+
+.mc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+.mc-header .left { display: flex; align-items: center; gap: 14px; }
+.mc-header .sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
+.mc-header .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 22px; }
+.mc-stats .kpi .val.odo {
+  display: inline-block; background: var(--surface-ink); color: #F3EFE0; font-family: var(--f-mono);
+  padding: 3px 8px; border-radius: var(--r-sm); font-size: 19px;
+}
+
+.mc-tabs { display: flex; gap: 2px; border-bottom: 1.5px solid var(--line); margin-bottom: 18px; flex-wrap: wrap; }
+.mc-tabs button {
+  padding: 10px 16px; font-size: 13.5px; font-weight: 600; color: var(--ink-faint);
+  background: none; border: none; border-bottom: 2.5px solid transparent; margin-bottom: -1.5px; cursor: pointer;
+}
+.mc-tabs button.active { color: var(--ink); border-bottom-color: var(--brass); }
+
+.chart-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 20px; margin-bottom: 18px; }
+.chart-card .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.chart-card .head h3 { font-size: 14px; font-weight: 600; }
+.chart-legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-soft); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+.bars { display: flex; align-items: flex-end; gap: 18px; height: 180px; padding: 0 4px; overflow-x: auto; }
+.bargroup { flex: 1; min-width: 32px; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; justify-content: flex-end; }
+.bargroup .stack { width: 100%; max-width: 46px; display: flex; flex-direction: column-reverse; }
+.bargroup .rev { background: var(--brass); border-radius: 2px 2px 0 0; }
+.bargroup .cost { background: var(--ink-faint); opacity: .55; margin-top: 2px; border-radius: 2px; }
+.bargroup .m { font-size: 11px; color: var(--ink-faint); font-family: var(--f-mono); }
+
+.qr-btn {
+  width: 44px;
+  flex-shrink: 0;
+  background: var(--brass);
+  border: none;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+.qr-btn:hover { background: var(--brass-deep); }
+
+/* Форма из двух колонок на телефоне сжимала оба поля до нечитаемой ширины (обрезанный плейсхолдер,
+   перенос текста кнопки на три строки) — ниже 560px складываем в одну колонку. Правило намеренно
+   в самом конце файла: .row2 объявлен выше как обычный (не медийный) класс той же специфичности,
+   и при равной специфичности побеждает последний по порядку в файле, а не помещённый в @media. */
+@media (max-width: 560px) {
+  .grid-2, .row2 { grid-template-columns: 1fr; }
+}
