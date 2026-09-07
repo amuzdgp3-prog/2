@@ -1,5 +1,5 @@
 import type { Client } from '../db/pool.js';
-import { auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
+import { auditDelete, auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { assertAdmin } from '../lib/scope.js';
 
@@ -14,7 +14,17 @@ async function replaceItems(
   setId: number,
   items: ToySetItemInput[],
 ): Promise<void> {
-  await client.query('DELETE FROM toy_set_items WHERE set_id = $1', [setId]);
+  const removed = await client.query(
+    'DELETE FROM toy_set_items WHERE set_id = $1 RETURNING *',
+    [setId],
+  );
+  // Per-row audit (same composite-key convention as writeToyLines's toy_distribution rows), not
+  // one aggregate entry: DECISION-028's audit-completeness pass gave every other replace-in-place
+  // path (divisor restamp, terminal rebind, location close) a real old_data trail for what was
+  // removed, and a toy set's item list deserves the same instead of silently losing it.
+  for (const row of removed.rows) {
+    await auditDelete(client, actor, 'toy_set_items', `${setId}:${row.toy_id}`, row);
+  }
   for (const item of items) {
     if (item.quantity <= 0) continue;
     const inserted = await client.query(
@@ -24,8 +34,8 @@ async function replaceItems(
       [setId, item.toyId, item.quantity],
     );
     if (inserted.rowCount === 0) throw notFound(`игрушка №${item.toyId} не существует`);
+    await auditInsert(client, actor, 'toy_set_items', `${setId}:${item.toyId}`, inserted.rows[0]);
   }
-  await auditInsert(client, actor, 'toy_set_items', setId, { items });
 }
 
 export async function createToySet(
@@ -119,7 +129,10 @@ export async function applyToySetInBulk(
   if (set.rowCount === 0) throw notFound('набор игрушек не существует');
 
   const hasFilter =
-    filter.machineType || filter.routeId || filter.locationId || (filter.machineNumbers?.length ?? 0) > 0;
+    filter.machineType !== undefined ||
+    filter.routeId !== undefined ||
+    filter.locationId !== undefined ||
+    (filter.machineNumbers?.length ?? 0) > 0;
   if (!hasFilter) {
     throw badRequest(
       'FILTER_REQUIRED',
@@ -173,12 +186,17 @@ export async function applyToySetInBulk(
 
   const beforeByMachine = new Map(before.rows.map((row) => [row.machine_number, row]));
   for (const row of after.rows) {
+    // A machine present in `after` but absent from `before` can only mean it was inserted between
+    // the two SELECTs (matching the same filter) — a freshly created machine has no default set
+    // (the column has no DEFAULT clause, so it starts NULL), so that's the honest prior value
+    // instead of an empty `{}` that erases the machine_number from its own audit row too.
     await auditUpdate(
       client,
       actor,
       'machine',
       row.machine_number,
-      beforeByMachine.get(row.machine_number) ?? {},
+      beforeByMachine.get(row.machine_number) ??
+        { machine_number: row.machine_number, default_toy_set_id: null },
       row,
       { reason: 'default_toy_set_bulk_applied', filter },
     );

@@ -21,8 +21,23 @@ export interface SyncResult {
  * a lost response is recognised by the server as the same Service instead of a duplicate.
  * A business rejection (400/409) is kept in the queue as REJECTED for the technician to review,
  * while a network failure simply stops the run and leaves the queue intact.
+ *
+ * Callers (App's online/user effect, ServiceForm's save-while-online path, and the Queue screen)
+ * can all trigger a sync around the same moment; without sharing one in-flight run, two calls
+ * would both read the same PENDING list and upload the same items twice.
  */
-export async function syncOutbox(): Promise<SyncResult> {
+let inFlight: Promise<SyncResult> | null = null;
+
+export function syncOutbox(): Promise<SyncResult> {
+  if (inFlight) return inFlight;
+  const run = runSync().finally(() => {
+    if (inFlight === run) inFlight = null;
+  });
+  inFlight = run;
+  return run;
+}
+
+async function runSync(): Promise<SyncResult> {
   const queue = await readOutbox();
   const pending = queue.filter((item) => item.status === 'PENDING');
   let sent = 0;
@@ -36,6 +51,13 @@ export async function syncOutbox(): Promise<SyncResult> {
     } catch (error) {
       if (error instanceof OfflineError) {
         return { sent, rejected, remaining: pending.length - sent, offline: true };
+      }
+      if (error instanceof ApiError && error.status === 401) {
+        // The session expired mid-run (api.ts already cleared the token and fired
+        // auth:expired) — every remaining item would 401 the same way, and it's a session
+        // problem, not a business rejection of this item's data. Leave it and the rest of the
+        // queue as PENDING so they retry automatically once the technician logs back in.
+        return { sent, rejected, remaining: pending.length - sent - rejected, offline: false };
       }
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         await markRejected(item.localId, error.message);

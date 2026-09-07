@@ -70,7 +70,15 @@ export async function buildServer() {
   app.decorate('authenticate', async (request: import('fastify').FastifyRequest) => {
     await request.jwtVerify();
     const payload = request.user as { sub: number; login: string; role: Actor['role'] };
-    request.actor = { id: Number(payload.sub), login: payload.login, role: payload.role };
+    const result = await pool.query<{ role: Actor['role']; is_active: boolean }>(
+      'SELECT role, is_active FROM staff WHERE id = $1',
+      [Number(payload.sub)],
+    );
+    const staff = result.rows[0];
+    if (!staff || !staff.is_active) {
+      throw new AppError(401, 'UNAUTHORIZED', 'учётная запись деактивирована');
+    }
+    request.actor = { id: Number(payload.sub), login: payload.login, role: staff.role };
   });
 
   // Fastify/Node framework errors carry their own English message and (for the ones we know

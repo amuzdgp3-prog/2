@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
 import {
   aggregateByLocation,
+  divideDecimal,
   monthlyReport,
   queryMachineRows,
   sumDecimal,
@@ -17,6 +18,7 @@ function parseFilters(query: Record<string, string | undefined>): ReportFilters 
     from: query.from,
     to: query.to,
     locationId: query.locationId ? Number(query.locationId) : undefined,
+    classifierId: query.classifierId ? Number(query.classifierId) : undefined,
     machineNumber: query.machineNumber,
     machineType: query.machineType,
     technicianId: query.technicianId ? Number(query.technicianId) : undefined,
@@ -56,6 +58,7 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     try {
       return await monthlyReport(client, request.actor, {
         locationId: request.query.locationId ? Number(request.query.locationId) : undefined,
+        classifierId: request.query.classifierId ? Number(request.query.classifierId) : undefined,
         months: request.query.months ? Number(request.query.months) : undefined,
       });
     } finally {
@@ -163,7 +166,7 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
         .map((row) => ({
           machineNumber: row.machineNumber,
           locationName: row.locationName,
-          roi: (Number(row.revenue) / Number(row.toyCost)).toFixed(2),
+          roi: divideDecimal(row.revenue, row.toyCost, 2),
           roiValue: Number(row.revenue) / Number(row.toyCost),
         }));
 

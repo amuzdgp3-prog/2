@@ -6,7 +6,7 @@ import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { QrCode } from '../components/ui/QrCode';
 import { RoiBadge } from '../components/ui/RoiBadge';
 
-type Tab = 'machines' | 'locations' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'audit';
+type Tab = 'machines' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'audit';
 
 interface Machine {
   machine_number: string;
@@ -82,7 +82,8 @@ export default function AdminScreen() {
     <>
       <div className="tabs">
         <button className={tab === 'machines' ? 'active' : ''} onClick={() => setTab('machines')}>Аппараты</button>
-        <button className={tab === 'locations' ? 'active' : ''} onClick={() => setTab('locations')}>Точки</button>
+        <button className={tab === 'locations' ? 'active' : ''} onClick={() => setTab('locations')}>Адреса</button>
+        <button className={tab === 'catalog' ? 'active' : ''} onClick={() => setTab('catalog')}>Каталог</button>
         <button className={tab === 'terminals' ? 'active' : ''} onClick={() => setTab('terminals')}>Терминалы</button>
         <button className={tab === 'staff' ? 'active' : ''} onClick={() => setTab('staff')}>Сотрудники</button>
         <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
@@ -96,6 +97,7 @@ export default function AdminScreen() {
 
       {tab === 'machines' && <MachinesTab onDone={report} onError={fail} />}
       {tab === 'locations' && <LocationsTab onDone={report} onError={fail} />}
+      {tab === 'catalog' && <CatalogTab onDone={report} onError={fail} />}
       {tab === 'terminals' && <TerminalsTab onDone={report} onError={fail} />}
       {tab === 'staff' && <StaffTab onDone={report} onError={fail} />}
       {tab === 'toys' && <ToysTab onDone={report} onError={fail} />}
@@ -521,6 +523,33 @@ function EditMachineForm({ machine, onDone, onError }: TabProps & { machine: Mac
   const [maxDays, setMaxDays] = useState(machine.max_service_days?.toString() ?? '');
   const [address, setAddress] = useState(machine.address ?? '');
   const [applyFrom, setApplyFrom] = useState('');
+  const [classifiers, setClassifiers] = useState<Classifier[]>([]);
+  const [addTagChoice, setAddTagChoice] = useState('');
+
+  const loadClassifiers = () => api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
+  useEffect(() => {
+    void loadClassifiers();
+  }, []);
+
+  const addTag = async () => {
+    if (!addTagChoice) return;
+    try {
+      await api.post(`/api/classifiers/${addTagChoice}/machines`, { machineNumber: machine.machine_number });
+      setAddTagChoice('');
+      await loadClassifiers();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const removeTag = async (classifierId: number) => {
+    try {
+      await api.delete(`/api/classifiers/${classifierId}/machines`, { machineNumber: machine.machine_number });
+      await loadClassifiers();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -600,6 +629,37 @@ function EditMachineForm({ machine, onDone, onError }: TabProps & { machine: Mac
         <button className="primary" type="submit">Сохранить</button>
 
         <div className="card" style={{ marginBottom: 0, background: 'var(--paper-deep)' }}>
+          <div className="muted" style={{ marginBottom: 8 }}>Теги каталога — на этом аппарате напрямую</div>
+          <p className="muted" style={{ marginTop: 0 }}>
+            В обход адреса, для редкого случая, когда на одном адресе стоят аппараты разных типов.
+            Обычные (гео/тип точки) теги наследуются от адреса автоматически — управляются на
+            вкладке «Каталог».
+          </p>
+          <div className="chip-row">
+            {classifiers.filter((c) => c.machines.includes(machine.machine_number)).map((c) => (
+              <span className="chip" key={c.id}>
+                {c.name}
+                <button onClick={() => removeTag(c.id)} title="Убрать">×</button>
+              </span>
+            ))}
+            {classifiers.filter((c) => c.machines.includes(machine.machine_number)).length === 0 && (
+              <span className="muted">Прямых тегов нет.</span>
+            )}
+          </div>
+          <div className="row" style={{ marginTop: 8, gap: 6 }}>
+            <select value={addTagChoice} onChange={(event) => setAddTagChoice(event.target.value)}>
+              <option value="">— добавить узел каталога —</option>
+              {flattenTree(classifiers.filter((c) => !c.machines.includes(machine.machine_number))).map(
+                ({ item: c, depth }) => (
+                  <option key={c.id} value={c.id}>{'— '.repeat(depth)}{c.name}</option>
+                ),
+              )}
+            </select>
+            <button disabled={!addTagChoice} onClick={addTag} type="button">Добавить</button>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 0, background: 'var(--paper-deep)' }}>
           <div className="muted" style={{ marginBottom: 8 }}>
             Исправление истории
           </div>
@@ -624,11 +684,168 @@ function EditMachineForm({ machine, onDone, onError }: TabProps & { machine: Mac
   );
 }
 
+/**
+ * Flattens a self-referencing tree (Location's parent_id, or Каталог's classifier parent_id)
+ * into a depth-first list for rendering — a plain unordered list becomes unusable once there are
+ * many leaf items, because a handful of organisational folders get buried among them. Within each
+ * sibling group, nodes that themselves have children (folders) sort before leaves, so structure
+ * surfaces at the top of each branch instead of being scattered alphabetically among plain items.
+ */
+function flattenTree<T extends { id: number; name: string; parent_id: number | null }>(
+  items: T[],
+  excludeId?: number,
+): Array<{ item: T; depth: number }> {
+  const childrenOf = new Map<number | null, T[]>();
+  for (const item of items) {
+    if (item.id === excludeId) continue;
+    const key = item.parent_id;
+    if (!childrenOf.has(key)) childrenOf.set(key, []);
+    childrenOf.get(key)!.push(item);
+  }
+  const hasChildren = (id: number) => (childrenOf.get(id)?.length ?? 0) > 0;
+  for (const list of childrenOf.values()) {
+    list.sort((a, b) => {
+      const aFirst = hasChildren(a.id) ? 0 : 1;
+      const bFirst = hasChildren(b.id) ? 0 : 1;
+      return aFirst !== bFirst ? aFirst - bFirst : a.name.localeCompare(b.name, 'ru');
+    });
+  }
+  const result: Array<{ item: T; depth: number }> = [];
+  const visit = (parentId: number | null, depth: number) => {
+    for (const item of childrenOf.get(parentId) ?? []) {
+      result.push({ item, depth });
+      visit(item.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return result;
+}
+
+interface PlacementHistoryRow {
+  id: number;
+  machine_number: string;
+  started_at: string;
+  ended_at: string | null;
+  initial_game_counter: number;
+  initial_prize_counter: number;
+  final_game_counter: number;
+  final_prize_counter: number;
+}
+
+interface AddressFinancePeriod {
+  revenue: string;
+  cash: string;
+  cashless: string;
+}
+
+interface AddressHistoryData {
+  id: number;
+  name: string;
+  status: string;
+  created_at: string;
+  closed_at: string | null;
+  placements: PlacementHistoryRow[];
+  finance: { monthToDate: AddressFinancePeriod; lastMonth: AddressFinancePeriod; allTime: AddressFinancePeriod };
+  terminals: Array<{ id: number; serial: string; label: string; machine_number: string; started_at: string; ended_at: string | null }>;
+}
+
+const formatDateTime = (value: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
+
+/** История одного Адреса — раскрывается прямо под карточкой при клике, без отдельного роута. */
+function AddressHistory({ locationId, onError }: { locationId: number; onError: (error: unknown) => void }) {
+  const [data, setData] = useState<AddressHistoryData | null>(null);
+  const [period, setPeriod] = useState<'monthToDate' | 'lastMonth' | 'allTime'>('monthToDate');
+
+  useEffect(() => {
+    api.get<AddressHistoryData>(`/api/locations/${locationId}/history`).then(setData).catch(onError);
+  }, [locationId]);
+
+  if (!data) return <p className="muted">Загрузка…</p>;
+  const finance = data.finance[period];
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="muted">
+        Создан: {formatDateTime(data.created_at)}{data.closed_at ? ` · Закрыт: ${formatDateTime(data.closed_at)}` : ''}
+      </div>
+
+      <div className="row" style={{ gap: 6, marginTop: 10 }}>
+        {(['monthToDate', 'lastMonth', 'allTime'] as const).map((key) => (
+          <button
+            key={key}
+            style={period === key ? { background: 'var(--brass)', borderColor: 'var(--brass)', color: '#fff' } : undefined}
+            onClick={() => setPeriod(key)}
+          >
+            {key === 'monthToDate' ? 'С начала месяца' : key === 'lastMonth' ? 'Прошлый месяц' : 'Всё время'}
+          </button>
+        ))}
+      </div>
+      <div className="row" style={{ gap: 24, marginTop: 8 }}>
+        <div><span className="muted">Выручка</span><div>{formatMoney(finance.revenue)}</div></div>
+        <div><span className="muted">Нал</span><div>{formatMoney(finance.cash)}</div></div>
+        <div><span className="muted">Безнал</span><div>{formatMoney(finance.cashless)}</div></div>
+      </div>
+
+      <div className="muted" style={{ marginTop: 14 }}>Аппараты на этом адресе</div>
+      <div className="table-wrap scroll-x" style={{ marginTop: 6 }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Аппарат</th><th>С</th><th>По</th><th>Счётчик старт</th><th>Счётчик сейчас</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.placements.map((p) => (
+              <tr key={p.id}>
+                <td>{p.machine_number}</td>
+                <td>{formatDateTime(p.started_at)}</td>
+                <td>{p.ended_at ? formatDateTime(p.ended_at) : 'сейчас'}</td>
+                <td>{p.initial_game_counter}</td>
+                <td>{p.final_game_counter}</td>
+              </tr>
+            ))}
+            {data.placements.length === 0 && (
+              <tr><td colSpan={5} className="muted">Аппаратов ещё не было.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="muted" style={{ marginTop: 14 }}>Терминалы</div>
+      <div className="table-wrap scroll-x" style={{ marginTop: 6 }}>
+        <table>
+          <thead>
+            <tr><th>Серийный</th><th>Аппарат</th><th>С</th><th>По</th></tr>
+          </thead>
+          <tbody>
+            {data.terminals.map((t) => (
+              <tr key={`${t.id}:${t.started_at}`}>
+                <td>{t.serial}</td>
+                <td>{t.machine_number}</td>
+                <td>{formatDateTime(t.started_at)}</td>
+                <td>{t.ended_at ? formatDateTime(t.ended_at) : 'сейчас'}</td>
+              </tr>
+            ))}
+            {data.terminals.length === 0 && (
+              <tr><td colSpan={4} className="muted">Терминалов не было.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Адреса — точки по договору (10_ТЗ). Организация по городам/районам/произвольным признакам
+ * теперь целиком на вкладке «Каталог» (см. CatalogTab) — здесь адрес только создаётся и
+ * закрывается/деактивируется; вложенность (родительская точка) в интерфейсе больше не выставляется.
+ */
 function LocationsTab({ onDone, onError }: TabProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('Europe/Moscow');
-  const [parentId, setParentId] = useState('');
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const load = () => api.get<Location[]>('/api/locations').then(setLocations).catch(onError);
   useEffect(() => {
@@ -638,12 +855,8 @@ function LocationsTab({ onDone, onError }: TabProps) {
   const create = async (event: FormEvent) => {
     event.preventDefault();
     try {
-      await api.post('/api/locations', {
-        name,
-        timezone,
-        parentId: parentId ? Number(parentId) : null,
-      });
-      onDone(`Точка «${name}» создана`);
+      await api.post('/api/locations', { name, timezone });
+      onDone(`Адрес «${name}» создан`);
       setName('');
       await load();
     } catch (caught) {
@@ -661,61 +874,64 @@ function LocationsTab({ onDone, onError }: TabProps) {
     }
   };
 
+  const active = locations.filter((l) => l.status !== 'CLOSED');
+  const closed = locations.filter((l) => l.status === 'CLOSED');
+
+  const renderCard = (location: Location) => (
+    <div className="card" key={location.id}>
+      <div className="row" style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === location.id ? null : location.id)}>
+        <div>
+          <strong>{location.name}</strong>
+          <div className="muted">{location.timezone} · {location.status}</div>
+        </div>
+        <div className="row" style={{ gap: 6 }} onClick={(event) => event.stopPropagation()}>
+          {location.status === 'ACTIVE' && (
+            <button onClick={() => setStatus(location.id, 'DEACTIVATED')}>Деактивировать</button>
+          )}
+          {location.status === 'DEACTIVATED' && (
+            <button onClick={() => setStatus(location.id, 'ACTIVE')}>Активировать</button>
+          )}
+        </div>
+      </div>
+      {location.status === 'CLOSED' && (
+        <div className="muted" style={{ marginTop: 8 }}>
+          Договор расторгнут. История сохранена, новые обслуживания запрещены.
+        </div>
+      )}
+      {expanded === location.id && <AddressHistory locationId={location.id} onError={onError} />}
+    </div>
+  );
+
   return (
     <>
       <form onSubmit={create}>
-        <Section title="Новая точка">
+        <Section title="Новый адрес">
           <div className="stack">
             <div>
-              <label>Название</label>
+              <label>Название / адрес</label>
               <input value={name} onChange={(event) => setName(event.target.value)} required />
             </div>
-            <div className="grid-2">
-              <div>
-                <label>Часовой пояс (IANA)</label>
-                <input value={timezone} onChange={(event) => setTimezone(event.target.value)} required />
-              </div>
-              <div>
-                <label>Родительская точка</label>
-                <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
-                  <option value="">— нет —</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>{location.name}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label>Часовой пояс (IANA)</label>
+              <input value={timezone} onChange={(event) => setTimezone(event.target.value)} required />
             </div>
             <p className="muted" style={{ margin: 0 }}>
-              Часовой пояс точки — единственный источник бизнес-времени для её отчётности.
+              Часовой пояс адреса — единственный источник бизнес-времени для его отчётности.
+              Организация по городам/районам/типам — на вкладке «Каталог».
             </p>
             <button className="primary" type="submit">Создать</button>
           </div>
         </Section>
       </form>
 
-      {locations.map((location) => (
-        <div className="card" key={location.id}>
-          <div className="row">
-            <div>
-              <strong>{location.name}</strong>
-              <div className="muted">{location.timezone} · {location.status}</div>
-            </div>
-            {location.status === 'ACTIVE' && (
-              <button onClick={() => setStatus(location.id, 'DEACTIVATED')}>Деактивировать</button>
-            )}
-            {location.status === 'DEACTIVATED' && (
-              <button onClick={() => setStatus(location.id, 'ACTIVE')}>Активировать</button>
-            )}
-          </div>
-          {location.status === 'CLOSED' && (
-            <div className="muted" style={{ marginTop: 8 }}>
-              Точка закрыта. История сохранена, новые обслуживания запрещены.
-            </div>
-          )}
-        </div>
-      ))}
+      {active.map(renderCard)}
 
-      <ClassifiersSection locations={locations} onDone={onDone} onError={onError} />
+      {closed.length > 0 && (
+        <details className="card">
+          <summary style={{ cursor: 'pointer' }}>Закрытые адреса ({closed.length})</summary>
+          <div style={{ marginTop: 10 }}>{closed.map(renderCard)}</div>
+        </details>
+      )}
     </>
   );
 }
@@ -723,30 +939,82 @@ function LocationsTab({ onDone, onError }: TabProps) {
 interface Classifier {
   id: number;
   name: string;
+  parent_id: number | null;
   locations: Array<{ id: number; name: string }>;
+  machines: string[];
 }
 
 /**
- * Классификаторы — независимая от дерева точек группировка: один и тот же адрес может состоять
- * сразу в нескольких (географический признак +, например, «Торговые центры»), в отличие от
- * родителя точки, который у адреса ровно один.
+ * Каталог — единственный инструмент организации аппаратов и адресов (город/район/тип/этаж —
+ * любой признак, с произвольной вложенностью и множественной принадлежностью одному узлу сразу
+ * несколько адресов/аппаратов, а одному адресу или аппарату — несколько узлов). Заменяет собой
+ * прежнее дерево Точек как рабочий способ организации: тег на адресе действует, пока аппарат там
+ * стоит, тег на конкретном аппарате — независимо от адреса (см. lib/scope.ts на сервере).
  */
-function ClassifiersSection({ locations, onDone, onError }: TabProps & { locations: Location[] }) {
+function CatalogTab({ onDone, onError }: TabProps) {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
-  const [name, setName] = useState('');
-  const [addChoice, setAddChoice] = useState<Record<number, string>>({});
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [machineNumbers, setMachineNumbers] = useState<string[]>([]);
+  const [rootName, setRootName] = useState('');
+  const [childName, setChildName] = useState<Record<number, string>>({});
+  const [addLocationChoice, setAddLocationChoice] = useState<Record<number, string>>({});
+  const [addMachineChoice, setAddMachineChoice] = useState<Record<number, string>>({});
+  const [renaming, setRenaming] = useState<Record<number, string>>({});
 
-  const load = () => api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
+  const load = () => {
+    api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
+    api.get<Location[]>('/api/locations').then(setLocations).catch(onError);
+    api.get<Array<{ machine_number: string }>>('/api/machines').then(
+      (rows) => setMachineNumbers(rows.map((r) => r.machine_number)),
+    ).catch(onError);
+  };
   useEffect(() => {
     void load();
   }, []);
 
-  const create = async (event: FormEvent) => {
+  const createRoot = async (event: FormEvent) => {
     event.preventDefault();
     try {
-      await api.post('/api/classifiers', { name });
-      onDone(`Классификатор «${name}» создан`);
-      setName('');
+      await api.post('/api/classifiers', { name: rootName });
+      onDone(`Узел «${rootName}» создан`);
+      setRootName('');
+      await load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const createChild = async (parentId: number) => {
+    const value = childName[parentId]?.trim();
+    if (!value) return;
+    try {
+      await api.post('/api/classifiers', { name: value, parentId });
+      onDone(`Узел «${value}» создан`);
+      setChildName({ ...childName, [parentId]: '' });
+      await load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const rename = async (id: number) => {
+    const value = renaming[id]?.trim();
+    if (!value) return;
+    try {
+      await api.patch(`/api/classifiers/${id}`, { name: value });
+      onDone('Узел переименован');
+      setRenaming((r) => { const next = { ...r }; delete next[id]; return next; });
+      await load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const removeNode = async (id: number, name: string) => {
+    if (!confirm(`Удалить узел «${name}»?`)) return;
+    try {
+      await api.delete(`/api/classifiers/${id}`);
+      onDone('Узел удалён');
       await load();
     } catch (caught) {
       onError(caught);
@@ -754,12 +1022,12 @@ function ClassifiersSection({ locations, onDone, onError }: TabProps & { locatio
   };
 
   const addLocation = async (classifierId: number) => {
-    const locationId = Number(addChoice[classifierId]);
+    const locationId = Number(addLocationChoice[classifierId]);
     if (!locationId) return;
     try {
       await api.post(`/api/classifiers/${classifierId}/locations`, { locationId });
-      onDone('Точка добавлена в классификатор');
-      setAddChoice({ ...addChoice, [classifierId]: '' });
+      onDone('Адрес добавлен в узел');
+      setAddLocationChoice({ ...addLocationChoice, [classifierId]: '' });
       await load();
     } catch (caught) {
       onError(caught);
@@ -769,18 +1037,30 @@ function ClassifiersSection({ locations, onDone, onError }: TabProps & { locatio
   const removeLocation = async (classifierId: number, locationId: number) => {
     try {
       await api.delete(`/api/classifiers/${classifierId}/locations`, { locationId });
-      onDone('Точка убрана из классификатора');
+      onDone('Адрес убран из узла');
       await load();
     } catch (caught) {
       onError(caught);
     }
   };
 
-  const removeClassifier = async (classifierId: number, classifierName: string) => {
-    if (!confirm(`Удалить классификатор «${classifierName}»?`)) return;
+  const addMachine = async (classifierId: number) => {
+    const machineNumber = addMachineChoice[classifierId];
+    if (!machineNumber) return;
     try {
-      await api.delete(`/api/classifiers/${classifierId}`);
-      onDone('Классификатор удалён');
+      await api.post(`/api/classifiers/${classifierId}/machines`, { machineNumber });
+      onDone('Аппарат добавлен в узел');
+      setAddMachineChoice({ ...addMachineChoice, [classifierId]: '' });
+      await load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const removeMachine = async (classifierId: number, machineNumber: string) => {
+    try {
+      await api.delete(`/api/classifiers/${classifierId}/machines`, { machineNumber });
+      onDone('Аппарат убран из узла');
       await load();
     } catch (caught) {
       onError(caught);
@@ -789,33 +1069,67 @@ function ClassifiersSection({ locations, onDone, onError }: TabProps & { locatio
 
   return (
     <>
-      <form onSubmit={create}>
-        <Section title="Новый классификатор">
+      <form onSubmit={createRoot}>
+        <Section title="Новый корневой узел">
           <p className="muted" style={{ marginTop: 0 }}>
-            Группировка точек по любому признаку — географическому, по типу места и т.д. Одна и та
-            же точка может состоять сразу в нескольких классификаторах, в отличие от родительской
-            точки в дереве, которая у неё всегда одна.
+            Например «СПб», «Астрахань», «Первые этажи» — под каждым можно строить сколько угодно
+            вложенных узлов. Один адрес или аппарат может состоять сразу в нескольких узлах, в
+            любых ветках каталога одновременно.
           </p>
           <div className="stack">
             <div>
               <label>Название</label>
-              <input value={name} onChange={(event) => setName(event.target.value)} required />
+              <input value={rootName} onChange={(event) => setRootName(event.target.value)} required />
             </div>
             <button className="primary" type="submit">Создать</button>
           </div>
         </Section>
       </form>
 
-      {classifiers.map((classifier) => (
-        <div className="card card-pad" key={classifier.id}>
+      {flattenTree(classifiers).map(({ item: classifier, depth }) => (
+        <div className="card card-pad" key={classifier.id} style={{ marginLeft: depth * 20 }}>
           <div className="row">
-            <strong>{classifier.name}</strong>
-            <button className="btn-danger-ghost" onClick={() => removeClassifier(classifier.id, classifier.name)}>
-              Удалить
+            {renaming[classifier.id] !== undefined ? (
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  value={renaming[classifier.id]}
+                  onChange={(event) => setRenaming({ ...renaming, [classifier.id]: event.target.value })}
+                  autoFocus
+                />
+                <button onClick={() => rename(classifier.id)}>Сохранить</button>
+                <button onClick={() => setRenaming((r) => { const next = { ...r }; delete next[classifier.id]; return next; })}>
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              <strong>{classifier.name}</strong>
+            )}
+            <div className="row" style={{ gap: 6 }}>
+              {renaming[classifier.id] === undefined && (
+                <button onClick={() => setRenaming({ ...renaming, [classifier.id]: classifier.name })}>
+                  Переименовать
+                </button>
+              )}
+              <button className="btn-danger-ghost" onClick={() => removeNode(classifier.id, classifier.name)}>
+                Удалить
+              </button>
+            </div>
+          </div>
+
+          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+            <input
+              placeholder="название подузла"
+              value={childName[classifier.id] ?? ''}
+              onChange={(event) => setChildName({ ...childName, [classifier.id]: event.target.value })}
+            />
+            <button disabled={!childName[classifier.id]?.trim()} onClick={() => createChild(classifier.id)}>
+              + подузел
             </button>
           </div>
-          <div className="chip-row" style={{ marginTop: 8 }}>
-            {classifier.locations.length === 0 && <span className="muted">Точек пока нет.</span>}
+
+          <div className="muted" style={{ marginTop: 10 }}>Адреса</div>
+          <div className="chip-row" style={{ marginTop: 4 }}>
+            {classifier.locations.length === 0 && <span className="muted">Адресов пока нет.</span>}
             {classifier.locations.map((location) => (
               <span className="chip" key={location.id}>
                 {location.name}
@@ -823,19 +1137,46 @@ function ClassifiersSection({ locations, onDone, onError }: TabProps & { locatio
               </span>
             ))}
           </div>
-          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+          <div className="row" style={{ marginTop: 6, gap: 6 }}>
             <select
-              value={addChoice[classifier.id] ?? ''}
-              onChange={(event) => setAddChoice({ ...addChoice, [classifier.id]: event.target.value })}
+              value={addLocationChoice[classifier.id] ?? ''}
+              onChange={(event) => setAddLocationChoice({ ...addLocationChoice, [classifier.id]: event.target.value })}
             >
-              <option value="">— добавить точку —</option>
+              <option value="">— добавить адрес —</option>
               {locations
                 .filter((location) => !classifier.locations.some((l) => l.id === location.id))
                 .map((location) => (
                   <option key={location.id} value={location.id}>{location.name}</option>
                 ))}
             </select>
-            <button disabled={!addChoice[classifier.id]} onClick={() => addLocation(classifier.id)}>
+            <button disabled={!addLocationChoice[classifier.id]} onClick={() => addLocation(classifier.id)}>
+              Добавить
+            </button>
+          </div>
+
+          <div className="muted" style={{ marginTop: 10 }}>Аппараты напрямую (в обход адреса)</div>
+          <div className="chip-row" style={{ marginTop: 4 }}>
+            {classifier.machines.length === 0 && <span className="muted">Аппаратов пока нет.</span>}
+            {classifier.machines.map((machineNumber) => (
+              <span className="chip" key={machineNumber}>
+                {machineNumber}
+                <button onClick={() => removeMachine(classifier.id, machineNumber)} title="Убрать">×</button>
+              </span>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 6, gap: 6 }}>
+            <select
+              value={addMachineChoice[classifier.id] ?? ''}
+              onChange={(event) => setAddMachineChoice({ ...addMachineChoice, [classifier.id]: event.target.value })}
+            >
+              <option value="">— добавить аппарат —</option>
+              {machineNumbers
+                .filter((number) => !classifier.machines.includes(number))
+                .map((number) => (
+                  <option key={number} value={number}>{number}</option>
+                ))}
+            </select>
+            <button disabled={!addMachineChoice[classifier.id]} onClick={() => addMachine(classifier.id)}>
               Добавить
             </button>
           </div>
@@ -977,6 +1318,7 @@ function StaffTab({ onDone, onError }: TabProps) {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [scope, setScope] = useState<Record<number, string>>({});
   const [classifierScope, setClassifierScope] = useState<Record<number, string>>({});
+  const [machineScope, setMachineScope] = useState<Record<number, string>>({});
   const [scopes, setScopes] = useState<
     Record<number, {
       locations: Array<{ id: number; name: string }>;
@@ -1052,7 +1394,7 @@ function StaffTab({ onDone, onError }: TabProps) {
             <button onClick={() => setEditing(editing === person.id ? null : person.id)}>
               {editing === person.id ? 'Закрыть' : 'Изменить'}
             </button>
-            {person.role === 'TECHNICIAN' && (
+            {(person.role === 'TECHNICIAN' || person.role === 'BOSS') && (
               <button onClick={() => toggleScope(person.id)}>
                 {scopeOpenFor === person.id ? 'Скрыть доступ к аппаратам' : 'Доступ к аппаратам'}
               </button>
@@ -1085,72 +1427,26 @@ function StaffTab({ onDone, onError }: TabProps) {
             />
           )}
 
-          {person.role === 'TECHNICIAN' && scopeOpenFor === person.id && (
+          {(person.role === 'TECHNICIAN' || person.role === 'BOSS') && scopeOpenFor === person.id && (
             <div style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
-              <div className="row" style={{ gap: 6, marginBottom: 10 }}>
-                <select
-                  value={scope[person.id] ?? ''}
-                  onChange={(event) => setScope({ ...scope, [person.id]: event.target.value })}
-                >
-                  <option value="">— точка для доступа —</option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>{location.name}</option>
-                  ))}
-                </select>
-                <button
-                  disabled={!scope[person.id]}
-                  onClick={async () => {
-                    try {
-                      await api.post('/api/staff/scope', {
-                        staffId: person.id,
-                        locationId: Number(scope[person.id]),
-                      });
-                      onDone(
-                        `Техник ${person.full_name} теперь видит аппараты точки и всех вложенных точек`,
-                      );
-                      await loadScope(person.id);
-                    } catch (caught) {
-                      onError(caught);
-                    }
-                  }}
-                >
-                  Дать доступ к точке
-                </button>
-              </div>
-
-              <div className="muted">Точки:</div>
-              {(scopes[person.id]?.locations.length ?? 0) === 0 && (
-                <p className="muted" style={{ margin: '4px 0' }}>Ни одной точки не выдано.</p>
+              {person.role === 'BOSS' && (scopes[person.id]?.locations.length ?? 0) === 0
+                && (scopes[person.id]?.classifiers.length ?? 0) === 0
+                && (scopes[person.id]?.machines.length ?? 0) === 0 && (
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Пока не назначено ни одного узла — руководитель видит вообще все аппараты. Как
+                  только вы назначите хотя бы один узел Каталога, видимость сузится только до него.
+                </p>
               )}
-              <div className="chip-row">
-                {scopes[person.id]?.locations.map((location) => (
-                  <span className="chip" key={location.id}>
-                    {location.name}
-                    <button
-                      onClick={async () => {
-                        await api.delete('/api/staff/scope', {
-                          staffId: person.id,
-                          locationId: location.id,
-                        });
-                        onDone('Доступ к точке отозван');
-                        await loadScope(person.id);
-                      }}
-                      title="Отозвать"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
 
-              <div className="row" style={{ gap: 6, marginTop: 12, marginBottom: 10 }}>
+              <div className="muted">Каталог — основной способ выдачи доступа:</div>
+              <div className="row" style={{ gap: 6, margin: '6px 0 10px' }}>
                 <select
                   value={classifierScope[person.id] ?? ''}
                   onChange={(event) => setClassifierScope({ ...classifierScope, [person.id]: event.target.value })}
                 >
-                  <option value="">— классификатор для доступа —</option>
-                  {classifiers.map((classifier) => (
-                    <option key={classifier.id} value={classifier.id}>{classifier.name}</option>
+                  <option value="">— узел каталога —</option>
+                  {flattenTree(classifiers).map(({ item: classifier, depth }) => (
+                    <option key={classifier.id} value={classifier.id}>{'— '.repeat(depth)}{classifier.name}</option>
                   ))}
                 </select>
                 <button
@@ -1161,20 +1457,18 @@ function StaffTab({ onDone, onError }: TabProps) {
                         staffId: person.id,
                         classifierId: Number(classifierScope[person.id]),
                       });
-                      onDone(`Техник ${person.full_name} теперь видит аппараты всех точек классификатора`);
+                      onDone(`${person.full_name} теперь видит аппараты всего этого узла (и вложенных в него)`);
                       await loadScope(person.id);
                     } catch (caught) {
                       onError(caught);
                     }
                   }}
                 >
-                  Дать доступ по классификатору
+                  Выдать доступ
                 </button>
               </div>
-
-              <div className="muted">Классификаторы:</div>
               {(scopes[person.id]?.classifiers.length ?? 0) === 0 && (
-                <p className="muted" style={{ margin: '4px 0' }}>Ни одного не выдано.</p>
+                <p className="muted" style={{ margin: '4px 0' }}>Ни одного узла не выдано.</p>
               )}
               <div className="chip-row">
                 {scopes[person.id]?.classifiers.map((classifier) => (
@@ -1186,7 +1480,7 @@ function StaffTab({ onDone, onError }: TabProps) {
                           staffId: person.id,
                           classifierId: classifier.id,
                         });
-                        onDone('Доступ по классификатору отозван');
+                        onDone('Доступ к узлу отозван');
                         await loadScope(person.id);
                       }}
                       title="Отозвать"
@@ -1197,8 +1491,33 @@ function StaffTab({ onDone, onError }: TabProps) {
                 ))}
               </div>
 
-              <div className="muted" style={{ marginTop: 8 }}>
-                Аппараты, выданные точечно (в обход точки):
+              <div className="muted" style={{ marginTop: 12 }}>
+                Отдельный аппарат в обход каталога (для редких исключений):
+              </div>
+              <div className="row" style={{ gap: 6, margin: '6px 0 10px' }}>
+                <input
+                  placeholder="номер аппарата"
+                  value={machineScope[person.id] ?? ''}
+                  onChange={(event) => setMachineScope({ ...machineScope, [person.id]: event.target.value })}
+                />
+                <button
+                  disabled={!machineScope[person.id]?.trim()}
+                  onClick={async () => {
+                    try {
+                      await api.post('/api/staff/scope', {
+                        staffId: person.id,
+                        machineNumber: machineScope[person.id].trim(),
+                      });
+                      onDone(`${person.full_name} теперь видит аппарат № ${machineScope[person.id].trim()}`);
+                      setMachineScope({ ...machineScope, [person.id]: '' });
+                      await loadScope(person.id);
+                    } catch (caught) {
+                      onError(caught);
+                    }
+                  }}
+                >
+                  Выдать доступ
+                </button>
               </div>
               {(scopes[person.id]?.machines.length ?? 0) === 0 && (
                 <p className="muted" style={{ margin: '4px 0' }}>Нет.</p>
@@ -1223,6 +1542,60 @@ function StaffTab({ onDone, onError }: TabProps) {
                   </span>
                 ))}
               </div>
+
+              <details style={{ marginTop: 14 }}>
+                <summary className="muted" style={{ cursor: 'pointer' }}>
+                  Устаревающий способ: по дереву точек
+                </summary>
+                <div className="row" style={{ gap: 6, margin: '8px 0 10px' }}>
+                  <select
+                    value={scope[person.id] ?? ''}
+                    onChange={(event) => setScope({ ...scope, [person.id]: event.target.value })}
+                  >
+                    <option value="">— точка для доступа —</option>
+                    {locations.map((location) => (
+                      <option key={location.id} value={location.id}>{location.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    disabled={!scope[person.id]}
+                    onClick={async () => {
+                      try {
+                        await api.post('/api/staff/scope', {
+                          staffId: person.id,
+                          locationId: Number(scope[person.id]),
+                        });
+                        onDone(`${person.full_name} теперь видит аппараты точки и всех вложенных точек`);
+                        await loadScope(person.id);
+                      } catch (caught) {
+                        onError(caught);
+                      }
+                    }}
+                  >
+                    Дать доступ к точке
+                  </button>
+                </div>
+                <div className="chip-row">
+                  {scopes[person.id]?.locations.map((location) => (
+                    <span className="chip" key={location.id}>
+                      {location.name}
+                      <button
+                        onClick={async () => {
+                          await api.delete('/api/staff/scope', {
+                            staffId: person.id,
+                            locationId: location.id,
+                          });
+                          onDone('Доступ к точке отозван');
+                          await loadScope(person.id);
+                        }}
+                        title="Отозвать"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </details>
             </div>
           )}
         </div>

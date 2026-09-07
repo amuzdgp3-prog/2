@@ -6,12 +6,34 @@ export interface ReportFilters {
   from?: string;
   to?: string;
   locationId?: number;
+  classifierId?: number;
   machineNumber?: string;
   machineType?: string;
   technicianId?: number;
   routeId?: number;
   limit?: number;
   offset?: number;
+}
+
+/**
+ * A machine-set filter by Каталог node, mirroring lib/scope.ts's classifier resolution but
+ * without any staff grant involved — every machine tagged anywhere in the node's subtree, either
+ * directly or via the address it's currently placed at.
+ */
+function classifierMachineFilterSql(classifierId: number, push: (value: unknown) => string): string {
+  return `s.machine_number IN (
+    WITH RECURSIVE classifier_tree AS (
+      SELECT id FROM classifiers WHERE id = ${push(classifierId)}
+      UNION
+      SELECT child.id FROM classifiers child JOIN classifier_tree parent ON child.parent_id = parent.id
+    )
+    SELECT p2.machine_number FROM machine_placements p2
+    WHERE p2.ended_at IS NULL AND p2.location_id IN (
+      SELECT lc.location_id FROM location_classifiers lc WHERE lc.classifier_id IN (SELECT id FROM classifier_tree)
+    )
+    UNION
+    SELECT mc.machine_number FROM machine_classifiers mc WHERE mc.classifier_id IN (SELECT id FROM classifier_tree)
+  )`;
 }
 
 export interface MachineRow {
@@ -71,6 +93,41 @@ export function sumDecimal(values: Array<string | number>, decimals: number): st
 }
 
 /**
+ * Exact decimal division over 2-decimal money strings (revenue / toyCost), rounded half away
+ * from zero — DECISION-004 requires all financial arithmetic to stay in exact decimal, never a
+ * JS float, and `Number(a) / Number(b)` breaks that for aggregated totals large enough to strain
+ * a double's mantissa. The operands' own 2-decimal scale cancels out of the ratio, so only the
+ * requested output `decimals` need rounding.
+ */
+export function divideDecimal(
+  numerator: string | number,
+  denominator: string | number,
+  decimals: number,
+): string {
+  const parseMoney = (value: string | number): bigint => {
+    const text = String(value ?? '0');
+    const negative = text.startsWith('-');
+    const [whole, fraction = ''] = (negative ? text.slice(1) : text).split('.');
+    const scaled = BigInt(whole || '0') * 100n + BigInt((fraction + '00').slice(0, 2) || '0');
+    return negative ? -scaled : scaled;
+  };
+  const num = parseMoney(numerator);
+  const den = parseMoney(denominator);
+  const outScale = 10n ** BigInt(decimals);
+  const product = num * outScale;
+  let quotient = product / den;
+  const remainder = product % den;
+  const absRemainder = remainder < 0n ? -remainder : remainder;
+  const absDen = den < 0n ? -den : den;
+  if (2n * absRemainder >= absDen) quotient += (product < 0n) !== (den < 0n) ? -1n : 1n;
+  const negative = quotient < 0n;
+  const absolute = negative ? -quotient : quotient;
+  const whole = absolute / outScale;
+  const fraction = (absolute % outScale).toString().padStart(decimals, '0');
+  return `${negative ? '-' : ''}${whole}.${fraction}`;
+}
+
+/**
  * The single calculation/query layer behind reports, dashboard and export
  * (10_ТЗ §25, 12_CONTRACT F1). No caller implements its own financial formula, so all three
  * surfaces necessarily return the same numbers for the same filters.
@@ -110,6 +167,9 @@ export async function queryMachineRows(
         UNION
         SELECT child.id FROM locations child JOIN subtree ON child.parent_id = subtree.id
       ) SELECT id FROM subtree)`);
+  }
+  if (filters.classifierId) {
+    conditions.push(classifierMachineFilterSql(filters.classifierId, push));
   }
 
   const scope = machineScopePredicate(actor, 's.machine_number', params.length + 1);
@@ -213,7 +273,7 @@ export interface MonthlyRow {
 export async function monthlyReport(
   client: Client,
   actor: Actor,
-  filters: Pick<ReportFilters, 'locationId'> & { months?: number },
+  filters: Pick<ReportFilters, 'locationId' | 'classifierId'> & { months?: number },
 ): Promise<MonthlyRow[]> {
   const params: unknown[] = [];
   const push = (value: unknown): string => {
@@ -223,6 +283,10 @@ export async function monthlyReport(
 
   const conditions: string[] = [
     `s.service_date >= date_trunc('month', now()) - (${push(filters.months ?? 6)}::int - 1) * interval '1 month'`,
+    // Same "tomorrow UTC" upper bound as the dashboard's periods (see routes/reports.ts
+    // dashboardPeriods): without it, any future-dated row (a regression, or leftover load-test
+    // data) creates a phantom future-month bucket instead of being excluded.
+    `s.service_date <= (now() + interval '1 day')::date`,
   ];
   if (filters.locationId) {
     conditions.push(`p.location_id IN (
@@ -231,6 +295,9 @@ export async function monthlyReport(
         UNION
         SELECT child.id FROM locations child JOIN subtree ON child.parent_id = subtree.id
       ) SELECT id FROM subtree)`);
+  }
+  if (filters.classifierId) {
+    conditions.push(classifierMachineFilterSql(filters.classifierId, push));
   }
   const scope = machineScopePredicate(actor, 's.machine_number', params.length + 1);
   params.push(...scope.params);
@@ -261,7 +328,7 @@ export async function monthlyReport(
       revenue,
       toyCost,
       profit: sumDecimal([revenue, `-${toyCost}`], 2),
-      roi: toyCostNumber > 0 ? (Number(revenue) / toyCostNumber).toFixed(2) : null,
+      roi: toyCostNumber > 0 ? divideDecimal(revenue, toyCost, 2) : null,
     };
   });
 }

@@ -219,6 +219,11 @@ export async function moveMachine(
     throw badRequest('SAME_LOCATION', 'аппарат уже установлен на этой точке');
   }
 
+  // Same Location → Machine shared-lock protocol as createService's lockPlacementAndLocation:
+  // a shared row lock on the destination blocks until any concurrent closeLocation/
+  // setLocationStatus (which take FOR UPDATE on the location) commits, closing the TOCTOU
+  // window where a machine could be moved onto a location that closes in the same instant.
+  await client.query('SELECT id FROM locations WHERE id = $1 FOR SHARE', [input.locationId]);
   const location = await client.query('SELECT id, status FROM locations WHERE id = $1', [
     input.locationId,
   ]);
@@ -404,6 +409,12 @@ export async function replaceMachine(
     throw badRequest('NO_ACTIVE_PLACEMENT', 'заменяемый аппарат сейчас не установлен ни на одной точке');
   }
   const oldPlacement = placement.rows[0];
+  if (oldPlacement.location_status !== 'ACTIVE') {
+    throw badRequest(
+      'LOCATION_NOT_ACTIVE',
+      'замена аппарата возможна только для точки в статусе «активна»',
+    );
+  }
 
   const { createFinalService } = await import('./services.js');
   const finalService = await createFinalService(client, actor, {

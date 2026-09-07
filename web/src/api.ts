@@ -31,7 +31,16 @@ const announce = (event: 'api:reachable' | 'api:unreachable') =>
   window.dispatchEvent(new CustomEvent(event));
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  // A 401 on the login endpoint itself means "wrong login or password", not "your session
+  // expired" — there was no session to expire yet. Treating it as expiry showed a scary,
+  // misleading message instead of the server's actual reason, and could clear a token that
+  // belonged to a session that was otherwise still perfectly valid.
+  const isLoginAttempt = path === '/api/auth/login';
+  // A stale or foreign token from a previous session must never ride along with a fresh login
+  // attempt (e.g. switching accounts on one device, DECISION-017) — some auth middlewares would
+  // inspect it before the credentials even get checked, turning a bad old token into a confusing
+  // failure on what should be an unrelated new login.
+  const token = isLoginAttempt ? null : getToken();
   let response: Response;
 
   try {
@@ -48,12 +57,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     announce('api:unreachable');
     throw new OfflineError();
   }
-
-  // A 401 on the login endpoint itself means "wrong login or password", not "your session
-  // expired" — there was no session to expire yet. Treating it as expiry showed a scary,
-  // misleading message instead of the server's actual reason, and could clear a token that
-  // belonged to a session that was otherwise still perfectly valid.
-  const isLoginAttempt = path === '/api/auth/login';
 
   if (response.status === 401 && !isLoginAttempt) {
     setToken(null);

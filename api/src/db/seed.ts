@@ -14,10 +14,14 @@ export async function seedAdmin(log: (message: string) => void = console.log): P
   if (existing.rowCount) return;
 
   const passwordHash = await hashPassword(password);
-  await pool.query(
+  // ON CONFLICT guards against two instances starting concurrently and both passing the
+  // emptiness check above: without it, the second INSERT would crash on the unique login
+  // constraint instead of harmlessly no-opping.
+  const inserted = await pool.query(
     `INSERT INTO staff (login, full_name, role, password_hash)
-     VALUES ($1, $2, 'ADMIN', $3)`,
+     VALUES ($1, $2, 'ADMIN', $3)
+     ON CONFLICT (login) DO NOTHING`,
     [login, 'Администратор', passwordHash],
   );
-  log(`seeded initial admin account "${login}"`);
+  if (inserted.rowCount) log(`seeded initial admin account "${login}"`);
 }

@@ -131,6 +131,17 @@ describe('staff tab: profile edits, password reset, last-admin guard', () => {
     });
     assert.equal(demote.statusCode, 200);
     assert.equal(demote.json().role, 'TECHNICIAN');
+
+    // The original fixture admin (context.adminToken) was just demoted to TECHNICIAN, and the
+    // server now re-checks the staff row's current role on every request instead of trusting the
+    // role embedded in an already-issued JWT — so every remaining test in this suite that needs
+    // admin rights must authenticate as the admin account that is actually still active.
+    const loggedIn = await context.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { login: 'admin2', password: 'x' },
+    });
+    context.adminToken = loggedIn.json().token;
   });
 
   it('never exposes password_hash from the staff list or profile update endpoints', async () => {

@@ -48,6 +48,7 @@ export async function toyMonthlyTrend(client: Client, actor: Actor, months = 6):
      JOIN services s ON s.id = td.service_id
      JOIN toys t ON t.id = td.toy_id
      WHERE s.service_date >= (date_trunc('month', now()) - ($1::int - 1) * interval '1 month')::date
+       AND s.service_date <= (now() + interval '1 day')::date
        AND ${scope.sql}
      GROUP BY t.id, t.name, t.unit_cost, month_start
      ORDER BY t.id, month_start`,

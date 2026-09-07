@@ -194,6 +194,11 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
   );
   const runId = runInsert.rows[0].id as number;
 
+  // A SAVEPOINT isolates the fetch/import work from the bookkeeping above: if a real
+  // Postgres-level error aborts the transaction below, rolling back to here (instead of relying
+  // on the outer transaction, which would already be unusable) lets the catch block's own
+  // UPDATE still succeed, so a failed run is always recorded in parser_runs (DECISION-030).
+  await client.query('SAVEPOINT ivend_sync');
   try {
     const ourTerminals = await client.query<{ serial: string }>(
       `SELECT serial FROM terminals WHERE status <> 'RETIRED'`,
@@ -234,6 +239,7 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
     );
     return { skipped: false, imported: result.inserted, matched: result.machinesTouched.length };
   } catch (error) {
+    await client.query('ROLLBACK TO SAVEPOINT ivend_sync').catch(() => undefined);
     await client.query(
       `UPDATE parser_runs SET finished_at = now(), status = 'ERROR', error_message = $2 WHERE id = $1`,
       [runId, (error as Error).message],

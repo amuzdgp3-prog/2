@@ -111,6 +111,7 @@ interface InsertParams {
   testGames: number;
   photoObjectKey: string;
   notes?: string;
+  toys?: ToyLine[];
   kind: 'REGULAR' | 'FINAL';
   technicianId: number | null;
 }
@@ -175,13 +176,32 @@ async function insertServiceRow(
     throw conflict('SERVICE_INSERT_FAILED', 'не удалось сохранить обслуживание');
   }
   const row = existing.rows[0];
-  const samePayload =
+  const baseSame =
     Number(row.placement_id) === Number(params.placementId) &&
     row.machine_number === params.machineNumber &&
     Number(row.game_counter) === Number(params.gameCounter) &&
     Number(row.prize_counter) === Number(params.prizeCounter) &&
     Number(row.test_games) === Number(params.testGames) &&
-    new Date(row.occurred_at as string).getTime() === new Date(params.occurredAt).getTime();
+    new Date(row.occurred_at as string).getTime() === new Date(params.occurredAt).getTime() &&
+    (row.notes ?? '') === (params.notes ?? '') &&
+    row.photo_object_key === params.photoObjectKey;
+
+  // A resubmitted local_id with corrected toy lines (e.g. after a dropped-response retry) must
+  // not be silently treated as identical just because the counters/date match — the stored toy
+  // distribution is never rewritten on replay, so a mismatch here has to be a real conflict.
+  let toysSame = true;
+  if (baseSame && params.toys) {
+    const storedToys = await client.query<{ toy_id: number; quantity: number }>(
+      'SELECT toy_id, quantity FROM toy_distributions WHERE service_id = $1',
+      [row.id],
+    );
+    const normalize = (lines: Array<{ toyId: number; quantity: number }>) =>
+      lines.map((line) => `${line.toyId}:${line.quantity}`).sort().join(',');
+    toysSame =
+      normalize(storedToys.rows.map((r) => ({ toyId: Number(r.toy_id), quantity: Number(r.quantity) }))) ===
+      normalize(params.toys.map((t) => ({ toyId: t.toyId, quantity: t.quantity })));
+  }
+  const samePayload = baseSame && toysSame;
 
   if (!samePayload) {
     throw conflict('LOCAL_ID_CONFLICT', 'обслуживание с таким идентификатором уже сохранено с другими данными', {
@@ -234,6 +254,7 @@ export async function createService(
     testGames: input.testGames ?? 0,
     photoObjectKey: input.photoObjectKey,
     notes: input.notes,
+    toys: input.toys ?? [],
     kind: 'REGULAR',
     technicianId: actor.role === 'TECHNICIAN' ? actor.id : null,
   });
@@ -304,8 +325,25 @@ export async function updateService(
   const before = current.rows[0];
   const machineNumber = before.machine_number as string;
 
-  if (patch.occurredAt && new Date(patch.occurredAt).getTime() > Date.now() + 5 * 60_000) {
-    throw badRequest('FUTURE_OCCURRED_AT', 'обслуживание не может быть датировано будущим временем');
+  if (patch.occurredAt) {
+    const occurredAtMs = new Date(patch.occurredAt).getTime();
+    if (occurredAtMs > Date.now() + 5 * 60_000) {
+      throw badRequest('FUTURE_OCCURRED_AT', 'обслуживание не может быть датировано будущим временем');
+    }
+    // The service's placement_id is fixed, but the placement's own window may have changed since
+    // (the machine moved or the location closed) — re-validate against it the same way
+    // createService does, so an edited date can't drift outside the placement it belongs to.
+    const placement = await client.query(
+      'SELECT started_at, ended_at FROM machine_placements WHERE id = $1',
+      [before.placement_id],
+    );
+    const { started_at: startedAt, ended_at: endedAt } = placement.rows[0];
+    if (occurredAtMs < new Date(startedAt).getTime()) {
+      throw badRequest('BEFORE_PLACEMENT_START', 'дата обслуживания раньше даты установки аппарата на точке');
+    }
+    if (endedAt && occurredAtMs > new Date(endedAt).getTime()) {
+      throw badRequest('AFTER_PLACEMENT_END', 'дата обслуживания позже даты снятия аппарата с точки');
+    }
   }
 
   await lockMachines(client, [machineNumber]);

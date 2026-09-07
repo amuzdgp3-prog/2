@@ -3,6 +3,7 @@ import type { Client } from '../db/pool.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
 import { auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
 import { lockMachines } from '../lib/locks.js';
+import { assertAdmin } from '../lib/scope.js';
 
 export interface RawTransaction {
   providerTransactionId?: string | null;
@@ -121,6 +122,7 @@ export async function importCashless(
   provider: string,
   transactions: RawTransaction[],
 ): Promise<{ received: number; inserted: number; duplicates: number; machinesTouched: string[] }> {
+  assertAdmin(actor);
   const insertedIds: number[] = [];
 
   for (const tx of transactions) {
@@ -168,6 +170,7 @@ export async function rematchCashless(
   actor: Actor,
   filter: { from?: string; terminalId?: number; onlyUnmatched?: boolean },
 ): Promise<{ processed: number; machinesTouched: string[] }> {
+  assertAdmin(actor);
   const rows = await client.query(
     `SELECT t.id FROM cashless_transactions t
      LEFT JOIN terminals term ON term.serial = t.terminal_external_id
@@ -190,6 +193,7 @@ export async function updateCashlessTransaction(
   id: number,
   patch: { amount?: string | number; paymentType?: string },
 ): Promise<Record<string, unknown>> {
+  assertAdmin(actor);
   const before = await client.query('SELECT * FROM cashless_transactions WHERE id = $1', [id]);
   const after = await client.query(
     `UPDATE cashless_transactions

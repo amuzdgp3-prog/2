@@ -99,14 +99,19 @@ export function QrScannerButton({ onDetect }: { onDetect: (value: string) => voi
   );
 }
 
-/** Достаёт номер аппарата и из полного URL (/service/0142), и из голого номера в старом стикере. */
-export function extractMachineNumber(scanned: string): string {
+/**
+ * Достаёт номер аппарата и из полного URL (/service/0142), и из голого номера в старом стикере.
+ * Возвращает null, если строка распознана как URL, но не нашего вида (например, случайный сайт
+ * или чужая ссылка) — раньше в этом случае функция отдавала URL целиком, из-за чего сообщение об
+ * ошибке показывало «Аппарат № https://... не найден» вместо понятного «QR-код не распознан».
+ */
+export function extractMachineNumber(scanned: string): string | null {
   try {
     const url = new URL(scanned);
     const match = url.pathname.match(/\/service\/([^/]+)/);
-    if (match) return decodeURIComponent(match[1]);
+    return match ? decodeURIComponent(match[1]) : null;
   } catch {
-    // not a URL — fall through to treating the raw value as the machine number
+    // not a URL — treat the raw value as the machine number
+    return scanned;
   }
-  return scanned;
 }

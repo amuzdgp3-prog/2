@@ -11,11 +11,14 @@ import {
 import { closeLocation, createLocation, setLocationStatus, updateLocation } from '../commands/locations.js';
 import {
   addLocationToClassifier,
+  addMachineToClassifier,
   createClassifier,
   deleteClassifier,
   grantClassifierScope,
   removeLocationFromClassifier,
+  removeMachineFromClassifier,
   revokeClassifierScope,
+  updateClassifier,
 } from '../commands/classifiers.js';
 import { bindTerminal, createTerminal, unbindTerminal } from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
@@ -88,7 +91,22 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
 
   app.patch<{ Params: { id: string }; Body: Parameters<typeof updateLocation>[3] }>(
     '/api/locations/:id',
-    auth,
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 1 },
+            address: { type: 'string' },
+            timezone: { type: 'string', minLength: 1 },
+            parentId: { type: ['integer', 'null'] },
+            minServiceDays: { type: ['integer', 'null'] },
+            maxServiceDays: { type: ['integer', 'null'] },
+          },
+        },
+      },
+    },
     async (request) =>
       withTransaction((client) =>
         updateLocation(client, request.actor, Number(request.params.id), request.body),
@@ -119,26 +137,134 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     ),
   );
 
-  // ------------------------------------------------------------- classifiers
+  /**
+   * Полная история Адреса: когда появился/закрылся, какие аппараты и когда на нём стояли (с
+   * начальными и конечными показаниями), финансы за 3 периода с разбивкой нал/безнал, и какие
+   * терминалы были привязаны. Не фильтруется по scope — как и список /api/locations, адрес сам
+   * по себе не считается защищаемой единицей, защита действует на уровне аппаратов.
+   */
+  app.get<{ Params: { id: string } }>('/api/locations/:id/history', auth, async (request) => {
+    const locationId = Number(request.params.id);
+    const location = await pool.query(
+      'SELECT id, name, status, created_at, closed_at FROM locations WHERE id = $1',
+      [locationId],
+    );
+    if (location.rowCount === 0) throw notFound('точка не существует');
+
+    const placements = await pool.query(
+      `SELECT p.id, p.machine_number, p.started_at, p.ended_at,
+              p.initial_game_counter, p.initial_prize_counter,
+              COALESCE(last.game_counter, p.initial_game_counter) AS final_game_counter,
+              COALESCE(last.prize_counter, p.initial_prize_counter) AS final_prize_counter
+       FROM machine_placements p
+       LEFT JOIN LATERAL (
+         SELECT game_counter, prize_counter FROM services
+         WHERE placement_id = p.id ORDER BY occurred_at DESC, id DESC LIMIT 1
+       ) last ON TRUE
+       WHERE p.location_id = $1
+       ORDER BY p.started_at DESC`,
+      [locationId],
+    );
+
+    const finance = await pool.query(
+      `SELECT
+         SUM(s.revenue) FILTER (WHERE s.service_date >= date_trunc('month', now())::date) AS month_revenue,
+         SUM(s.cash_amount) FILTER (WHERE s.service_date >= date_trunc('month', now())::date) AS month_cash,
+         SUM(s.cashless_amount) FILTER (WHERE s.service_date >= date_trunc('month', now())::date) AS month_cashless,
+         SUM(s.revenue) FILTER (
+           WHERE s.service_date >= date_trunc('month', now() - interval '1 month')::date
+             AND s.service_date < date_trunc('month', now())::date) AS last_month_revenue,
+         SUM(s.cash_amount) FILTER (
+           WHERE s.service_date >= date_trunc('month', now() - interval '1 month')::date
+             AND s.service_date < date_trunc('month', now())::date) AS last_month_cash,
+         SUM(s.cashless_amount) FILTER (
+           WHERE s.service_date >= date_trunc('month', now() - interval '1 month')::date
+             AND s.service_date < date_trunc('month', now())::date) AS last_month_cashless,
+         SUM(s.revenue) AS all_time_revenue,
+         SUM(s.cash_amount) AS all_time_cash,
+         SUM(s.cashless_amount) AS all_time_cashless
+       FROM services s
+       JOIN machine_placements p ON p.id = s.placement_id
+       WHERE p.location_id = $1`,
+      [locationId],
+    );
+    const f = finance.rows[0];
+    const zero = (value: unknown) => String(value ?? '0.00');
+
+    // terminal_bindings.location_id is a snapshot taken at bind time (commands/terminals.ts) and
+    // can go stale if the machine is later moved elsewhere while the terminal stays bound — joined
+    // through machine_placements by overlapping time range instead of trusted directly.
+    const terminals = await pool.query(
+      `SELECT DISTINCT t.id, t.serial, t.label, tb.machine_number, tb.started_at, tb.ended_at
+       FROM terminal_bindings tb
+       JOIN terminals t ON t.id = tb.terminal_id
+       JOIN machine_placements p ON p.machine_number = tb.machine_number
+         AND tstzrange(p.started_at, p.ended_at) && tstzrange(tb.started_at, tb.ended_at)
+       WHERE p.location_id = $1
+       ORDER BY tb.started_at DESC`,
+      [locationId],
+    );
+
+    return {
+      ...location.rows[0],
+      placements: placements.rows,
+      finance: {
+        monthToDate: { revenue: zero(f.month_revenue), cash: zero(f.month_cash), cashless: zero(f.month_cashless) },
+        lastMonth: {
+          revenue: zero(f.last_month_revenue), cash: zero(f.last_month_cash), cashless: zero(f.last_month_cashless),
+        },
+        allTime: { revenue: zero(f.all_time_revenue), cash: zero(f.all_time_cash), cashless: zero(f.all_time_cashless) },
+      },
+      terminals: terminals.rows,
+    };
+  });
+
+  // ------------------------------------------------------------- classifiers (Каталог)
   app.get('/api/classifiers', auth, async (request) => {
     assertAdmin(request.actor);
-    const classifiers = await pool.query('SELECT id, name FROM classifiers ORDER BY name');
-    const memberships = await pool.query(
+    const classifiers = await pool.query('SELECT id, name, parent_id FROM classifiers ORDER BY name');
+    const locationMemberships = await pool.query(
       `SELECT lc.classifier_id, l.id AS location_id, l.name AS location_name
        FROM location_classifiers lc JOIN locations l ON l.id = lc.location_id
        ORDER BY l.name`,
     );
+    const machineMemberships = await pool.query(
+      `SELECT mc.classifier_id, m.machine_number
+       FROM machine_classifiers mc JOIN machines m ON m.machine_number = mc.machine_number
+       ORDER BY m.machine_number`,
+    );
     const byClassifier = new Map<number, Array<{ id: number; name: string }>>();
-    for (const row of memberships.rows) {
+    for (const row of locationMemberships.rows) {
       const list = byClassifier.get(row.classifier_id) ?? [];
       list.push({ id: row.location_id, name: row.location_name });
       byClassifier.set(row.classifier_id, list);
     }
-    return classifiers.rows.map((c) => ({ ...c, locations: byClassifier.get(c.id) ?? [] }));
+    const machinesByClassifier = new Map<number, string[]>();
+    for (const row of machineMemberships.rows) {
+      const list = machinesByClassifier.get(row.classifier_id) ?? [];
+      list.push(row.machine_number);
+      machinesByClassifier.set(row.classifier_id, list);
+    }
+    return classifiers.rows.map((c) => ({
+      ...c,
+      locations: byClassifier.get(c.id) ?? [],
+      machines: machinesByClassifier.get(c.id) ?? [],
+    }));
   });
 
-  app.post<{ Body: { name: string } }>('/api/classifiers', auth, async (request) =>
-    withTransaction((client) => createClassifier(client, request.actor, request.body.name)),
+  app.post<{ Body: { name: string; parentId?: number | null } }>('/api/classifiers', auth, async (request) =>
+    withTransaction((client) =>
+      createClassifier(client, request.actor, request.body.name, request.body.parentId),
+    ),
+  );
+
+  app.patch<{ Params: { id: string }; Body: { name?: string; parentId?: number | null } }>(
+    '/api/classifiers/:id',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        updateClassifier(client, request.actor, Number(request.params.id), request.body),
+      ),
   );
 
   app.delete<{ Params: { id: string } }>('/api/classifiers/:id', auth, async (request) => {
@@ -163,6 +289,28 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     async (request) => {
       await withTransaction((client) =>
         removeLocationFromClassifier(client, request.actor, Number(request.params.id), request.body.locationId),
+      );
+      return { ok: true };
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { machineNumber: string } }>(
+    '/api/classifiers/:id/machines',
+    auth,
+    async (request) => {
+      await withTransaction((client) =>
+        addMachineToClassifier(client, request.actor, Number(request.params.id), request.body.machineNumber),
+      );
+      return { ok: true };
+    },
+  );
+
+  app.delete<{ Params: { id: string }; Body: { machineNumber: string } }>(
+    '/api/classifiers/:id/machines',
+    auth,
+    async (request) => {
+      await withTransaction((client) =>
+        removeMachineFromClassifier(client, request.actor, Number(request.params.id), request.body.machineNumber),
       );
       return { ok: true };
     },
@@ -247,7 +395,7 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
         client.release();
       }
 
-      const limit = Math.min(Number(request.query.limit ?? 8), 30);
+      const limit = Math.min(Math.max(Number(request.query.limit) || 8, 1), 30);
       const result = await pool.query(
         `SELECT service_date, revenue_to_cost_ratio
          FROM services
@@ -316,6 +464,7 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     async (request) => {
       const client = await pool.connect();
       try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
         return await resolveServiceInterval(client, request.params.machineNumber);
       } finally {
         client.release();
@@ -559,14 +708,20 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     '/api/machines/:machineNumber/routes',
     auth,
     async (request) => {
-      const result = await pool.query(
-        `SELECT r.* FROM machine_routes mr
-         JOIN routes r ON r.id = mr.route_id
-         WHERE mr.machine_number = $1
-         ORDER BY r.sort_order, r.id`,
-        [request.params.machineNumber],
-      );
-      return result.rows;
+      const client = await pool.connect();
+      try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
+        const result = await client.query(
+          `SELECT r.* FROM machine_routes mr
+           JOIN routes r ON r.id = mr.route_id
+           WHERE mr.machine_number = $1
+           ORDER BY r.sort_order, r.id`,
+          [request.params.machineNumber],
+        );
+        return result.rows;
+      } finally {
+        client.release();
+      }
     },
   );
 
@@ -609,16 +764,22 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     '/api/machines/:machineNumber/initial-toys',
     auth,
     async (request) => {
-      const result = await pool.query(
-        `SELECT t.id AS toy_id, t.name, pit.quantity, pit.unit_cost_snapshot
-         FROM machine_placements p
-         JOIN placement_initial_toys pit ON pit.placement_id = p.id
-         JOIN toys t ON t.id = pit.toy_id
-         WHERE p.machine_number = $1 AND p.ended_at IS NULL
-         ORDER BY t.name`,
-        [request.params.machineNumber],
-      );
-      return result.rows;
+      const client = await pool.connect();
+      try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
+        const result = await client.query(
+          `SELECT t.id AS toy_id, t.name, pit.quantity, pit.unit_cost_snapshot
+           FROM machine_placements p
+           JOIN placement_initial_toys pit ON pit.placement_id = p.id
+           JOIN toys t ON t.id = pit.toy_id
+           WHERE p.machine_number = $1 AND p.ended_at IS NULL
+           ORDER BY t.name`,
+          [request.params.machineNumber],
+        );
+        return result.rows;
+      } finally {
+        client.release();
+      }
     },
   );
 
@@ -765,10 +926,16 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       }),
   );
 
-  /** What a technician can actually reach, so the admin can see and correct it. */
+  /** What a staff member (technician or boss) can actually reach, so the admin can see and correct it. */
   app.get<{ Params: { id: string } }>('/api/staff/:id/scope', auth, async (request) => {
     assertAdmin(request.actor);
     const staffId = Number(request.params.id);
+
+    const staffRow = await pool.query<{ id: number; login: string; role: 'ADMIN' | 'TECHNICIAN' | 'BOSS' }>(
+      'SELECT id, login, role FROM staff WHERE id = $1',
+      [staffId],
+    );
+    if (staffRow.rowCount === 0) throw notFound('сотрудник не существует');
 
     const locations = await pool.query(
       `SELECT l.id, l.name FROM staff_location_scope s
@@ -786,32 +953,26 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       `SELECT machine_number FROM machine_technicians WHERE staff_id = $1 ORDER BY machine_number`,
       [staffId],
     );
-    const reachable = await pool.query(
-      `WITH RECURSIVE scope_tree AS (
-         SELECT l.id FROM staff_location_scope s JOIN locations l ON l.id = s.location_id
-         WHERE s.staff_id = $1
-         UNION
-         SELECT child.id FROM locations child JOIN scope_tree parent ON child.parent_id = parent.id
-       ),
-       classifier_locations AS (
-         SELECT lc.location_id AS id FROM staff_classifier_scope scs
-         JOIN location_classifiers lc ON lc.classifier_id = scs.classifier_id
-         WHERE scs.staff_id = $1
-       )
-       SELECT p.machine_number FROM machine_placements p
-       WHERE p.location_id IN (SELECT id FROM scope_tree)
-          OR p.location_id IN (SELECT id FROM classifier_locations)
-       UNION
-       SELECT mt.machine_number FROM machine_technicians mt WHERE mt.staff_id = $1
-       ORDER BY 1`,
-      [staffId],
-    );
+    // Same recursive resolution every protected endpoint uses (lib/scope.ts) — this used to be a
+    // hand-duplicated copy that also ignored the previewed staff member's role entirely, always
+    // running the technician-shaped query regardless of whether they were TECHNICIAN or BOSS.
+    const scopeClient = await pool.connect();
+    let reachableMachines: string[];
+    try {
+      reachableMachines = await listScopedMachineNumbers(scopeClient, {
+        id: staffRow.rows[0].id,
+        login: staffRow.rows[0].login,
+        role: staffRow.rows[0].role,
+      });
+    } finally {
+      scopeClient.release();
+    }
 
     return {
       locations: locations.rows,
       classifiers: classifiers.rows,
       machines: machines.rows.map((row) => row.machine_number),
-      reachableMachines: reachable.rows.map((row) => row.machine_number),
+      reachableMachines,
     };
   });
 

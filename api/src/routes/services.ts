@@ -6,8 +6,8 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
-import { badRequest } from '../lib/errors.js';
-import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
+import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { assertAdmin, assertMachineInScope, machineScopePredicate } from '../lib/scope.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -162,8 +162,8 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     conditions.push(scope.sql);
 
     const where = conditions.join(' AND ');
-    const limit = Math.min(Number(request.query.limit ?? 50), 500);
-    const offset = Math.max(Number(request.query.offset ?? 0), 0);
+    const limit = Math.min(Math.max(Number(request.query.limit) || 50, 1), 500);
+    const offset = Math.max(Number(request.query.offset) || 0, 0);
 
     const [rows, total] = await Promise.all([
       pool.query(
@@ -198,7 +198,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       `SELECT s.* FROM services s WHERE s.id = $1 AND ${scope.sql}`,
       [Number(request.params.id), ...scope.params],
     );
-    if (service.rowCount === 0) return { error: 'NOT_FOUND' };
+    if (service.rowCount === 0) throw notFound('обслуживание не найдено');
     const toys = await pool.query(
       `SELECT td.*, t.name FROM toy_distributions td
        JOIN toys t ON t.id = td.toy_id WHERE td.service_id = $1`,
@@ -244,13 +244,28 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       if (objectKey.includes('..')) throw badRequest('BAD_OBJECT_KEY', 'некорректный идентификатор файла');
 
       const stored = await pool.query(
-        'SELECT content_type FROM photo_objects WHERE object_key = $1',
+        `SELECT po.content_type, po.uploaded_by, s.machine_number
+         FROM photo_objects po
+         LEFT JOIN services s ON s.photo_object_key = po.object_key
+         WHERE po.object_key = $1`,
         [objectKey],
       );
       if (stored.rowCount === 0) return reply.code(404).send({ error: 'NOT_FOUND' });
 
+      const row = stored.rows[0];
+      if (row.machine_number) {
+        const client = await pool.connect();
+        try {
+          await assertMachineInScope(client, request.actor, row.machine_number);
+        } finally {
+          client.release();
+        }
+      } else if (request.actor.role === 'TECHNICIAN' && row.uploaded_by !== request.actor.id) {
+        throw forbidden('фото вне зоны ответственности техника');
+      }
+
       return reply
-        .type(stored.rows[0].content_type)
+        .type(row.content_type)
         .send(createReadStream(join(config.photoDir, objectKey)));
     },
   );

@@ -31,7 +31,14 @@ const toDateInput = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth()
 const toTimeInput = (date: Date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
 function RoiSparkline({ points }: { points: Array<{ service_date: string; revenue_to_cost_ratio: string | null } >; }) {
-  const values = points.map((point) => Number(point.revenue_to_cost_ratio)).filter(Number.isFinite);
+  // A null revenue_to_cost_ratio means "no cost base" (DECISION-012), not zero — Number(null) is
+  // 0 and would pass Number.isFinite, silently turning a "no data" point into a real ROI of 0
+  // (RoiBadge already guards this the same way; this sparkline was missing the same check).
+  const values = points
+    .map((point) => point.revenue_to_cost_ratio)
+    .filter((value): value is string => value !== null && value !== undefined && value !== '')
+    .map(Number)
+    .filter(Number.isFinite);
   if (values.length < 2) {
     return <p className="muted" style={{ margin: 0 }}>Недостаточно истории для тренда.</p>;
   }
@@ -171,12 +178,23 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     const occurredAt = new Date(`${date}T${time}`);
     if (Number.isNaN(occurredAt.getTime())) return;
 
+    // This fires on every date/time keystroke; without a cancellation guard, an earlier request
+    // (for an intermediate, half-typed time) can resolve after a later one and overwrite
+    // dateContext with stale "было N" data for a time the user has since moved past.
+    let cancelled = false;
     api
       .get<typeof dateContext>(
         `/api/machines/${encodeURIComponent(machineNumber)}/context-at?occurredAt=${encodeURIComponent(occurredAt.toISOString())}`,
       )
-      .then(setDateContext)
-      .catch(() => setDateContext(null));
+      .then((result) => {
+        if (!cancelled) setDateContext(result);
+      })
+      .catch(() => {
+        if (!cancelled) setDateContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [machineNumber, date, time]);
 
   const previousGameCounter = dateContext?.previous.game_counter ?? machine?.previous_game_counter ?? 0;
@@ -212,7 +230,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
 
   const isFutureDate = useMemo(() => {
     const occurredAt = new Date(`${date}T${time || '00:00'}`);
-    return !Number.isNaN(occurredAt.getTime()) && occurredAt.getTime() > Date.now() + 60_000;
+    // Matches the server's own clock-skew tolerance (createService/updateService allow up to
+    // 5 minutes ahead) — a stricter client-side window hard-blocked Save for entries the server
+    // would have accepted whenever the technician's device clock ran a few minutes fast.
+    return !Number.isNaN(occurredAt.getTime()) && occurredAt.getTime() > Date.now() + 5 * 60_000;
   }, [date, time]);
 
   const warnings = useMemo(() => {

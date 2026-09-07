@@ -35,10 +35,27 @@ export function calcNewGames(growth: number, divisorInput: unknown, testGames: n
   return formatScaled(scaled, GAMES_SCALE, 4);
 }
 
-/** Returns revenue as a decimal string with 2 decimals, half-up rounded. */
+/**
+ * Parses a decimal string (or number) into an exact scaled BigInt, without ever round-tripping
+ * through a JS float — `Number(str) * scale` loses exactness for values whose decimal expansion
+ * doesn't fit a double's 53-bit mantissa, which matters here because Postgres NUMERIC values
+ * arrive as text precisely to avoid that (see db/pool.ts's NUMERIC type parser).
+ */
+function parseDecimalToBigInt(value: string | number, scale: bigint): bigint {
+  const str = typeof value === 'number' ? value.toString() : value;
+  const negative = str.startsWith('-');
+  const unsigned = negative ? str.slice(1) : str;
+  const [wholePart, fractionPart = ''] = unsigned.split('.');
+  const scaleDigits = scale.toString().length - 1;
+  const paddedFraction = (fractionPart + '0'.repeat(scaleDigits)).slice(0, scaleDigits);
+  const combined = BigInt(wholePart || '0') * scale + BigInt(paddedFraction || '0');
+  return negative ? -combined : combined;
+}
+
+/** Returns revenue as a decimal string with 2 decimals, half-away-from-zero rounded. */
 export function calcRevenue(newGames: string, pricePerGame: string | number): string {
-  const games = BigInt(Math.round(Number(newGames) * Number(GAMES_SCALE)));
-  const price = BigInt(Math.round(Number(pricePerGame) * 100));
+  const games = parseDecimalToBigInt(newGames, GAMES_SCALE);
+  const price = parseDecimalToBigInt(pricePerGame, 100n);
   const product = games * price; // scale 10^6
   const divisorToKopecks = 10_000n;
   let quotient = product / divisorToKopecks;

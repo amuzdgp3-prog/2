@@ -51,6 +51,30 @@ export async function updateLocation(
   const before = await client.query('SELECT * FROM locations WHERE id = $1', [locationId]);
   if (before.rowCount === 0) throw notFound('точка не существует');
 
+  if (patch.parentId !== undefined && patch.parentId !== null) {
+    if (patch.parentId === locationId) {
+      throw badRequest('LOCATION_CYCLE', 'точка не может быть собственным родителем');
+    }
+    // A move into any of this location's own descendants would turn the tree into a cycle —
+    // every recursive scope/subtree query in the app (lib/scope.ts, reports.ts, toySets.ts) would
+    // then recurse forever the next time it walks through here.
+    const cycle = await client.query(
+      `WITH RECURSIVE descendants AS (
+         SELECT id FROM locations WHERE id = $1
+         UNION ALL
+         SELECT l.id FROM locations l JOIN descendants d ON l.parent_id = d.id
+       )
+       SELECT 1 FROM descendants WHERE id = $2`,
+      [locationId, patch.parentId],
+    );
+    if (cycle.rowCount) {
+      throw badRequest(
+        'LOCATION_CYCLE',
+        'нельзя переместить точку в одну из её собственных вложенных точек',
+      );
+    }
+  }
+
   const after = await client.query(
     `UPDATE locations SET
        name             = COALESCE($2, name),

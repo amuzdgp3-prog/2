@@ -12,12 +12,14 @@ const STAFF_COLUMNS = 'id, login, full_name, role, is_active, created_at, update
  * not a business rule, so it applies only here and is not audited as a business mutation.
  */
 async function assertAdminRemains(client: Client, excludingStaffId: number): Promise<void> {
-  const remaining = await client.query(
-    `SELECT COUNT(*)::int AS count FROM staff
-     WHERE role = 'ADMIN' AND is_active AND id <> $1`,
-    [excludingStaffId],
+  // Locks every active admin row (not just the other admins) so two concurrent calls — each
+  // demoting a different admin — contend for the same rows instead of each locking only the
+  // other's row and both reading "one remains" before either commits.
+  const activeAdmins = await client.query<{ id: number }>(
+    `SELECT id FROM staff WHERE role = 'ADMIN' AND is_active FOR UPDATE`,
   );
-  if (remaining.rows[0].count === 0) {
+  const remaining = activeAdmins.rows.filter((row) => row.id !== excludingStaffId).length;
+  if (remaining === 0) {
     throw badRequest(
       'LAST_ADMIN',
       'нельзя разжаловать или деактивировать последнего активного администратора',

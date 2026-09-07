@@ -77,6 +77,10 @@ export default function MachinesScreen() {
         <QrScannerButton
           onDetect={(scanned) => {
             const machineNumber = extractMachineNumber(scanned);
+            if (machineNumber === null) {
+              setScanError('QR-код не распознан.');
+              return;
+            }
             const known = machines.some((machine) => machine.machine_number === machineNumber);
             if (!known) {
               setScanError(`Аппарат № ${machineNumber} не найден в вашем списке.`);

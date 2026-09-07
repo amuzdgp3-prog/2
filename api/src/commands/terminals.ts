@@ -45,6 +45,11 @@ export async function bindTerminal(
     throw badRequest('NO_PLACEMENT_AT_TIME', 'на этот момент аппарат не был установлен ни на одной точке');
   }
 
+  // Locked before the occupancy check (not just before the final insert) so two concurrent binds
+  // of two different terminals to this same destination machine can't both read "unoccupied"
+  // before either commits.
+  await lockMachines(client, [input.machineNumber]);
+
   const machineBinding = await client.query(
     `SELECT * FROM terminal_bindings
      WHERE machine_number = $1 AND ended_at IS NULL AND terminal_id <> $2`,
@@ -114,18 +119,27 @@ export async function unbindTerminal(
 ): Promise<Record<string, unknown> | null> {
   assertAdmin(actor);
 
+  const unlocked = await client.query(
+    `SELECT machine_number FROM terminal_bindings WHERE terminal_id = $1 AND ended_at IS NULL`,
+    [input.terminalId],
+  );
+  if (unlocked.rowCount === 0) return null;
+
+  await lockMachines(client, [unlocked.rows[0].machine_number as string]);
+
+  // Re-read under the lock: a concurrent unbind for the same terminal may have already closed
+  // this binding while we were waiting for it.
   const active = await client.query(
     `SELECT * FROM terminal_bindings WHERE terminal_id = $1 AND ended_at IS NULL`,
     [input.terminalId],
   );
   if (active.rowCount === 0) return null;
 
-  await lockMachines(client, [active.rows[0].machine_number as string]);
-
   const closed = await client.query(
-    `UPDATE terminal_bindings SET ended_at = $2 WHERE id = $1 RETURNING *`,
+    `UPDATE terminal_bindings SET ended_at = $2 WHERE id = $1 AND ended_at IS NULL RETURNING *`,
     [active.rows[0].id, input.endedAt],
   );
+  if (closed.rowCount === 0) return null;
   await auditUpdate(client, actor, 'terminal_binding', closed.rows[0].id, active.rows[0], closed.rows[0], {
     reason: 'unbind',
   });

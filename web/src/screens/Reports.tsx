@@ -87,22 +87,30 @@ export default function ReportsScreen() {
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [locations, setLocations] = useState<Array<{ id: number; name: string }>>([]);
   const [locationId, setLocationId] = useState('');
+  const [classifiers, setClassifiers] = useState<Array<{ id: number; name: string; parent_id: number | null }>>([]);
+  const [classifierId, setClassifierId] = useState('');
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const query = new URLSearchParams({ from, to, ...(locationId ? { locationId } : {}) }).toString();
+  const query = new URLSearchParams({
+    from, to, ...(locationId ? { locationId } : {}), ...(classifierId ? { classifierId } : {}),
+  }).toString();
 
   useEffect(() => {
     api.get<Array<{ id: number; name: string }>>('/api/locations').then(setLocations).catch(() => undefined);
+    api.get<Array<{ id: number; name: string; parent_id: number | null }>>('/api/classifiers')
+      .then(setClassifiers).catch(() => undefined);
   }, []);
 
   const loadReport = () => {
     setLoading(true);
     setError(null);
-    const monthlyQuery = new URLSearchParams({ months: '6', ...(locationId ? { locationId } : {}) }).toString();
+    const monthlyQuery = new URLSearchParams({
+      months: '6', ...(locationId ? { locationId } : {}), ...(classifierId ? { classifierId } : {}),
+    }).toString();
     Promise.all([
       api.get<ReportResponse>(`/api/reports/financial?${query}`).then(setReport),
       api.get<MonthlyRow[]>(`/api/reports/monthly?${monthlyQuery}`).then(setMonthly).catch(() => setMonthly([])),
@@ -144,7 +152,16 @@ export default function ReportsScreen() {
           </div>
         </div>
         <div>
-          <label htmlFor="location">Точка (включая вложенные)</label>
+          <label htmlFor="catalog">Узел каталога (включая вложенные)</label>
+          <select id="catalog" value={classifierId} onChange={(event) => setClassifierId(event.target.value)}>
+            <option value="">Весь каталог</option>
+            {[...classifiers].sort((a, b) => a.name.localeCompare(b.name, 'ru')).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="location">Точка (включая вложенные, устаревающий способ)</label>
           <select id="location" value={locationId} onChange={(event) => setLocationId(event.target.value)}>
             <option value="">Все точки</option>
             {locations.map((location) => (
