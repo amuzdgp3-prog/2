@@ -954,19 +954,21 @@ interface Classifier {
 function CatalogTab({ onDone, onError }: TabProps) {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [machineNumbers, setMachineNumbers] = useState<string[]>([]);
+  const [machines, setMachines] = useState<Array<{ machine_number: string; address: string | null; location_name: string | null }>>([]);
   const [rootName, setRootName] = useState('');
   const [childName, setChildName] = useState<Record<number, string>>({});
-  const [addLocationChoice, setAddLocationChoice] = useState<Record<number, string>>({});
-  const [addMachineChoice, setAddMachineChoice] = useState<Record<number, string>>({});
+  const [addLocationChoice, setAddLocationChoice] = useState<Record<number, string[]>>({});
+  const [addMachineChoice, setAddMachineChoice] = useState<Record<number, string[]>>({});
+  const [locationFilter, setLocationFilter] = useState<Record<number, string>>({});
+  const [machineFilter, setMachineFilter] = useState<Record<number, string>>({});
   const [renaming, setRenaming] = useState<Record<number, string>>({});
 
   const load = () => {
     api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
     api.get<Location[]>('/api/locations').then(setLocations).catch(onError);
-    api.get<Array<{ machine_number: string }>>('/api/machines').then(
-      (rows) => setMachineNumbers(rows.map((r) => r.machine_number)),
-    ).catch(onError);
+    api.get<Array<{ machine_number: string; address: string | null; location_name: string | null }>>('/api/machines')
+      .then(setMachines)
+      .catch(onError);
   };
   useEffect(() => {
     void load();
@@ -1021,13 +1023,15 @@ function CatalogTab({ onDone, onError }: TabProps) {
     }
   };
 
-  const addLocation = async (classifierId: number) => {
-    const locationId = Number(addLocationChoice[classifierId]);
-    if (!locationId) return;
+  const addLocations = async (classifierId: number) => {
+    const ids = addLocationChoice[classifierId] ?? [];
+    if (ids.length === 0) return;
     try {
-      await api.post(`/api/classifiers/${classifierId}/locations`, { locationId });
-      onDone('Адрес добавлен в узел');
-      setAddLocationChoice({ ...addLocationChoice, [classifierId]: '' });
+      await Promise.all(
+        ids.map((locationId) => api.post(`/api/classifiers/${classifierId}/locations`, { locationId: Number(locationId) })),
+      );
+      onDone(`Добавлено адресов: ${ids.length}`);
+      setAddLocationChoice({ ...addLocationChoice, [classifierId]: [] });
       await load();
     } catch (caught) {
       onError(caught);
@@ -1044,13 +1048,15 @@ function CatalogTab({ onDone, onError }: TabProps) {
     }
   };
 
-  const addMachine = async (classifierId: number) => {
-    const machineNumber = addMachineChoice[classifierId];
-    if (!machineNumber) return;
+  const addMachines = async (classifierId: number) => {
+    const numbers = addMachineChoice[classifierId] ?? [];
+    if (numbers.length === 0) return;
     try {
-      await api.post(`/api/classifiers/${classifierId}/machines`, { machineNumber });
-      onDone('Аппарат добавлен в узел');
-      setAddMachineChoice({ ...addMachineChoice, [classifierId]: '' });
+      await Promise.all(
+        numbers.map((machineNumber) => api.post(`/api/classifiers/${classifierId}/machines`, { machineNumber })),
+      );
+      onDone(`Добавлено аппаратов: ${numbers.length}`);
+      setAddMachineChoice({ ...addMachineChoice, [classifierId]: [] });
       await load();
     } catch (caught) {
       onError(caught);
@@ -1061,6 +1067,16 @@ function CatalogTab({ onDone, onError }: TabProps) {
     try {
       await api.delete(`/api/classifiers/${classifierId}/machines`, { machineNumber });
       onDone('Аппарат убран из узла');
+      await load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  const move = async (id: number, newParentId: number | null) => {
+    try {
+      await api.patch(`/api/classifiers/${id}`, { parentId: newParentId });
+      onDone('Узел перемещён');
       await load();
     } catch (caught) {
       onError(caught);
@@ -1116,6 +1132,8 @@ function CatalogTab({ onDone, onError }: TabProps) {
             </div>
           </div>
 
+          <ClassifierMoveControl classifier={classifier} classifiers={classifiers} onMove={move} />
+
           <div className="row" style={{ marginTop: 10, gap: 6 }}>
             <input
               placeholder="название подузла"
@@ -1137,21 +1155,41 @@ function CatalogTab({ onDone, onError }: TabProps) {
               </span>
             ))}
           </div>
-          <div className="row" style={{ marginTop: 6, gap: 6 }}>
+          <div className="stack" style={{ marginTop: 6, gap: 6 }}>
+            <input
+              placeholder="фильтр по названию адреса…"
+              value={locationFilter[classifier.id] ?? ''}
+              onChange={(event) => setLocationFilter({ ...locationFilter, [classifier.id]: event.target.value })}
+            />
             <select
-              value={addLocationChoice[classifier.id] ?? ''}
-              onChange={(event) => setAddLocationChoice({ ...addLocationChoice, [classifier.id]: event.target.value })}
+              multiple
+              size={6}
+              value={addLocationChoice[classifier.id] ?? []}
+              onChange={(event) =>
+                setAddLocationChoice({
+                  ...addLocationChoice,
+                  [classifier.id]: Array.from(event.target.selectedOptions, (o) => o.value),
+                })
+              }
             >
-              <option value="">— добавить адрес —</option>
               {locations
                 .filter((location) => !classifier.locations.some((l) => l.id === location.id))
+                .filter((location) =>
+                  location.name.toLowerCase().includes((locationFilter[classifier.id] ?? '').toLowerCase()),
+                )
                 .map((location) => (
                   <option key={location.id} value={location.id}>{location.name}</option>
                 ))}
             </select>
-            <button disabled={!addLocationChoice[classifier.id]} onClick={() => addLocation(classifier.id)}>
-              Добавить
+            <button
+              disabled={!(addLocationChoice[classifier.id]?.length)}
+              onClick={() => addLocations(classifier.id)}
+            >
+              Добавить выбранные{addLocationChoice[classifier.id]?.length ? ` (${addLocationChoice[classifier.id].length})` : ''}
             </button>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              Ctrl/Cmd+клик — выбрать несколько адресов сразу.
+            </p>
           </div>
 
           <div className="muted" style={{ marginTop: 10 }}>Аппараты напрямую (в обход адреса)</div>
@@ -1164,25 +1202,90 @@ function CatalogTab({ onDone, onError }: TabProps) {
               </span>
             ))}
           </div>
-          <div className="row" style={{ marginTop: 6, gap: 6 }}>
+          <div className="stack" style={{ marginTop: 6, gap: 6 }}>
+            <input
+              placeholder="фильтр по номеру или адресу…"
+              value={machineFilter[classifier.id] ?? ''}
+              onChange={(event) => setMachineFilter({ ...machineFilter, [classifier.id]: event.target.value })}
+            />
             <select
-              value={addMachineChoice[classifier.id] ?? ''}
-              onChange={(event) => setAddMachineChoice({ ...addMachineChoice, [classifier.id]: event.target.value })}
+              multiple
+              size={6}
+              value={addMachineChoice[classifier.id] ?? []}
+              onChange={(event) =>
+                setAddMachineChoice({
+                  ...addMachineChoice,
+                  [classifier.id]: Array.from(event.target.selectedOptions, (o) => o.value),
+                })
+              }
             >
-              <option value="">— добавить аппарат —</option>
-              {machineNumbers
-                .filter((number) => !classifier.machines.includes(number))
-                .map((number) => (
-                  <option key={number} value={number}>{number}</option>
+              {machines
+                .filter((machine) => !classifier.machines.includes(machine.machine_number))
+                .filter((machine) => {
+                  const needle = (machineFilter[classifier.id] ?? '').toLowerCase();
+                  if (!needle) return true;
+                  return [machine.machine_number, machine.address ?? '', machine.location_name ?? '']
+                    .join(' ')
+                    .toLowerCase()
+                    .includes(needle);
+                })
+                .map((machine) => (
+                  <option key={machine.machine_number} value={machine.machine_number}>
+                    № {machine.machine_number} — {machine.address || machine.location_name || 'нет адреса'}
+                  </option>
                 ))}
             </select>
-            <button disabled={!addMachineChoice[classifier.id]} onClick={() => addMachine(classifier.id)}>
-              Добавить
+            <button
+              disabled={!(addMachineChoice[classifier.id]?.length)}
+              onClick={() => addMachines(classifier.id)}
+            >
+              Добавить выбранные{addMachineChoice[classifier.id]?.length ? ` (${addMachineChoice[classifier.id].length})` : ''}
             </button>
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              Ctrl/Cmd+клик — выбрать несколько аппаратов сразу.
+            </p>
           </div>
         </div>
       ))}
     </>
+  );
+}
+
+/**
+ * Смена родителя уже существующего узла Каталога — без этого единственный способ выстроить
+ * иерархию был создавать НОВЫЕ узлы как детей, а старые плоские узлы (например, унаследованные
+ * от прежней плоской системы классификаторов) так и оставались бы отдельными корнями навсегда.
+ * Список вариантов исключает собственное поддерево узла — перенос в потомка сервер и так
+ * отклонит с понятной ошибкой, но предлагать его в select'е незачем.
+ */
+function ClassifierMoveControl({
+  classifier,
+  classifiers,
+  onMove,
+}: {
+  classifier: Classifier;
+  classifiers: Classifier[];
+  onMove: (id: number, newParentId: number | null) => void;
+}) {
+  const [selected, setSelected] = useState(String(classifier.parent_id ?? ''));
+
+  const changed = selected !== String(classifier.parent_id ?? '');
+
+  return (
+    <div className="row" style={{ marginTop: 8, gap: 8 }}>
+      <select value={selected} onChange={(event) => setSelected(event.target.value)}>
+        <option value="">— нет (корень) —</option>
+        {flattenTree(classifiers, classifier.id).map(({ item, depth }) => (
+          <option key={item.id} value={item.id}>{'— '.repeat(depth)}{item.name}</option>
+        ))}
+      </select>
+      <button
+        disabled={!changed}
+        onClick={() => onMove(classifier.id, selected ? Number(selected) : null)}
+      >
+        Переместить
+      </button>
+    </div>
   );
 }
 
