@@ -47,7 +47,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     response = await fetch(path, {
       ...init,
       headers: {
-        ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
+        // A Content-Type: application/json header with a truly empty body (a body-less DELETE,
+        // e.g. api.delete(path) with no second argument) makes Fastify's JSON parser reject the
+        // request outright with FST_ERR_CTP_EMPTY_JSON_BODY before it ever reaches the route —
+        // so the header is only sent when there's an actual JSON body to describe.
+        ...(init.body !== undefined && !(init.body instanceof FormData)
+          ? { 'content-type': 'application/json' }
+          : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
