@@ -166,6 +166,21 @@ function MachinesTab({ onDone, onError }: TabProps) {
           .includes(needle),
       )
     : machines;
+  const activeMachines = filteredMachines.filter((machine) => machine.status !== 'RETIRED');
+  const retiredMachines = filteredMachines.filter((machine) => machine.status === 'RETIRED');
+
+  const setStatus = async (machineNumber: string, status: 'ACTIVE' | 'RETIRED') => {
+    if (status === 'RETIRED' && !confirm(`Списать аппарат № ${machineNumber}? Он пропадёт из основного списка (историю можно найти в разделе «Списанные»).`)) {
+      return;
+    }
+    try {
+      await api.patch(`/api/machines/${encodeURIComponent(machineNumber)}`, { status });
+      onDone(status === 'RETIRED' ? 'Аппарат списан' : 'Аппарат возвращён в строй');
+      load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
 
   const bind = async (machineNumber: string) => {
     try {
@@ -243,20 +258,23 @@ function MachinesTab({ onDone, onError }: TabProps) {
       />
 
       <div className="row" style={{ margin: '4px 0 12px', justifyContent: 'space-between' }}>
-        <span className="muted">Показано {Math.min(filteredMachines.length, pageSize)} из {filteredMachines.length}</span>
+        <span className="muted">Показано {Math.min(activeMachines.length, pageSize)} из {activeMachines.length}</span>
         <PageSizeSelect value={pageSize} onChange={setPageSize} />
       </div>
 
-      {filteredMachines.slice(0, pageSize).map((machine) => (
+      {activeMachines.slice(0, pageSize).map((machine) => (
         <div className="card" key={machine.machine_number}>
           <div className="row">
             <div>
               <strong>№ {machine.machine_number} {machine.address ? `— ${machine.address}` : ''}</strong>
               <div className="muted">{machine.location_name ?? 'нет активной установки'} · {machine.machine_type}</div>
             </div>
-            <button onClick={() => setEditing(editing?.machine_number === machine.machine_number ? null : machine)}>
-              {editing?.machine_number === machine.machine_number ? 'Закрыть' : 'Изменить'}
-            </button>
+            <div className="row" style={{ gap: 6 }}>
+              <button onClick={() => setEditing(editing?.machine_number === machine.machine_number ? null : machine)}>
+                {editing?.machine_number === machine.machine_number ? 'Закрыть' : 'Изменить'}
+              </button>
+              <button onClick={() => setStatus(machine.machine_number, 'RETIRED')}>Списать</button>
+            </div>
           </div>
 
           <div className="muted mono" style={{ marginTop: 8 }}>
@@ -373,6 +391,25 @@ function MachinesTab({ onDone, onError }: TabProps) {
           )}
         </div>
       ))}
+
+      {retiredMachines.length > 0 && (
+        <details className="card">
+          <summary style={{ cursor: 'pointer' }}>Списанные аппараты ({retiredMachines.length})</summary>
+          <div style={{ marginTop: 10 }}>
+            {retiredMachines.map((machine) => (
+              <div className="card" key={machine.machine_number}>
+                <div className="row">
+                  <div>
+                    <strong>№ {machine.machine_number} {machine.address ? `— ${machine.address}` : ''}</strong>
+                    <div className="muted">{machine.location_name ?? 'нет активной установки'} · {machine.machine_type}</div>
+                  </div>
+                  <button onClick={() => setStatus(machine.machine_number, 'ACTIVE')}>Вернуть в строй</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </>
   );
 }

@@ -19,7 +19,7 @@ import {
   readCachedToys,
   type CachedMachine,
 } from '../db';
-import { syncOutbox } from '../sync';
+import { refreshCatalog, syncOutbox } from '../sync';
 
 interface ToyLine {
   toyId: number;
@@ -107,10 +107,30 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void readCachedMachines().then((cached) => {
-      setMachine(cached.find((item) => item.machine_number === machineNumber) ?? null);
+    // The cache renders instantly so the form stays usable with no connection; a technician who
+    // deep-links straight into this form (e.g. via QR scan) never visits the Machines list screen,
+    // which is otherwise the only place that refreshes this cache — so without a refresh here too,
+    // "previous service" could silently show whatever was cached from a much earlier visit.
+    let cancelled = false;
+    const loadFromCache = () =>
+      readCachedMachines().then((cached) => {
+        if (cancelled) return;
+        setMachine(cached.find((item) => item.machine_number === machineNumber) ?? null);
+      });
+
+    void loadFromCache().then(async () => {
+      try {
+        await refreshCatalog();
+        if (!cancelled) await loadFromCache();
+      } catch {
+        // offline or server unreachable: keep showing the cached data already rendered above
+      }
     });
     void readCachedToys().then(setToys);
+
+    return () => {
+      cancelled = true;
+    };
   }, [machineNumber]);
 
   // Строки игрушек по умолчанию: какие игрушки вообще заправляют на этом аппарате — из набора,

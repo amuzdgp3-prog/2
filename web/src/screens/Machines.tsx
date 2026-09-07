@@ -37,9 +37,11 @@ export default function MachinesScreen() {
   }, []);
 
   const filtered = useMemo(() => {
+    // Retired equipment has nothing left to service and would just clutter the technician's list.
+    const inService = machines.filter((machine) => machine.status !== 'RETIRED');
     const needle = query.trim().toLowerCase();
-    if (!needle) return machines;
-    return machines.filter((machine) =>
+    if (!needle) return inService;
+    return inService.filter((machine) =>
       [machine.machine_number, machine.address ?? '', machine.location_name ?? '', machine.machine_type]
         .join(' ')
         .toLowerCase()
