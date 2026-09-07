@@ -302,6 +302,64 @@ export async function createFinalService(
 }
 
 /**
+ * When a machine moves (moveMachine/replaceMachine), the new placement's initial_game_counter /
+ * initial_prize_counter is snapshotted from the OLD placement's last service at move time. If
+ * that last service's counter is corrected afterward, the snapshot goes stale — the new placement
+ * silently keeps the wrong starting value, producing a negative new-games calculation the next
+ * time anyone services the machine, with no obvious link back to the edit that caused it (real
+ * incident: Оптиков, д. 46 — a typo'd game_counter was fixed on the old, already-closed
+ * placement's last service, but the already-moved machine's current placement kept the stale
+ * initial_game_counter until this was found and patched by hand).
+ *
+ * Cascades the correction forward exactly when it's safe to do so mechanically: the edited
+ * service must be the temporally-last one in its (now closed) placement — the same
+ * "ORDER BY occurred_at DESC, id DESC LIMIT 1" row moveMachine itself reads — and the immediate
+ * next placement for the same machine_number (started_at = this placement's ended_at) must not
+ * yet have any services of its own; if it already does, its financial chain was already computed
+ * from the stale value and fixing just the initial counter without a full recalculation would
+ * make things worse, not better, so this intentionally leaves that case alone.
+ */
+async function cascadeCounterCorrection(
+  client: Client,
+  actor: Actor,
+  updatedService: Record<string, unknown>,
+  patch: { gameCounter?: number; prizeCounter?: number },
+): Promise<void> {
+  const isLast = await client.query(
+    `SELECT 1 FROM services
+     WHERE placement_id = $1 AND (occurred_at, id) > ($2::timestamptz, $3::bigint)
+     LIMIT 1`,
+    [updatedService.placement_id, updatedService.occurred_at, updatedService.id],
+  );
+  if (isLast.rowCount) return;
+
+  const nextPlacement = await client.query(
+    `SELECT next.id,
+            (SELECT COUNT(*) FROM services WHERE placement_id = next.id) AS service_count
+     FROM machine_placements this
+     JOIN machine_placements next
+       ON next.machine_number = this.machine_number AND next.started_at = this.ended_at
+     WHERE this.id = $1 AND this.ended_at IS NOT NULL`,
+    [updatedService.placement_id],
+  );
+  if (nextPlacement.rowCount === 0 || Number(nextPlacement.rows[0].service_count) > 0) return;
+
+  const nextId = nextPlacement.rows[0].id;
+  const before = await client.query('SELECT * FROM machine_placements WHERE id = $1', [nextId]);
+  const after = await client.query(
+    `UPDATE machine_placements SET
+       initial_game_counter  = COALESCE($2, initial_game_counter),
+       initial_prize_counter = COALESCE($3, initial_prize_counter)
+     WHERE id = $1 RETURNING *`,
+    [nextId, patch.gameCounter ?? null, patch.prizeCounter ?? null],
+  );
+  await auditUpdate(client, actor, 'placement', nextId, before.rows[0], after.rows[0], {
+    reason: 'cascaded_initial_counter_from_service_correction',
+    sourceServiceId: updatedService.id,
+  });
+}
+
+/**
  * Admin correction of a stored Service. Technicians never edit services (16_CONTRACT §15).
  * The dependent chain is recalculated before COMMIT.
  */
@@ -379,6 +437,10 @@ export async function updateService(
       await auditDelete(client, actor, 'toy_distribution', `${serviceId}:${line.toy_id}`, line);
     }
     await writeToyLines(client, actor, serviceId, patch.toys);
+  }
+
+  if (patch.gameCounter !== undefined || patch.prizeCounter !== undefined) {
+    await cascadeCounterCorrection(client, actor, after.rows[0], patch);
   }
 
   await recalcMachineChain(client, machineNumber, actor, 'service_edited');
