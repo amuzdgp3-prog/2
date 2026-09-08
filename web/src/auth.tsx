@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, getToken, setToken } from './api';
 
 export type Role = 'ADMIN' | 'TECHNICIAN' | 'BOSS';
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthState | null>(null);
 const USER_KEY = 'apixspb.user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<CurrentUser | null>(() => {
     const cached = localStorage.getItem(USER_KEY);
     return cached ? (JSON.parse(cached) as CurrentUser) : null;
@@ -59,7 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem(USER_KEY);
     setUser(null);
-  }, []);
+    // The router never resets the URL on its own: without this, whichever page happened to be
+    // open at logout (e.g. a specific machine's service form) stays in the address bar and is
+    // exactly what greets the next person who logs in on this device/browser, regardless of who
+    // they are — a real incident where every re-login in a struggling session kept dropping the
+    // technician (and later an admin checking on it) back onto someone else's half-filled form.
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     window.addEventListener('auth:expired', logout);
