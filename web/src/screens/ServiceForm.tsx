@@ -302,8 +302,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     if (machine.location_status && machine.location_status !== 'ACTIVE') {
       list.push(`Точка в статусе ${machine.location_status}: сервер запретит обслуживание.`);
     }
+    if (!photo && !existingPhoto) {
+      list.push('Фото счётчика не загружено — без него обслуживание не сохранится.');
+    }
     return list;
-  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate]);
+  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -414,11 +417,22 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
               <RoiBadge value={machine.last_revenue_to_cost_ratio} />
             </div>
           </div>
+          {machine.last_toy_quantities && Object.keys(machine.last_toy_quantities).length > 0 && (
+            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              {Object.entries(machine.last_toy_quantities)
+                .map(([toyId, quantity]) => {
+                  const toy = toys.find((item) => item.id === Number(toyId));
+                  return toy ? `${toy.name} ×${quantity}` : null;
+                })
+                .filter(Boolean)
+                .join(', ')}
+            </div>
+          )}
         </div>
       )}
 
       <div className="section-head"><span className="num">1</span><h3>Дата и время</h3><span className="line" /></div>
-      <div className="row2">
+      <div className="row2 row2-tight">
         <div>
           <label className="field-label">Дата</label>
           <input type="date" value={date} onChange={(event) => { markDirty(); setDate(event.target.value); }} max={toDateInput(new Date())} required />
@@ -570,13 +584,15 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           style={{ cursor: 'pointer', ...(photo || existingPhoto ? { borderStyle: 'solid', borderColor: 'var(--good)', background: 'var(--good-soft)', color: 'var(--good)' } : {}) }}
         >
           <div className="ic">{photo || existingPhoto ? '✓' : '📷'}</div>
-          <div className="lbl">{photo || existingPhoto ? 'Счётчик снят' : 'Счётчик игр'}</div>
+          <div className="lbl">{photo || existingPhoto ? 'Счётчик снят' : 'Фото не загружено'}</div>
         </label>
         <input
           id="photo"
           type="file"
           accept="image/*"
-          capture="environment"
+          // No `capture` attribute: forcing it opens the camera directly and hides the gallery/
+          // files option on mobile, which was the whole complaint — this way the browser's native
+          // picker offers camera and gallery both, and the technician chooses.
           style={{ display: 'none' }}
           onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
         />
