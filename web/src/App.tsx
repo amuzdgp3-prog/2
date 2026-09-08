@@ -176,7 +176,14 @@ export default function App() {
             <div>{user.fullName}</div>
             <div className="muted">{ROLE_LABELS[user.role] ?? user.role}</div>
           </div>
-          <button onClick={logout} style={{ width: '100%' }}>Выйти</button>
+          <button
+            onClick={logout}
+            disabled={!online}
+            title={online ? undefined : 'Нет связи: выход невозможен, войти обратно можно только при интернете'}
+            style={{ width: '100%' }}
+          >
+            Выйти
+          </button>
         </div>
       </aside>
 
@@ -188,7 +195,13 @@ export default function App() {
             <span className={`badge ${online ? 'online' : 'offline'}`}>
               {online ? 'Онлайн' : 'Оффлайн'}
             </span>
-            <button className="mobile-only" onClick={logout} style={{ padding: '6px 10px' }}>
+            <button
+              className="mobile-only"
+              onClick={logout}
+              disabled={!online}
+              title={online ? undefined : 'Нет связи: выход невозможен, войти обратно можно только при интернете'}
+              style={{ padding: '6px 10px' }}
+            >
               Выйти
             </button>
           </div>
