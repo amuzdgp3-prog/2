@@ -577,22 +577,39 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       </div>
 
       <div className="section-head"><span className="num">6</span><h3>Фото</h3><span className="line" /></div>
-      <div style={{ maxWidth: 160 }}>
-        <label
-          htmlFor="photo"
-          className="photo-slot"
-          style={{ cursor: 'pointer', ...(photo || existingPhoto ? { borderStyle: 'solid', borderColor: 'var(--good)', background: 'var(--good-soft)', color: 'var(--good)' } : {}) }}
-        >
-          <div className="ic">{photo || existingPhoto ? '✓' : '📷'}</div>
-          <div className="lbl">{photo || existingPhoto ? 'Счётчик снят' : 'Фото не загружено'}</div>
-        </label>
+      <div style={{ maxWidth: 220 }}>
+        {(photo || existingPhoto) && (
+          <div
+            className="photo-slot"
+            style={{ borderStyle: 'solid', borderColor: 'var(--good)', background: 'var(--good-soft)', color: 'var(--good)', marginBottom: 8 }}
+          >
+            <div className="ic">✓</div>
+            <div className="lbl">Счётчик снят</div>
+          </div>
+        )}
+        {/* Two separate pickers rather than one with `capture` — whether a camera app exposes a
+            gallery shortcut of its own varies by phone, so this guarantees both are always one
+            tap away regardless of device. */}
+        <div className="row" style={{ gap: 8 }}>
+          <label htmlFor="photo-camera" className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
+            📷 Камера
+          </label>
+          <label htmlFor="photo-gallery" className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
+            🖼 Из галереи
+          </label>
+        </div>
         <input
-          id="photo"
+          id="photo-camera"
           type="file"
           accept="image/*"
-          // No `capture` attribute: forcing it opens the camera directly and hides the gallery/
-          // files option on mobile, which was the whole complaint — this way the browser's native
-          // picker offers camera and gallery both, and the technician chooses.
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
+        />
+        <input
+          id="photo-gallery"
+          type="file"
+          accept="image/*"
           style={{ display: 'none' }}
           onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
         />
