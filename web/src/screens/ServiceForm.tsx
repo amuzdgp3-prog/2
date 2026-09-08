@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import {
@@ -106,7 +106,17 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Guards the background catalogue refresh below: once the technician has typed or picked
+  // anything, an in-flight network refresh landing afterwards must not silently overwrite it
+  // (the refreshed `machine` object is a new reference, which would re-run the toy-defaults
+  // effect and wipe quantities already entered — a real incident this caused).
+  const dirtyRef = useRef(false);
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
+
   useEffect(() => {
+    dirtyRef.current = false;
     // The cache renders instantly so the form stays usable with no connection; a technician who
     // deep-links straight into this form (e.g. via QR scan) never visits the Machines list screen,
     // which is otherwise the only place that refreshes this cache — so without a refresh here too,
@@ -121,7 +131,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     void loadFromCache().then(async () => {
       try {
         await refreshCatalog();
-        if (!cancelled) await loadFromCache();
+        // The technician may already be filling the form in by the time this resolves; applying
+        // a refreshed machine snapshot at that point would reset fields derived from it instead
+        // of just updating read-only display info, so skip it once the form is no longer pristine.
+        if (!cancelled && !dirtyRef.current) await loadFromCache();
       } catch {
         // offline or server unreachable: keep showing the cached data already rendered above
       }
@@ -408,11 +421,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       <div className="row2">
         <div>
           <label className="field-label">Дата</label>
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} max={toDateInput(new Date())} required />
+          <input type="date" value={date} onChange={(event) => { markDirty(); setDate(event.target.value); }} max={toDateInput(new Date())} required />
         </div>
         <div>
           <label className="field-label">Время</label>
-          <input type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+          <input type="time" value={time} onChange={(event) => { markDirty(); setTime(event.target.value); }} required />
         </div>
       </div>
 
@@ -425,7 +438,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             className="mono-input"
             inputMode="numeric"
             value={gameCounter}
-            onChange={(event) => setGameCounter(event.target.value)}
+            onChange={(event) => { markDirty(); setGameCounter(event.target.value); }}
             placeholder="0"
             required
           />
@@ -439,7 +452,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             inputMode="numeric"
             min={0}
             value={testGames}
-            onChange={(event) => setTestGames(event.target.value)}
+            onChange={(event) => { markDirty(); setTestGames(event.target.value); }}
           />
         </div>
         <div className="counter-field">
@@ -449,7 +462,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             className="mono-input"
             inputMode="numeric"
             value={prizeCounter}
-            onChange={(event) => setPrizeCounter(event.target.value)}
+            onChange={(event) => { markDirty(); setPrizeCounter(event.target.value); }}
             placeholder={String(previousPrizeCounter)}
           />
           <div className="field-hint">было {previousPrizeCounter} — оставьте пустым, если без изменений</div>
@@ -501,6 +514,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
                 <select
                   value={line.toyId}
                   onChange={(event) => {
+                    markDirty();
                     const next = [...lines];
                     next[index] = { ...line, toyId: Number(event.target.value) };
                     setLines(next);
@@ -523,6 +537,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
                 min={0}
                 value={line.quantity}
                 onChange={(event) => {
+                  markDirty();
                   const next = [...lines];
                   next[index] = { ...line, quantity: event.target.value };
                   setLines(next);
@@ -535,7 +550,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           type="button"
           className="btn btn-ghost"
           style={{ marginTop: lines.length > 0 ? 10 : 0 }}
-          onClick={() => setLines([...lines, { toyId: 0, quantity: '0' }])}
+          onClick={() => { markDirty(); setLines([...lines, { toyId: 0, quantity: '0' }]); }}
         >
           + Добавить игрушку
         </button>
@@ -563,7 +578,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           accept="image/*"
           capture="environment"
           style={{ display: 'none' }}
-          onChange={(event) => setPhoto(event.target.files?.[0] ?? null)}
+          onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
         />
       </div>
 
@@ -572,7 +587,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         rows={3}
         placeholder="Необязательно — что заметили на точке"
         value={notes}
-        onChange={(event) => setNotes(event.target.value)}
+        onChange={(event) => { markDirty(); setNotes(event.target.value); }}
       />
 
       <div style={{ height: 90 }} />
