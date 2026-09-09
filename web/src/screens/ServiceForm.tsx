@@ -362,11 +362,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     <form onSubmit={submit}>
       <div className="row" style={{ marginBottom: 12 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-display)', fontWeight: 600, fontSize: 16 }}>
-            {machine.model || machine.machine_type}
+          <div style={{ fontFamily: 'var(--f-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.25 }}>
+            {machine.location_name}
           </div>
-          <div className="muted mono" style={{ fontSize: 11.5, marginTop: 2 }}>
-            <MachineTag number={machine.machine_number} /> · {machine.location_name}
+          <div className="muted mono" style={{ fontSize: 12, marginTop: 3 }}>
+            <MachineTag number={machine.machine_number} /> · {machine.model || machine.machine_type}
           </div>
         </div>
         <div className="right muted" style={{ fontSize: 12 }}>
