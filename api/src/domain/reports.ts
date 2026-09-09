@@ -264,6 +264,11 @@ export interface MonthlyRow {
   /** Агрегированный ROI месяца = выручка/себестоимость ЗА МЕСЯЦ, а не среднее по обслуживаниям
    * (см. DECISION-020) — иначе несколько обслуживаний с нулевой себестоимостью исказили бы среднее. */
   roi: string | null;
+  /** Расходы на содержание бизнеса за тот же календарный месяц (business_expenses), не связаны
+   * со scope по аппаратам — админ у бизнеса один, поэтому здесь нет построчного machineScopePredicate. */
+  expensesTotal: string;
+  /** Выручка минус себестоимость игрушек минус расходы на бизнес — то, что реально видит владелец. */
+  netProfit: string;
 }
 
 /**
@@ -317,10 +322,25 @@ export async function monthlyReport(
     params,
   );
 
+  // Расходы на бизнес — не привязаны к конкретным аппаратам/адресам, поэтому не участвуют ни в
+  // фильтре по location/classifier, ни в scope: это единый гроссбух на весь бизнес, а не по флоту.
+  const expensesByMonth = await client.query(
+    `SELECT date_trunc('month', expense_date)::date AS month_start, SUM(amount) AS total
+     FROM business_expenses
+     WHERE expense_date >= date_trunc('month', now()) - ($1::int - 1) * interval '1 month'
+       AND expense_date <= (now() + interval '1 day')::date
+     GROUP BY 1`,
+    [filters.months ?? 6],
+  );
+  const expensesMap = new Map<string, string>(
+    expensesByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
+  );
+
   return result.rows.map((row) => {
     const revenue = String(row.revenue ?? '0');
     const toyCost = String(row.toy_cost ?? '0');
     const toyCostNumber = Number(toyCost);
+    const expensesTotal = expensesMap.get(String(row.month_start)) ?? '0';
     return {
       monthStart: row.month_start,
       services: row.services,
@@ -329,8 +349,64 @@ export async function monthlyReport(
       toyCost,
       profit: sumDecimal([revenue, `-${toyCost}`], 2),
       roi: toyCostNumber > 0 ? divideDecimal(revenue, toyCost, 2) : null,
+      expensesTotal,
+      netProfit: sumDecimal([revenue, `-${toyCost}`, `-${expensesTotal}`], 2),
     };
   });
+}
+
+export interface ExpenseRow {
+  id: number;
+  category: string;
+  expenseDate: string;
+  amount: string;
+  comment: string;
+}
+
+export interface ExpensesSummary {
+  byCategory: Array<{ category: string; total: string; rows: ExpenseRow[] }>;
+  total: string;
+}
+
+const EXPENSE_CATEGORY_ORDER = ['FUEL', 'SALARY', 'CARD', 'OTHER'];
+
+/** Расходы на бизнес за период, сгруппированные по категории — основа раздела «РАСХОДЫ» в
+ * ежемесячном xlsx-отчёте и вкладки «Затраты» в админке. assertAdmin внутри commands/expenses.ts
+ * покрывает мутации; это чтение той же таблицы для отчёта, доступного и BOSS (см. routes). */
+export async function expensesSummary(
+  client: Client,
+  filters: { from?: string; to?: string },
+): Promise<ExpensesSummary> {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+  if (filters.from) { params.push(filters.from); conditions.push(`expense_date >= $${params.length}::date`); }
+  if (filters.to) { params.push(filters.to); conditions.push(`expense_date <= $${params.length}::date`); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const result = await client.query(
+    `SELECT id, category, expense_date, amount, comment
+     FROM business_expenses ${where}
+     ORDER BY category, expense_date, id`,
+    params,
+  );
+
+  const rows: ExpenseRow[] = result.rows.map((row) => ({
+    id: Number(row.id),
+    category: row.category,
+    expenseDate: row.expense_date,
+    amount: String(row.amount),
+    comment: row.comment,
+  }));
+
+  const byCategory = EXPENSE_CATEGORY_ORDER
+    .map((category) => ({ category, rows: rows.filter((row) => row.category === category) }))
+    .filter((bucket) => bucket.rows.length > 0)
+    .map((bucket) => ({
+      ...bucket,
+      total: sumDecimal(bucket.rows.map((row) => row.amount), 2),
+    }));
+
+  return { byCategory, total: sumDecimal(rows.map((row) => row.amount), 2) };
 }
 
 export async function technicianReport(

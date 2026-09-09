@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getToken } from '../api';
+import { useAuth } from '../auth';
 import { formatGames, formatMoney } from '../calc';
 
 interface MachineRow {
@@ -43,6 +44,10 @@ interface MonthlyRow {
 }
 
 const MONTH_NAMES = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const FULL_MONTH_NAMES = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+];
 
 function MonthlyChart({ rows }: { rows: MonthlyRow[] }) {
   if (rows.length === 0) return null;
@@ -83,8 +88,15 @@ function MonthlyChart({ rows }: { rows: MonthlyRow[] }) {
 }
 
 export default function ReportsScreen() {
+  const { user } = useAuth();
   const [from, setFrom] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const now = new Date();
+  const [excelYear, setExcelYear] = useState(now.getFullYear());
+  const [excelMonth, setExcelMonth] = useState(now.getMonth() + 1);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const [telegramNotice, setTelegramNotice] = useState<string | null>(null);
   const [locations, setLocations] = useState<Array<{ id: number; name: string }>>([]);
   const [locationId, setLocationId] = useState('');
   const [classifiers, setClassifiers] = useState<Array<{ id: number; name: string; parent_id: number | null }>>([]);
@@ -136,6 +148,37 @@ export default function ReportsScreen() {
     URL.revokeObjectURL(url);
   };
 
+  const downloadMonthlyExcel = async () => {
+    setExcelBusy(true);
+    try {
+      const response = await fetch(`/api/reports/monthly-excel?year=${excelYear}&month=${excelMonth}`, {
+        headers: { authorization: `Bearer ${getToken()}` },
+      });
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Отчет ${excelYear}-${String(excelMonth).padStart(2, '0')}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExcelBusy(false);
+    }
+  };
+
+  const sendMonthlyExcelToTelegram = async () => {
+    setTelegramBusy(true);
+    setTelegramNotice(null);
+    try {
+      await api.post(`/api/reports/monthly-excel/send-telegram?year=${excelYear}&month=${excelMonth}`, {});
+      setTelegramNotice('Отчёт отправлен в Telegram');
+    } catch (caught) {
+      setTelegramNotice(`Не удалось отправить: ${(caught as Error).message}`);
+    } finally {
+      setTelegramBusy(false);
+    }
+  };
+
   return (
     <>
       {error && <div className="alert error">{error}</div>}
@@ -175,6 +218,40 @@ export default function ReportsScreen() {
           </button>
           <button onClick={downloadCsv}>Выгрузить CSV</button>
         </div>
+      </div>
+
+      <div className="card stack">
+        <div className="muted">Ежемесячный отчёт (та же форма, что для собственника)</div>
+        <div className="grid-2">
+          <div>
+            <label htmlFor="excel-month">Месяц</label>
+            <select id="excel-month" value={excelMonth} onChange={(event) => setExcelMonth(Number(event.target.value))}>
+              {FULL_MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="excel-year">Год</label>
+            <input
+              id="excel-year"
+              type="number"
+              value={excelYear}
+              onChange={(event) => setExcelYear(Number(event.target.value))}
+            />
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="primary" onClick={downloadMonthlyExcel} disabled={excelBusy} style={{ flex: 1 }}>
+            {excelBusy ? 'Формирую…' : 'Сформировать отчёт (xlsx)'}
+          </button>
+          {user?.role === 'ADMIN' && (
+            <button onClick={sendMonthlyExcelToTelegram} disabled={telegramBusy}>
+              {telegramBusy ? 'Отправляю…' : 'Отправить в Telegram'}
+            </button>
+          )}
+        </div>
+        {telegramNotice && <div className="muted">{telegramNotice}</div>}
       </div>
 
       <MonthlyChart rows={monthly} />

@@ -28,6 +28,8 @@ services:
       PHOTO_DIR: /data/photos
       ADMIN_LOGIN: ${ADMIN_LOGIN}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_OWNER_CHAT_ID: ${TELEGRAM_OWNER_CHAT_ID}
       TZ: UTC
     volumes:
       - ./data/photos:/data/photos

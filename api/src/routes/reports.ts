@@ -10,7 +10,10 @@ import {
   toCsv,
   type ReportFilters,
 } from '../domain/reports.js';
+import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
+import { sendTelegramDocument } from '../integrations/telegram.js';
+import { badRequest } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
 function parseFilters(query: Record<string, string | undefined>): ReportFilters {
@@ -244,4 +247,68 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       client.release();
     }
   });
+
+  function parseYearMonth(query: { year?: string; month?: string }): { year: number; month: number } {
+    const now = new Date();
+    const year = query.year ? Number(query.year) : now.getUTCFullYear();
+    const month = query.month ? Number(query.month) : now.getUTCMonth() + 1;
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      throw badRequest('INVALID_MONTH', 'некорректный год или месяц');
+    }
+    return { year, month };
+  }
+
+  /** Тот же ежемесячный xlsx-отчёт (шапка/детализация/расходы), что раньше собирался вручную —
+   * теперь генерируется из реальных данных по кнопке. Доступен и ADMIN, и BOSS (как остальные
+   * отчёты) — только скачивание готового файла, без доступа к вводу самих расходов. */
+  app.get<{ Querystring: { year?: string; month?: string } }>(
+    '/api/reports/monthly-excel',
+    auth,
+    async (request, reply) => {
+      const { year, month } = parseYearMonth(request.query);
+      const client = await pool.connect();
+      try {
+        const workbook = await buildMonthlyReportWorkbook(client, request.actor, { year, month });
+        const buffer = await workbook.xlsx.writeBuffer();
+        // Cyrillic can't ride in a raw Content-Disposition header value (HTTP headers are
+        // ASCII-only) — RFC 5987's filename* carries the real UTF-8 name, with a plain ASCII
+        // filename kept alongside for any client that ignores the extended form.
+        const encodedName = encodeURIComponent(`Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`);
+        return reply
+          .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          .header(
+            'content-disposition',
+            `attachment; filename="report-${year}-${String(month).padStart(2, '0')}.xlsx"; filename*=UTF-8''${encodedName}`,
+          )
+          .send(Buffer.from(buffer));
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  /** Отправка того же файла владельцу в Telegram — только ADMIN, владелец получает его пассивно. */
+  app.post<{ Querystring: { year?: string; month?: string } }>(
+    '/api/reports/monthly-excel/send-telegram',
+    auth,
+    async (request) => {
+      assertAdmin(request.actor);
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_OWNER_CHAT_ID;
+      if (!botToken || !chatId) {
+        throw badRequest('TELEGRAM_NOT_CONFIGURED', 'Telegram-бот не настроен (нет токена или chat_id)');
+      }
+      const { year, month } = parseYearMonth(request.query);
+      const client = await pool.connect();
+      try {
+        const workbook = await buildMonthlyReportWorkbook(client, request.actor, { year, month });
+        const buffer = await workbook.xlsx.writeBuffer();
+        const filename = `Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`;
+        await sendTelegramDocument(botToken, chatId, Buffer.from(buffer), filename, filename);
+        return { ok: true };
+      } finally {
+        client.release();
+      }
+    },
+  );
 }
