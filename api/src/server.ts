@@ -178,28 +178,49 @@ async function loadIvendRunTimes(): Promise<string[]> {
  * «Безнал»), а не каждые 5 минут как раньше — за постоянный опрос накопилось 150к+ строк
  * cashless_transactions на пустом месте. Расписание читается из БД на каждом тике, а не
  * один раз при старте, чтобы правка времени на странице применялась без перезапуска сервера.
+ *
+ * Неудачный запуск (в т.ч. транзитный сбой сети до кабинета iVend) повторяется через 5 минут,
+ * и снова через 5 минут при повторном сбое — до первого успеха, а не молча ждёт следующего
+ * запланированного времени (которое при одном назначенном времени может быть почти через сутки).
+ * Явное решение владельца, см. DECISION-032/037 в DECISIONS.md.
  */
+const RETRY_DELAY_MS = 5 * 60_000;
+
 function startParserScheduler(): void {
   const tickMs = 60_000;
   let running = false;
   let lastFiredSlot: string | null = null;
+  let retryAt: number | null = null;
+
+  const attempt = async (): Promise<void> => {
+    try {
+      await withTransaction((client) => runIvendSync(client, SYSTEM_ACTOR));
+      retryAt = null;
+    } catch (error) {
+      console.error('ivend sync failed, retrying in 5 minutes:', error);
+      retryAt = Date.now() + RETRY_DELAY_MS;
+    }
+  };
+
   setInterval(() => {
     if (running) return;
     running = true;
     (async () => {
-      const now = new Date();
+      const now = Date.now();
+      if (retryAt !== null) {
+        if (now >= retryAt) await attempt();
+        return;
+      }
       const hhmm = MOSCOW_HHMM.format(now);
       const slot = `${MOSCOW_DATE.format(now)} ${hhmm}`;
       if (slot === lastFiredSlot) return;
       const runTimes = await loadIvendRunTimes();
       if (!runTimes.includes(hhmm)) return;
       lastFiredSlot = slot;
-      await withTransaction((client) => runIvendSync(client, SYSTEM_ACTOR));
-    })()
-      .catch((error) => console.error('ivend sync failed:', error))
-      .finally(() => {
-        running = false;
-      });
+      await attempt();
+    })().finally(() => {
+      running = false;
+    });
   }, tickMs);
 }
 
