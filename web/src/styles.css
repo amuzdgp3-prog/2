@@ -194,6 +194,10 @@ input[type=password], textarea, select {
 input:focus, textarea:focus, select:focus { border-color: var(--brass); }
 input[type=number].mono-input { font-family: var(--f-mono); font-size: 18px; font-weight: 600; }
 
+/* Строка поиска аппаратов — главный инструмент навигации на домашнем экране техника, крупнее
+   обычных полей, чтобы было удобно тыкать и читать на телефоне. */
+input.search-big { font-size: 18px; padding: 14px 14px; }
+
 /* Разделитель секции формы — нумерованные шаги (см. форму обслуживания). */
 .section-head {
   display: flex;

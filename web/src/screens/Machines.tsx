@@ -72,6 +72,8 @@ export default function MachinesScreen() {
 
       <div className="row" style={{ gap: 8, marginBottom: 12 }}>
         <input
+          type="text"
+          className="search-big"
           placeholder="Номер или адрес аппарата"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
