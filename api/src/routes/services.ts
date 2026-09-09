@@ -167,8 +167,33 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
 
     const [rows, total] = await Promise.all([
       pool.query(
-        `SELECT s.*, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name
-         FROM services s
+        `WITH windowed AS (
+           SELECT s.*,
+                  LAG(s.id)              OVER w AS prev_id,
+                  LAG(s.occurred_at)     OVER w AS prev_occurred_at,
+                  LAG(s.game_counter)    OVER w AS prev_game_counter,
+                  LAG(s.prize_counter)   OVER w AS prev_prize_counter,
+                  LAG(s.revenue)         OVER w AS prev_revenue,
+                  LAG(s.toy_cost)        OVER w AS prev_toy_cost,
+                  LAG(s.revenue_to_cost_ratio) OVER w AS prev_revenue_to_cost_ratio,
+                  LAG(s.cash_amount)     OVER w AS prev_cash_amount,
+                  LAG(s.cashless_amount) OVER w AS prev_cashless_amount
+           -- Считается по ВСЕЙ цепочке обслуживаний аппарата, до применения фильтров ниже —
+           -- иначе фильтр по дате/технику/точке обрезал бы окно и «прошлое обслуживание»
+           -- на границе фильтра оказалось бы не тем, что было реально перед ним.
+           FROM services s
+           WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
+         )
+         SELECT s.*, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
+                (SELECT json_agg(json_build_object(
+                          'toyId', td.toy_id, 'name', t.name, 'quantity', td.quantity, 'unitCost', td.unit_cost_snapshot
+                        ) ORDER BY t.name)
+                 FROM toy_distributions td JOIN toys t ON t.id = td.toy_id WHERE td.service_id = s.id) AS toys,
+                (SELECT json_agg(json_build_object(
+                          'toyId', td.toy_id, 'name', t.name, 'quantity', td.quantity, 'unitCost', td.unit_cost_snapshot
+                        ) ORDER BY t.name)
+                 FROM toy_distributions td JOIN toys t ON t.id = td.toy_id WHERE td.service_id = s.prev_id) AS prev_toys
+         FROM windowed s
          JOIN machine_placements p ON p.id = s.placement_id
          JOIN locations l ON l.id = p.location_id
          JOIN machines m ON m.machine_number = s.machine_number

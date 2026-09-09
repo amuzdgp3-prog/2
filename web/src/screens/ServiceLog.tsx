@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, getToken } from '../api';
-import { formatGames, formatMoney } from '../calc';
+import { daysBetween, formatGames, formatMoney } from '../calc';
 import { MachineTag } from '../components/ui/MachineTag';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
 import { RoiBadge } from '../components/ui/RoiBadge';
+
+interface ToyLine {
+  toyId: number;
+  name: string;
+  quantity: number;
+  unitCost: string;
+}
 
 interface ServiceLogRow {
   id: number;
@@ -14,12 +21,29 @@ interface ServiceLogRow {
   location_name: string;
   address: string | null;
   technician_name: string | null;
+  game_counter: number;
+  prize_counter: number;
+  test_games: number;
+  price_per_game_snapshot: string;
+  counter_divisor_applied: string;
   new_games: string;
   revenue: string;
+  cash_amount: string;
+  cashless_amount: string;
   toy_cost: string;
   revenue_to_cost_ratio: string | null;
   notes: string;
   photo_object_key: string;
+  toys: ToyLine[] | null;
+  prev_occurred_at: string | null;
+  prev_game_counter: number | null;
+  prev_prize_counter: number | null;
+  prev_revenue: string | null;
+  prev_toy_cost: string | null;
+  prev_revenue_to_cost_ratio: string | null;
+  prev_cash_amount: string | null;
+  prev_cashless_amount: string | null;
+  prev_toys: ToyLine[] | null;
 }
 
 interface StaffOption {
@@ -48,6 +72,7 @@ export default function ServiceLogScreen() {
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<StaffOption[]>('/api/staff').then((staff) => setTechnicians(staff.filter((s) => s.role === 'TECHNICIAN'))).catch(() => setTechnicians([]));
@@ -174,7 +199,9 @@ export default function ServiceLogScreen() {
               <th className="num">№</th>
               <th>Адрес</th>
               <th>Техник</th>
+              <th className="num">Дней</th>
               <th className="num">Новых игр</th>
+              <th className="num">Игр/день</th>
               <th className="num">Выручка</th>
               <th className="num">Себест.</th>
               <th>ROI</th>
@@ -184,29 +211,51 @@ export default function ServiceLogScreen() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td className="mono">
-                  {new Date(row.occurred_at).toLocaleString('ru-RU', {
-                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                  })}
-                </td>
-                <td className="num"><MachineTag number={row.machine_number} /></td>
-                <td className="wrap">{row.address || row.machine_model || '—'}<div className="muted" style={{ fontSize: 11 }}>{row.location_name}</div></td>
-                <td>{row.technician_name ?? '—'}</td>
-                <td className="num">+{formatGames(row.new_games)}</td>
-                <td className="num">{formatMoney(row.revenue)} ₽</td>
-                <td className="num">{formatMoney(row.toy_cost)} ₽</td>
-                <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
-                <td>
-                  <PhotoCell objectKey={row.photo_object_key} />
-                </td>
-                <td className="muted wrap">{row.notes || '—'}</td>
-                <td><button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button></td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const periodDays = daysBetween(row.prev_occurred_at, row.occurred_at);
+              const perDay = periodDays && periodDays > 0 ? Number(row.new_games) / periodDays : null;
+              const isOpen = expanded === row.id;
+              return (
+                <>
+                  <tr
+                    key={row.id}
+                    className="tappable"
+                    onClick={() => setExpanded(isOpen ? null : row.id)}
+                  >
+                    <td className="mono">
+                      {new Date(row.occurred_at).toLocaleString('ru-RU', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="num"><MachineTag number={row.machine_number} /></td>
+                    <td className="wrap">{row.address || row.machine_model || '—'}<div className="muted" style={{ fontSize: 11 }}>{row.location_name}</div></td>
+                    <td>{row.technician_name ?? '—'}</td>
+                    <td className="num mono">{periodDays ?? '—'}</td>
+                    <td className="num">+{formatGames(row.new_games)}</td>
+                    <td className="num mono">{perDay === null ? '—' : perDay.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}</td>
+                    <td className="num">{formatMoney(row.revenue)} ₽</td>
+                    <td className="num">{formatMoney(row.toy_cost)} ₽</td>
+                    <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <PhotoCell objectKey={row.photo_object_key} />
+                    </td>
+                    <td className="muted wrap">{row.notes || '—'}</td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr key={`${row.id}-detail`}>
+                      <td colSpan={13} style={{ padding: 0 }}>
+                        <ServiceDetail row={row} periodDays={periodDays} />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
             {rows.length === 0 && (
-              <tr><td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
@@ -228,6 +277,70 @@ export default function ServiceLogScreen() {
         </div>
       </div>
     </>
+  );
+}
+
+function toyLines(toys: ToyLine[] | null): string {
+  if (!toys || toys.length === 0) return '—';
+  return toys.map((toy) => `${toy.name} ×${toy.quantity} (${formatMoney(String(Number(toy.quantity) * Number(toy.unitCost)))} ₽)`).join(', ');
+}
+
+/** Полная карточка обслуживания при раскрытии строки — себестоимость и разбивка по игрушкам (в
+ * штуках и в рублях), плюс что было на прошлом обслуживании этой же цепочки и как текущее к нему
+ * относится (Δ по дням и по счётчику). */
+function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: number | null }) {
+  const hasPrev = row.prev_occurred_at !== null;
+  return (
+    <div className="readonly-prev" style={{ margin: '0 12px 12px' }}>
+      <div className="grid-2" style={{ gap: 16 }}>
+        <div>
+          <div className="lbl">ЭТО ОБСЛУЖИВАНИЕ</div>
+          <div className="grid">
+            <div className="cell"><b className="mono">{row.game_counter}</b><span>счётчик игр</span></div>
+            <div className="cell"><b className="mono">{row.prize_counter}</b><span>счётчик призов</span></div>
+            <div className="cell"><b className="mono">{row.test_games}</b><span>тестовых игр</span></div>
+            <div className="cell"><b className="mono">{formatMoney(row.price_per_game_snapshot)} ₽</b><span>цена игры</span></div>
+            <div className="cell"><b className="mono">{formatMoney(row.cash_amount)} ₽</b><span>нал</span></div>
+            <div className="cell"><b className="mono">{formatMoney(row.cashless_amount)} ₽</b><span>безнал</span></div>
+          </div>
+          <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+            Игрушки: {toyLines(row.toys)}
+          </div>
+          <div className="mono" style={{ marginTop: 4, fontSize: 12 }}>
+            Себестоимость игрушек: <b>{formatMoney(row.toy_cost)} ₽</b>
+          </div>
+        </div>
+
+        <div>
+          <div className="lbl">ПРОШЛОЕ ОБСЛУЖИВАНИЕ</div>
+          {!hasPrev ? (
+            <p className="muted" style={{ marginTop: 4 }}>Это первое обслуживание в цепочке аппарата — сравнивать не с чем.</p>
+          ) : (
+            <>
+              <div className="grid">
+                <div className="cell">
+                  <b className="mono">{new Date(row.prev_occurred_at as string).toLocaleDateString('ru-RU')}</b>
+                  <span>дата</span>
+                </div>
+                <div className="cell"><b className="mono">{row.prev_game_counter}</b><span>счётчик игр</span></div>
+                <div className="cell"><b className="mono">{formatMoney(row.prev_revenue ?? '0')} ₽</b><span>выручка</span></div>
+                <div className="cell"><b className="mono">{formatMoney(row.prev_toy_cost ?? '0')} ₽</b><span>себест. игрушек</span></div>
+                <div className="cell"><RoiBadge value={row.prev_revenue_to_cost_ratio} /><span>ROI</span></div>
+                <div className="cell"><b className="mono">{periodDays ?? '—'} дн.</b><span>прошло с прошлого раза</span></div>
+              </div>
+              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+                Игрушки в прошлый раз: {toyLines(row.prev_toys)}
+              </div>
+              <div className="mono" style={{ marginTop: 4, fontSize: 12 }}>
+                Δ счётчик: <b>+{row.game_counter - (row.prev_game_counter ?? row.game_counter)}</b>
+                {' · '}
+                Δ выручка: <b>{formatMoney(String(Number(row.revenue) - Number(row.prev_revenue ?? 0)))} ₽</b>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

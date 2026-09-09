@@ -64,6 +64,13 @@ export function daysSince(iso: string | null | undefined): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
 
+/** Целых дней между двумя моментами (от более раннего к более позднему), либо null если одной
+ * из дат нет — например, для самого первого обслуживания в цепочке, у которого нет «прошлого». */
+export function daysBetween(fromIso: string | null | undefined, toIso: string | null | undefined): number | null {
+  if (!fromIso || !toIso) return null;
+  return Math.floor((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000);
+}
+
 export interface OverdueInfo {
   isOverdue: boolean;
   daysSinceService: number | null;
