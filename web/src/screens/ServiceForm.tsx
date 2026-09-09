@@ -105,6 +105,9 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [existingPhoto, setExistingPhoto] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Показывать предупреждение о недостающем фото только после попытки сохранить без него — до
+  // этого оно просто мешало техническому, ещё не дошедшему до фото по форме сверху вниз.
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   // Guards the background catalogue refresh below: once the technician has typed or picked
   // anything, an in-flight network refresh landing afterwards must not silently overwrite it
@@ -302,16 +305,16 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     if (machine.location_status && machine.location_status !== 'ACTIVE') {
       list.push(`Точка в статусе ${machine.location_status}: сервер запретит обслуживание.`);
     }
-    if (!photo && !existingPhoto) {
+    if (!photo && !existingPhoto && attemptedSubmit) {
       list.push('Фото счётчика не загружено — без него обслуживание не сохранится.');
     }
     return list;
-  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto]);
+  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto, attemptedSubmit]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!machine || (!photo && !existingPhoto)) {
-      setError('Фотография счётчика обязательна.');
+      setAttemptedSubmit(true);
       return;
     }
     if (isFutureDate) {
