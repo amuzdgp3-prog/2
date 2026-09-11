@@ -165,8 +165,12 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
   const auth = await ivendLogin(settings.login, settings.password);
   if (!auth.ok || !auth.token) {
     await client.query(
+      // clock_timestamp(), not now(): this whole function runs inside one caller transaction
+      // (withTransaction in server.ts / routes/cashless.ts), so now() would return the fixed
+      // transaction-start instant at every call site below, making every recorded run duration
+      // exactly zero (started_at == finished_at) regardless of how long the fetches actually took.
       `INSERT INTO parser_runs (provider, started_at, finished_at, status, error_message)
-       VALUES ($1, now(), now(), 'ERROR', $2)`,
+       VALUES ($1, clock_timestamp(), clock_timestamp(), 'ERROR', $2)`,
       [PROVIDER, auth.message ?? 'не удалось войти в кабинет iVend'],
     );
     return { skipped: false, error: auth.message };
@@ -188,8 +192,9 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
   const from = Math.max(sinceLastRun, now - 90 * 86_400_000);
 
   const runInsert = await client.query(
+    // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
     `INSERT INTO parser_runs (provider, started_at, window_from, status)
-     VALUES ($1, now(), $2::timestamptz, 'RUNNING') RETURNING id`,
+     VALUES ($1, clock_timestamp(), $2::timestamptz, 'RUNNING') RETURNING id`,
     [PROVIDER, new Date(from).toISOString()],
   );
   const runId = runInsert.rows[0].id as number;
@@ -228,7 +233,8 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
 
     const result = await importCashless(client, actor, PROVIDER, transactions);
     await client.query(
-      `UPDATE parser_runs SET finished_at = now(), status = 'SUCCESS',
+      // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
+      `UPDATE parser_runs SET finished_at = clock_timestamp(), status = 'SUCCESS',
               pages_fetched = $2, rows_received = $3, rows_inserted = $4,
               rows_duplicate = $5, rows_matched = $6
        WHERE id = $1`,
@@ -241,7 +247,8 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
   } catch (error) {
     await client.query('ROLLBACK TO SAVEPOINT ivend_sync').catch(() => undefined);
     await client.query(
-      `UPDATE parser_runs SET finished_at = now(), status = 'ERROR', error_message = $2 WHERE id = $1`,
+      // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
+      `UPDATE parser_runs SET finished_at = clock_timestamp(), status = 'ERROR', error_message = $2 WHERE id = $1`,
       [runId, (error as Error).message],
     );
     return { skipped: false, error: (error as Error).message };

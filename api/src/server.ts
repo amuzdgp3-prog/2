@@ -194,9 +194,27 @@ function startParserScheduler(): void {
 
   const attempt = async (): Promise<void> => {
     try {
-      await withTransaction((client) => runIvendSync(client, SYSTEM_ACTOR));
+      // runIvendSync catches its own network/business errors and reports them in the returned
+      // result (skipped/error) rather than throwing — the manual "run now" endpoint in
+      // routes/cashless.ts depends on that to return a JSON error instead of a 500. The retry
+      // promise made in DECISION-032 therefore has to inspect the result, not just `catch`,
+      // otherwise a failed run (e.g. transient `fetch failed` to the iVend cabinet) is silently
+      // treated as success and the next attempt waits for the next scheduled run time instead of
+      // 5 minutes later.
+      const result = await withTransaction((client) => runIvendSync(client, SYSTEM_ACTOR));
+      if (result.skipped) {
+        // Disabled or no credentials configured — an intentional no-op, not a failure.
+        retryAt = null;
+        return;
+      }
+      if (result.error) {
+        console.error('ivend sync failed, retrying in 5 minutes:', result.error);
+        retryAt = Date.now() + RETRY_DELAY_MS;
+        return;
+      }
       retryAt = null;
     } catch (error) {
+      // A real exception (e.g. a Postgres-level error escaping the SAVEPOINT) still lands here.
       console.error('ivend sync failed, retrying in 5 minutes:', error);
       retryAt = Date.now() + RETRY_DELAY_MS;
     }

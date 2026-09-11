@@ -139,6 +139,14 @@ test('iVend sync: wrong credentials are rejected, correct ones import only the c
   assert.equal(runs.rows[0].status, 'SUCCESS');
   assert.equal(runs.rows[0].rows_inserted, 1);
   assert.equal(runs.rows[0].rows_received, 1);
+  // Regression check: started_at/finished_at must come from clock_timestamp(), not now(). now()
+  // returns one fixed instant for the whole transaction runIvendSync executes in, so every run
+  // would show an identical started_at/finished_at pair and a reported duration of exactly zero
+  // regardless of how long the fetches actually took.
+  assert.ok(
+    new Date(runs.rows[0].finished_at).getTime() > new Date(runs.rows[0].started_at).getTime(),
+    `finished_at must be strictly after started_at, got started_at=${runs.rows[0].started_at} finished_at=${runs.rows[0].finished_at}`,
+  );
   } finally {
     await context.app.close();
     fake.close();
