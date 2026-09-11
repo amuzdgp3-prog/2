@@ -336,11 +336,45 @@ export async function monthlyReport(
     expensesByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
   );
 
+  // Аренда — та же логика, что и business_expenses выше (не фильтруется по location/classifier/
+  // scope, единый итог на весь бизнес), но сумма за месяц не берётся напрямую из строк, а считается
+  // пропорционально пересечению каждого периода аренды с этим календарным месяцем — иначе смена
+  // ставки в середине месяца исказила бы и старые, и новые месяцы, а не только период после правки.
+  const rentByMonth = await client.query(
+    `WITH months AS (
+       SELECT generate_series(
+         date_trunc('month', now()) - ($1::int - 1) * interval '1 month',
+         date_trunc('month', now()), interval '1 month'
+       ) AS month_start
+     )
+     SELECT m.month_start::date AS month_start,
+            SUM(
+              r.monthly_amount * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(COALESCE(r.ended_at, 'infinity'::timestamptz), m.month_start + interval '1 month')
+                - GREATEST(r.started_at, m.month_start)
+              )))
+              -- Нормировка на РЕАЛЬНУЮ длительность конкретного месяца (28-31 день), не на
+              -- условные "30 дней", которыми Postgres трактует interval '1 month' в EPOCH —
+              -- иначе полный месяц по неизменной ставке считался бы дороже в 31-дневных месяцах
+              -- и дешевле в феврале, вместо ровно monthly_amount.
+              / EXTRACT(EPOCH FROM ((m.month_start + interval '1 month') - m.month_start))
+            ) AS total
+     FROM months m
+     JOIN location_rent_periods r
+       ON tstzrange(r.started_at, r.ended_at) && tstzrange(m.month_start, m.month_start + interval '1 month')
+     GROUP BY 1`,
+    [filters.months ?? 6],
+  );
+  const rentMap = new Map<string, string>(
+    rentByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
+  );
+
   return result.rows.map((row) => {
     const revenue = String(row.revenue ?? '0');
     const toyCost = String(row.toy_cost ?? '0');
     const toyCostNumber = Number(toyCost);
-    const expensesTotal = expensesMap.get(String(row.month_start)) ?? '0';
+    const monthKey = String(row.month_start);
+    const expensesTotal = sumDecimal([expensesMap.get(monthKey) ?? '0', rentMap.get(monthKey) ?? '0'], 2);
     return {
       monthStart: row.month_start,
       services: row.services,
@@ -407,6 +441,63 @@ export async function expensesSummary(
     }));
 
   return { byCategory, total: sumDecimal(rows.map((row) => row.amount), 2) };
+}
+
+export interface RentLocationRow {
+  locationId: number;
+  locationName: string;
+  /** Ставка, действующая на конец периода (для отображения) — если ставка менялась внутри
+   * периода, фактически начисленная сумма ниже считается по каждому отрезку отдельно, не по
+   * этому единственному числу. */
+  currentMonthlyAmount: string;
+  proratedCost: string;
+}
+
+export interface RentSummary {
+  locations: RentLocationRow[];
+  total: string;
+}
+
+/** Аренда за период — по каждой точке, пропорционально пересечению её периодов аренды с [from,
+ * to) (та же логика проекции, что в monthlyReport, но на произвольный период, а не на календарный
+ * месяц). Используется ежемесячным xlsx-отчётом и карточкой аппарата. */
+export async function rentSummary(
+  client: Client,
+  filters: { from: string; to: string },
+): Promise<RentSummary> {
+  const result = await client.query(
+    `WITH overlapping AS (
+       SELECT r.location_id, r.monthly_amount, r.started_at, r.ended_at
+       FROM location_rent_periods r
+       WHERE tstzrange(r.started_at, r.ended_at) && tstzrange($1::timestamptz, $2::timestamptz)
+     )
+     SELECT l.id AS location_id, l.name AS location_name,
+            (SELECT o2.monthly_amount FROM overlapping o2 WHERE o2.location_id = l.id
+             ORDER BY o2.started_at DESC LIMIT 1) AS current_monthly_amount,
+            SUM(
+              o.monthly_amount * GREATEST(0, EXTRACT(EPOCH FROM (
+                LEAST(COALESCE(o.ended_at, 'infinity'::timestamptz), $2::timestamptz)
+                - GREATEST(o.started_at, $1::timestamptz)
+              )))
+              -- Нормировка на реальную длину ЗАПРОШЕННОГО периода [from,to), не на условные
+              -- "30 дней" — тогда полный период, целиком покрытый неизменной ставкой, всегда даёт
+              -- ровно monthly_amount, каким бы ни было число дней в конкретном месяце.
+              / EXTRACT(EPOCH FROM ($2::timestamptz - $1::timestamptz))
+            ) AS prorated_cost
+     FROM overlapping o JOIN locations l ON l.id = o.location_id
+     GROUP BY l.id, l.name
+     ORDER BY l.name`,
+    [filters.from, filters.to],
+  );
+
+  const locations: RentLocationRow[] = result.rows.map((row) => ({
+    locationId: Number(row.location_id),
+    locationName: row.location_name,
+    currentMonthlyAmount: String(row.current_monthly_amount),
+    proratedCost: String(row.prorated_cost),
+  }));
+
+  return { locations, total: sumDecimal(locations.map((row) => row.proratedCost), 2) };
 }
 
 export async function technicianReport(

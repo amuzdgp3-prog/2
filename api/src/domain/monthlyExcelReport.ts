@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
-import { expensesSummary } from './reports.js';
+import { expensesSummary, rentSummary } from './reports.js';
 import { queryMachineRows, sumDecimal } from './reports.js';
 import { toyMonthlyTrend } from './toyAnalysis.js';
 
@@ -135,6 +135,7 @@ export async function buildMonthlyReportWorkbook(
 
   const forecast = await toyMonthlyTrend(client, actor, 3);
   const expenses = await expensesSummary(client, { from, to });
+  const rent = await rentSummary(client, { from, to: `${to}T23:59:59Z` });
 
   const workbook = new ExcelJS.Workbook();
   const monthName = MONTH_NAMES[month - 1];
@@ -231,42 +232,100 @@ export async function buildMonthlyReportWorkbook(
   ws.mergeCells(`A${expTitleRow}:J${expTitleRow}`);
   titleCell(ws.getCell(`A${expTitleRow}`), 'РАСХОДЫ');
 
-  const blockHeaderRow = expTitleRow + 1;
-  const colHeaderRow = blockHeaderRow + 1;
-  const expStartRow = colHeaderRow + 1;
+  type CellKind = 'date' | 'text' | 'money';
+  interface ExpenseBlock {
+    title: string;
+    headers: [string, string, string];
+    rows: Array<[
+      { value: ExcelJS.CellValue; kind: CellKind },
+      { value: ExcelJS.CellValue; kind: CellKind },
+      { value: ExcelJS.CellValue; kind: CellKind },
+    ]>;
+    total: string;
+  }
 
-  const blockColumns = ['A', 'D', 'G', 'J'];
-  let maxBlockRows = 0;
-  expenses.byCategory.forEach((bucket, i) => {
-    const startCol = blockColumns[i] ?? blockColumns[blockColumns.length - 1];
-    const endColIndex = ws.getColumn(startCol).number + 2;
-    const endCol = ws.getColumn(endColIndex).letter;
-    ws.mergeCells(`${startCol}${blockHeaderRow}:${endCol}${blockHeaderRow}`);
-    headerCell(ws.getCell(`${startCol}${blockHeaderRow}`), CATEGORY_LABELS[bucket.category] ?? bucket.category);
-
-    const dateCol = startCol;
-    const amountCol = ws.getColumn(ws.getColumn(startCol).number + 1).letter;
-    const commentCol = ws.getColumn(ws.getColumn(startCol).number + 2).letter;
-    headerCell(ws.getCell(`${dateCol}${colHeaderRow}`), 'Дата');
-    headerCell(ws.getCell(`${amountCol}${colHeaderRow}`), 'Сумма, ₽');
-    headerCell(ws.getCell(`${commentCol}${colHeaderRow}`), 'Комментарий');
-
-    bucket.rows.forEach((row, ri) => {
-      const r = expStartRow + ri;
-      dataCell(ws.getCell(`${dateCol}${r}`), new Date(row.expenseDate));
-      ws.getCell(`${dateCol}${r}`).numFmt = 'dd/mm/yyyy';
-      moneyCell(ws.getCell(`${amountCol}${r}`), row.amount);
-      dataCell(ws.getCell(`${commentCol}${r}`), row.comment);
+  const blocks: ExpenseBlock[] = expenses.byCategory.map((bucket) => ({
+    title: CATEGORY_LABELS[bucket.category] ?? bucket.category,
+    headers: ['Дата', 'Сумма, ₽', 'Комментарий'],
+    rows: bucket.rows.map((row) => [
+      { value: new Date(row.expenseDate), kind: 'date' },
+      { value: Number(row.amount), kind: 'money' },
+      { value: row.comment, kind: 'text' },
+    ]),
+    total: bucket.total,
+  }));
+  // Аренда — не построчные проводки, а ставка по точкам за период (см. domain/reports.ts
+  // rentSummary), поэтому у неё другая форма строки (Адрес/Ставка/Сумма), но тот же 3-колоночный
+  // блок и тот же механизм укладки, что и у остальных категорий.
+  if (rent.locations.length > 0) {
+    blocks.push({
+      title: 'Аренда',
+      headers: ['Адрес', 'Ставка, ₽/мес', 'Сумма, ₽'],
+      rows: rent.locations.map((loc) => [
+        { value: loc.locationName, kind: 'text' },
+        { value: Number(loc.currentMonthlyAmount), kind: 'money' },
+        { value: Number(loc.proratedCost), kind: 'money' },
+      ]),
+      total: rent.total,
     });
-    const totalRow = expStartRow + bucket.rows.length;
-    labelCell(ws.getCell(`${dateCol}${totalRow}`), 'Итого:');
-    moneyCell(ws.getCell(`${amountCol}${totalRow}`), bucket.total, true);
-    maxBlockRows = Math.max(maxBlockRows, bucket.rows.length + 1);
+  }
+
+  const writeCell = (cell: ExcelJS.Cell, entry: { value: ExcelJS.CellValue; kind: CellKind }) => {
+    if (entry.kind === 'money') {
+      moneyCell(cell, Number(entry.value));
+    } else if (entry.kind === 'date') {
+      dataCell(cell, entry.value as Date);
+      cell.numFmt = 'dd/mm/yyyy';
+    } else {
+      dataCell(cell, entry.value as string);
+    }
+  };
+
+  // До 4 блоков в строке (как раньше); 5-й (обычно «Аренда») переносится на следующую строку
+  // блоков, а не обрезается — общая механика для любого числа категорий.
+  const BLOCK_COLS = ['A', 'D', 'G', 'J'];
+  let groupHeaderRow = expTitleRow + 1;
+  let maxRowsInGroup = 0;
+  let lastGroupColHeaderRow = groupHeaderRow;
+
+  blocks.forEach((block, i) => {
+    const posInGroup = i % BLOCK_COLS.length;
+    if (posInGroup === 0 && i > 0) {
+      groupHeaderRow = groupHeaderRow + maxRowsInGroup + 3;
+      maxRowsInGroup = 0;
+    }
+    const colHeaderRow = groupHeaderRow + 1;
+    const startRow = colHeaderRow + 1;
+    lastGroupColHeaderRow = groupHeaderRow;
+
+    const startCol = BLOCK_COLS[posInGroup];
+    const startColIndex = ws.getColumn(startCol).number;
+    const col2 = ws.getColumn(startColIndex + 1).letter;
+    const col3 = ws.getColumn(startColIndex + 2).letter;
+    const endCol = col3;
+
+    ws.mergeCells(`${startCol}${groupHeaderRow}:${endCol}${groupHeaderRow}`);
+    headerCell(ws.getCell(`${startCol}${groupHeaderRow}`), block.title);
+    headerCell(ws.getCell(`${startCol}${colHeaderRow}`), block.headers[0]);
+    headerCell(ws.getCell(`${col2}${colHeaderRow}`), block.headers[1]);
+    headerCell(ws.getCell(`${col3}${colHeaderRow}`), block.headers[2]);
+
+    block.rows.forEach((row, ri) => {
+      const r = startRow + ri;
+      writeCell(ws.getCell(`${startCol}${r}`), row[0]);
+      writeCell(ws.getCell(`${col2}${r}`), row[1]);
+      writeCell(ws.getCell(`${col3}${r}`), row[2]);
+    });
+    const totalRow = startRow + block.rows.length;
+    labelCell(ws.getCell(`${startCol}${totalRow}`), 'Итого:');
+    moneyCell(ws.getCell(`${col2}${totalRow}`), block.total, true);
+    maxRowsInGroup = Math.max(maxRowsInGroup, block.rows.length + 1);
   });
 
-  const grandTotalRow = expStartRow + maxBlockRows + 1;
+  const grandTotal = sumDecimal([expenses.total, rent.total], 2);
+  const grandTotalRow = lastGroupColHeaderRow + 2 + maxRowsInGroup + 1;
   labelCell(ws.getCell(`A${grandTotalRow}`), 'ВСЕГО РАСХОДОВ:');
-  moneyCell(ws.getCell(`B${grandTotalRow}`), expenses.total, true);
+  moneyCell(ws.getCell(`B${grandTotalRow}`), grandTotal, true);
 
   return workbook;
 }

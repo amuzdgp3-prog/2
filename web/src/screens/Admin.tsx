@@ -416,6 +416,14 @@ function MachinesTab({ onDone, onError }: TabProps) {
   );
 }
 
+interface RentPeriod {
+  id: number;
+  location_id: number;
+  monthly_amount: string;
+  started_at: string;
+  ended_at: string | null;
+}
+
 function InstallMachineForm({
   locations,
   terminals,
@@ -433,7 +441,17 @@ function InstallMachineForm({
     initialGameCounter: '0',
     initialPrizeCounter: '0',
     terminalId: '',
+    monthlyRent: '',
   });
+  const [currentRent, setCurrentRent] = useState<RentPeriod | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!form.locationId) { setCurrentRent(undefined); return; }
+    api.get<RentPeriod[]>(`/api/locations/${form.locationId}/rent`)
+      .then((history) => setCurrentRent(history.find((p) => p.ended_at === null) ?? null))
+      .catch(() => setCurrentRent(undefined));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.locationId]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -460,6 +478,12 @@ function InstallMachineForm({
           machineNumber: form.machineNumber,
           startedAt,
         });
+      }
+
+      // Аренда привязана к точке, не к аппарату: если поле не заполнено — ставку не трогаем
+      // (у точки может быть уже действующая ставка, которую не нужно случайно перезаписать).
+      if (form.monthlyRent) {
+        await api.post(`/api/locations/${form.locationId}/rent`, { monthlyAmount: form.monthlyRent });
       }
 
       onDone(
@@ -523,6 +547,21 @@ function InstallMachineForm({
               <label>Адрес</label>
               <input value={form.address} onChange={set('address')} placeholder="улица, дом" />
             </div>
+          </div>
+          <div>
+            <label>Аренда точки, ₽/мес (необязательно)</label>
+            <input
+              type="number" step="0.01" min="0" value={form.monthlyRent} onChange={set('monthlyRent')}
+              placeholder={
+                currentRent === undefined ? 'выберите точку' :
+                currentRent === null ? 'у точки ещё не задана' :
+                `сейчас: ${currentRent.monthly_amount} ₽/мес — оставьте пустым, если менять не нужно`
+              }
+            />
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Аренда привязана к точке, а не к этому аппарату — если тут уже стоит ставка, замена
+              аппарата на этом месте её унаследует автоматически.
+            </p>
           </div>
           <div className="grid-2">
             <div>
@@ -698,6 +737,10 @@ function EditMachineForm({ machine, onDone, onError }: TabProps & { machine: Mac
           </div>
         </div>
 
+        {machine.location_id && (
+          <LocationRentCard locationId={machine.location_id} onDone={onDone} onError={onError} />
+        )}
+
         <div className="card" style={{ marginBottom: 0, background: 'var(--paper-deep)' }}>
           <div className="muted" style={{ marginBottom: 8 }}>
             Исправление истории
@@ -720,6 +763,85 @@ function EditMachineForm({ machine, onDone, onError }: TabProps & { machine: Mac
         </div>
       </div>
     </form>
+  );
+}
+
+/** Аренда точки — привязана к адресу, не к аппарату (см. DECISION), поэтому карточка любого
+ * аппарата на этой точке показывает и редактирует одну и ту же историю ставок. Правка не
+ * переписывает прошлое: закрывает текущий период и открывает новый с указанной даты, старые
+ * месяцы в отчётах считаются по прежней ставке. */
+function LocationRentCard({ locationId, onDone, onError }: TabProps & { locationId: number }) {
+  const [history, setHistory] = useState<RentPeriod[]>([]);
+  const [amount, setAmount] = useState('');
+  const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [showHistory, setShowHistory] = useState(false);
+
+  const load = () => {
+    api.get<RentPeriod[]>(`/api/locations/${locationId}/rent`).then(setHistory).catch(onError);
+  };
+  useEffect(load, [locationId]);
+
+  const current = history.find((p) => p.ended_at === null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      await api.post(`/api/locations/${locationId}/rent`, {
+        monthlyAmount: amount,
+        effectiveFrom: new Date(effectiveFrom).toISOString(),
+      });
+      onDone('Ставка аренды сохранена');
+      setAmount('');
+      load();
+    } catch (caught) {
+      onError(caught);
+    }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 0, background: 'var(--paper-deep)' }}>
+      <div className="muted" style={{ marginBottom: 8 }}>Аренда точки</div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Ставка привязана к адресу, а не к этому аппарату — замена аппарата на этом месте её
+        унаследует. Новая ставка действует только начиная с указанной даты, прошлые месяцы в
+        отчётах не пересчитываются.
+      </p>
+      <div className="row">
+        <div>
+          <strong>{current ? `${formatMoney(current.monthly_amount)} ₽/мес` : 'не задана'}</strong>
+          {current && <div className="muted" style={{ fontSize: 11 }}>с {new Date(current.started_at).toLocaleDateString('ru-RU')}</div>}
+        </div>
+        {history.length > 0 && (
+          <button type="button" onClick={() => setShowHistory(!showHistory)}>
+            {showHistory ? 'Скрыть историю' : `История (${history.length})`}
+          </button>
+        )}
+      </div>
+
+      {showHistory && (
+        <div className="stack" style={{ marginTop: 8 }}>
+          {history.map((p) => (
+            <div className="muted" key={p.id} style={{ fontSize: 12 }}>
+              {formatMoney(p.monthly_amount)} ₽/мес: {new Date(p.started_at).toLocaleDateString('ru-RU')}
+              {' — '}
+              {p.ended_at ? new Date(p.ended_at).toLocaleDateString('ru-RU') : 'по настоящее время'}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={submit} className="grid-2" style={{ marginTop: 10 }}>
+        <div>
+          <label>Новая ставка, ₽/мес</label>
+          <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+        </div>
+        <div>
+          <label>Действует с</label>
+          <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} required />
+        </div>
+        <button className="btn btn-primary" type="submit" style={{ gridColumn: '1 / -1' }}>Сохранить ставку</button>
+      </form>
+    </div>
   );
 }
 

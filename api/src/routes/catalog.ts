@@ -9,6 +9,7 @@ import {
   updateMachineAddress,
 } from '../commands/machines.js';
 import { closeLocation, createLocation, setLocationStatus, updateLocation } from '../commands/locations.js';
+import { getLocationRentHistory, setLocationRent } from '../commands/locationRent.js';
 import {
   addLocationToClassifier,
   addMachineToClassifier,
@@ -218,6 +219,27 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       terminals: terminals.rows,
     };
   });
+
+  /** История аренды точки — используется формой установки аппарата (подсказать текущую ставку)
+   * и карточкой аппарата (задать/сменить ставку). Доступ на чтение — как у истории точки, без
+   * привязки к scope аппаратов. */
+  app.get<{ Params: { id: string } }>('/api/locations/:id/rent', auth, async (request) => {
+    const client = await pool.connect();
+    try {
+      return await getLocationRentHistory(client, Number(request.params.id));
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post<{ Params: { id: string }; Body: { monthlyAmount: string; effectiveFrom?: string } }>(
+    '/api/locations/:id/rent',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        setLocationRent(client, request.actor, Number(request.params.id), request.body),
+      ),
+  );
 
   // ------------------------------------------------------------- classifiers (Каталог)
   app.get('/api/classifiers', auth, async (request) => {
