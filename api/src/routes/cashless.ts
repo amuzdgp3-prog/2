@@ -146,7 +146,9 @@ export async function registerCashlessRoutes(app: FastifyInstance): Promise<void
   );
 
   app.post('/api/parser/ivend/run', auth, async (request) => {
-    return withTransaction((client) => runIvendSync(client, request.actor));
+    // runIvendSync manages its own short transactions internally and does its network work
+    // outside any of them (DECISION-041) — no withTransaction wrapper here.
+    return runIvendSync(request.actor);
   });
 
   app.put<{ Body: { runTimes: string[] } }>(

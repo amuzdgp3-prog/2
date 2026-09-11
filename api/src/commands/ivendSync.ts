@@ -1,5 +1,5 @@
 import type { Actor } from '../lib/audit.js';
-import type { Client } from '../db/pool.js';
+import { pool, withTransaction, type Client } from '../db/pool.js';
 import { badRequest } from '../lib/errors.js';
 import { fetchIvendMachines, fetchIvendSales, ivendLogin } from '../integrations/ivend.js';
 import { assertAdmin } from '../lib/scope.js';
@@ -154,21 +154,47 @@ export interface IvendSyncResult {
  *
  * Каждый запуск пишется в parser_runs целиком (даже неудачный — с error_message), поэтому история
  * синхронизаций видна в уже существующем GET /api/parser/runs без отдельного экрана.
+ *
+ * Транзакция БД держится только вокруг двух коротких моментов — чтения настроек в начале и записи
+ * результата в конце, а не вокруг всей функции целиком (см. DECISION-041). Раньше вызывающий код
+ * (server.ts/routes/cashless.ts) открывал одну транзакцию на весь вызов, и вся сетевая часть —
+ * вход в кабинет плюс до ~40 страниц списка аппаратов плюс до 200 страниц продаж на каждый из
+ * 85+ терминалов — выполнялась с удержанным соединением из пула. У fetch в Node нет таймаута по
+ * умолчанию, поэтому один зависший запрос держал это соединение и, как следствие, флаг `running`
+ * в планировщике (server.ts) бесконечно — до перезапуска контейнера синхронизация переставала
+ * запускаться вовсе. Теперь функция сама открывает и закрывает свои транзакции, а вся сетевая
+ * часть выполняется без какой-либо открытой транзакции; каждый отдельный запрос к iVend ограничен
+ * таймаутом в integrations/ivend.ts.
  */
-export async function runIvendSync(client: Client, actor: Actor): Promise<IvendSyncResult> {
+export async function runIvendSync(actor: Actor): Promise<IvendSyncResult> {
   assertAdmin(actor);
-  const settings = await loadRow(client);
-  if (!settings || !settings.is_enabled || !settings.login || !settings.password) {
-    return { skipped: true };
-  }
 
-  const auth = await ivendLogin(settings.login, settings.password);
+  // Фаза 1 — короткое чтение: настройки и момент последнего успешного запуска. Отдельная
+  // транзакция держит соединение лишь на время пары SELECT, а не всей сетевой работы ниже.
+  const prep = await withTransaction(async (client) => {
+    const settings = await loadRow(client);
+    if (!settings || !settings.is_enabled || !settings.login || !settings.password) {
+      return null;
+    }
+    // The window starts where the last successful run left off, minus the configured overlap
+    // margin (covers transactions that settle a bit late), and never further back than 90 days so
+    // a first run or a long-disabled period doesn't request an unbounded history.
+    const lastSuccess = await client.query<{ finished_at: string }>(
+      `SELECT finished_at FROM parser_runs WHERE provider = $1 AND status = 'SUCCESS' AND finished_at IS NOT NULL
+       ORDER BY finished_at DESC LIMIT 1`,
+      [PROVIDER],
+    );
+    return { settings, lastFinishedAt: lastSuccess.rows[0]?.finished_at ?? null };
+  });
+  if (!prep) return { skipped: true };
+  const { settings, lastFinishedAt } = prep;
+
+  // Фаза 2 — сеть, без единой открытой транзакции. login — единственный запрос до появления
+  // строки RUNNING, поэтому при его сбое пишем ERROR одним автокоммитным запросом через pool.
+  const auth = await ivendLogin(settings.login as string, settings.password as string);
   if (!auth.ok || !auth.token) {
-    await client.query(
-      // clock_timestamp(), not now(): this whole function runs inside one caller transaction
-      // (withTransaction in server.ts / routes/cashless.ts), so now() would return the fixed
-      // transaction-start instant at every call site below, making every recorded run duration
-      // exactly zero (started_at == finished_at) regardless of how long the fetches actually took.
+    await pool.query(
+      // clock_timestamp(), not now() — см. комментарий у следующего INSERT ниже.
       `INSERT INTO parser_runs (provider, started_at, finished_at, status, error_message)
        VALUES ($1, clock_timestamp(), clock_timestamp(), 'ERROR', $2)`,
       [PROVIDER, auth.message ?? 'не удалось войти в кабинет iVend'],
@@ -176,36 +202,26 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
     return { skipped: false, error: auth.message };
   }
 
-  // The window starts where the last successful run left off, minus the configured overlap
-  // margin (covers transactions that settle a bit late), and never further back than 90 days so
-  // a first run or a long-disabled period doesn't request an unbounded history.
-  const lastSuccess = await client.query(
-    `SELECT finished_at FROM parser_runs WHERE provider = $1 AND status = 'SUCCESS' AND finished_at IS NOT NULL
-     ORDER BY finished_at DESC LIMIT 1`,
-    [PROVIDER],
-  );
   const now = Date.now();
   const overlapMs = settings.overlap_minutes * 60_000;
-  const sinceLastRun = lastSuccess.rows[0]
-    ? new Date(lastSuccess.rows[0].finished_at).getTime() - overlapMs
+  const sinceLastRun = lastFinishedAt
+    ? new Date(lastFinishedAt).getTime() - overlapMs
     : now - 30 * 86_400_000;
   const from = Math.max(sinceLastRun, now - 90 * 86_400_000);
 
-  const runInsert = await client.query(
-    // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
+  // Строка RUNNING появляется в той же точке последовательности, что и раньше — прямо перед
+  // потенциально долгой частью (список аппаратов + продажи по каждому) — поэтому индикатор
+  // «выполняется…» в админке (Admin.tsx, lastRun.status === 'RUNNING') по-прежнему отражает
+  // реальность. clock_timestamp(), not now() — см. комментарий у ERROR-веток выше/ниже.
+  const runInsert = await pool.query<{ id: number }>(
     `INSERT INTO parser_runs (provider, started_at, window_from, status)
      VALUES ($1, clock_timestamp(), $2::timestamptz, 'RUNNING') RETURNING id`,
     [PROVIDER, new Date(from).toISOString()],
   );
-  const runId = runInsert.rows[0].id as number;
+  const runId = runInsert.rows[0].id;
 
-  // A SAVEPOINT isolates the fetch/import work from the bookkeeping above: if a real
-  // Postgres-level error aborts the transaction below, rolling back to here (instead of relying
-  // on the outer transaction, which would already be unusable) lets the catch block's own
-  // UPDATE still succeed, so a failed run is always recorded in parser_runs (DECISION-030).
-  await client.query('SAVEPOINT ivend_sync');
   try {
-    const ourTerminals = await client.query<{ serial: string }>(
+    const ourTerminals = await pool.query<{ serial: string }>(
       `SELECT serial FROM terminals WHERE status <> 'RETIRED'`,
     );
     const ourSerials = new Set(ourTerminals.rows.map((row) => row.serial));
@@ -231,23 +247,28 @@ export async function runIvendSync(client: Client, actor: Actor): Promise<IvendS
       }
     }
 
-    const result = await importCashless(client, actor, PROVIDER, transactions);
-    await client.query(
-      // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
-      `UPDATE parser_runs SET finished_at = clock_timestamp(), status = 'SUCCESS',
-              pages_fetched = $2, rows_received = $3, rows_inserted = $4,
-              rows_duplicate = $5, rows_matched = $6
-       WHERE id = $1`,
-      [
-        runId, pagesFetched, result.received, result.inserted,
-        result.duplicates, result.machinesTouched.length,
-      ],
-    );
+    // Фаза 3 — единственная часть, которой по-прежнему нужна транзакция: импорт полученных строк
+    // и отметка успеха должны закоммититься вместе, как и раньше. Отдельная от фазы 1 транзакция:
+    // SAVEPOINT-трюк, нужный прежде для изоляции от объемлющей транзакции вызывающего кода, больше
+    // не нужен — своей объемлющей транзакции у этой функции теперь нет вовсе, а withTransaction
+    // сама откатывает себя при ошибке.
+    const result = await withTransaction(async (client) => {
+      const imported = await importCashless(client, actor, PROVIDER, transactions);
+      await client.query(
+        `UPDATE parser_runs SET finished_at = clock_timestamp(), status = 'SUCCESS',
+                pages_fetched = $2, rows_received = $3, rows_inserted = $4,
+                rows_duplicate = $5, rows_matched = $6
+         WHERE id = $1`,
+        [
+          runId, pagesFetched, imported.received, imported.inserted,
+          imported.duplicates, imported.machinesTouched.length,
+        ],
+      );
+      return imported;
+    });
     return { skipped: false, imported: result.inserted, matched: result.machinesTouched.length };
   } catch (error) {
-    await client.query('ROLLBACK TO SAVEPOINT ivend_sync').catch(() => undefined);
-    await client.query(
-      // clock_timestamp(), not now() — see comment on the ERROR-path INSERT above.
+    await pool.query(
       `UPDATE parser_runs SET finished_at = clock_timestamp(), status = 'ERROR', error_message = $2 WHERE id = $1`,
       [runId, (error as Error).message],
     );

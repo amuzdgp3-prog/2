@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import { config } from './config.js';
 import { runIvendSync } from './commands/ivendSync.js';
 import { runMigrations } from './db/migrate.js';
-import { pool, withTransaction } from './db/pool.js';
+import { pool } from './db/pool.js';
 import { seedAdmin } from './db/seed.js';
 import { AppError } from './lib/errors.js';
 import { SYSTEM_ACTOR, type Actor } from './lib/audit.js';
@@ -201,7 +201,10 @@ function startParserScheduler(): void {
       // otherwise a failed run (e.g. transient `fetch failed` to the iVend cabinet) is silently
       // treated as success and the next attempt waits for the next scheduled run time instead of
       // 5 minutes later.
-      const result = await withTransaction((client) => runIvendSync(client, SYSTEM_ACTOR));
+      // runIvendSync manages its own short transactions internally and does its network work
+      // outside any of them (DECISION-041) — it must NOT be wrapped in withTransaction here, that
+      // would hold a pool connection for the whole sync again, exactly the problem being avoided.
+      const result = await runIvendSync(SYSTEM_ACTOR);
       if (result.skipped) {
         // Disabled or no credentials configured — an intentional no-op, not a failure.
         retryAt = null;

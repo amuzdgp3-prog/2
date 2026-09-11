@@ -17,6 +17,15 @@
 // Overridable so tests can point this at a local fake server instead of the real provider.
 const GRAPHQL_URL = process.env.IVEND_GRAPHQL_URL ?? 'https://graphql.ivend.pro/graphql';
 
+// Node's global fetch has no default timeout — a request the cabinet accepts but never answers
+// would otherwise hang forever. Each GraphQL call here is a single small request/response
+// (one page of up to ~200 rows at most), so 30s is generous headroom, not a budget for the whole
+// multi-machine sync: a stuck single call now fails fast and lets the caller's own retry/backoff
+// (DECISION-032's 5-minute retry in server.ts) take over, instead of blocking indefinitely.
+// Overridable for the same reason GRAPHQL_URL is: a test proving the timeout actually fires needs
+// a short one, not a real 30-second wait.
+const GRAPHQL_TIMEOUT_MS = Number(process.env.IVEND_GRAPHQL_TIMEOUT_MS ?? 30_000);
+
 async function callGraphQL<T>(
   token: string | null,
   operationName: string,
@@ -30,6 +39,7 @@ async function callGraphQL<T>(
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ operationName, query, variables }),
+    signal: AbortSignal.timeout(GRAPHQL_TIMEOUT_MS),
   });
   const body = await response.json();
   if (body.errors?.length) {
