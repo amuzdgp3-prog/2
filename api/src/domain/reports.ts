@@ -272,6 +272,44 @@ export interface MonthlyRow {
 }
 
 /**
+ * Ограничение аренды тем же набором точек, что и остальные строки отчёта.
+ *
+ * Аренда, в отличие от business_expenses, привязана к конкретной точке
+ * (`location_rent_periods.location_id`), поэтому при фильтре по точке или узлу Каталога она
+ * честно сужается вместе с выручкой. Раньше она бралась общим итогом на весь бизнес, и отчёт по
+ * одной точке вычитал из её выручки аренду всех остальных адресов.
+ *
+ * Расходы на топливо, зарплату и переводы такой привязки не имеют и по явному решению владельца
+ * остаются общими на весь бизнес, без разноски по точкам, — см. комментарий к `expensesByMonth`.
+ */
+function rentLocationFilterSql(
+  filters: Pick<ReportFilters, 'locationId' | 'classifierId'>,
+  push: (value: unknown) => string,
+): string {
+  const conditions: string[] = [];
+  if (filters.locationId) {
+    conditions.push(`r.location_id IN (
+      WITH RECURSIVE subtree AS (
+        SELECT id FROM locations WHERE id = ${push(filters.locationId)}
+        UNION
+        SELECT child.id FROM locations child JOIN subtree ON child.parent_id = subtree.id
+      ) SELECT id FROM subtree)`);
+  }
+  if (filters.classifierId) {
+    conditions.push(`r.location_id IN (
+      WITH RECURSIVE classifier_tree AS (
+        SELECT id FROM classifiers WHERE id = ${push(filters.classifierId)}
+        UNION
+        SELECT child.id FROM classifiers child
+          JOIN classifier_tree parent ON child.parent_id = parent.id
+      )
+      SELECT lc.location_id FROM location_classifiers lc
+      WHERE lc.classifier_id IN (SELECT id FROM classifier_tree))`);
+  }
+  return conditions.length ? `AND ${conditions.join(' AND ')}` : '';
+}
+
+/**
  * Финансовый отчёт по месяцам (docs/design/mockups/08_admin_financial_report.html) — тот же
  * единый расчётный слой: те же строки services, тот же scope, только другая группировка.
  */
@@ -336,10 +374,16 @@ export async function monthlyReport(
     expensesByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
   );
 
-  // Аренда — та же логика, что и business_expenses выше (не фильтруется по location/classifier/
-  // scope, единый итог на весь бизнес), но сумма за месяц не берётся напрямую из строк, а считается
-  // пропорционально пересечению каждого периода аренды с этим календарным месяцем — иначе смена
-  // ставки в середине месяца исказила бы и старые, и новые месяцы, а не только период после правки.
+  // Аренда считается не суммой строк, а пропорционально пересечению каждого периода аренды с этим
+  // календарным месяцем — иначе смена ставки в середине месяца исказила бы и старые, и новые
+  // месяцы, а не только период после правки. В отличие от business_expenses выше, аренда привязана
+  // к точке и поэтому сужается тем же фильтром, что и выручка (см. rentLocationFilterSql).
+  const rentParams: unknown[] = [filters.months ?? 6];
+  const rentPush = (value: unknown): string => {
+    rentParams.push(value);
+    return `$${rentParams.length}`;
+  };
+  const rentFilter = rentLocationFilterSql(filters, rentPush);
   const rentByMonth = await client.query(
     `WITH months AS (
        SELECT generate_series(
@@ -362,8 +406,9 @@ export async function monthlyReport(
      FROM months m
      JOIN location_rent_periods r
        ON tstzrange(r.started_at, r.ended_at) && tstzrange(m.month_start, m.month_start + interval '1 month')
+       ${rentFilter}
      GROUP BY 1`,
-    [filters.months ?? 6],
+    rentParams,
   );
   const rentMap = new Map<string, string>(
     rentByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
