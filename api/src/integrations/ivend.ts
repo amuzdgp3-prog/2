@@ -41,7 +41,20 @@ async function callGraphQL<T>(
     body: JSON.stringify({ operationName, query, variables }),
     signal: AbortSignal.timeout(GRAPHQL_TIMEOUT_MS),
   });
-  const body = await response.json();
+  // Кабинет иногда отвечает HTML-страницей шлюза (502/503) вместо JSON — раньше это всплывало в
+  // админке как «Unexpected token '<' ... is not valid JSON» без намёка на причину. Разбор идёт
+  // вручную: JSON с полем errors (в том числе при 4xx) обрабатывается как раньше, а не-JSON и
+  // пустой не-2xx ответ превращаются в понятную ошибку с HTTP-кодом.
+  const text = await response.text();
+  let body: { data?: unknown; errors?: Array<{ message: string }> };
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`кабинет iVend ответил не JSON (HTTP ${response.status}) — вероятно, временный сбой на его стороне`);
+  }
+  if (!response.ok && !body.errors?.length) {
+    throw new Error(`кабинет iVend ответил HTTP ${response.status}`);
+  }
   if (body.errors?.length) {
     throw new Error(body.errors.map((e: { message: string }) => e.message).join('; '));
   }
