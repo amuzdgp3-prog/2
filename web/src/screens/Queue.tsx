@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MachineTag } from '../components/ui/MachineTag';
 import { confirmCounterJumpAndRequeue, readOutbox, removeFromOutbox, type QueuedService } from '../db';
 import { syncOutbox } from '../sync';
+import { api } from '../api';
 
 /** Черновики (docs/design/mockups/03_tech_drafts.html): ожидающие отправки и отклонённые сервером. */
 export default function QueueScreen({ onChange }: { onChange: () => void }) {
@@ -79,6 +80,9 @@ export default function QueueScreen({ onChange }: { onChange: () => void }) {
                 className="btn btn-danger-ghost"
                 onClick={async () => {
                   await removeFromOutbox(item.localId);
+                  // Черновик удалён самим техником — снимаем жалобу у администратора, иначе он
+                  // будет разбираться с проблемой, которой уже нет.
+                  await api.delete(`/api/draft-issues/${item.localId}`).catch(() => undefined);
                   await load();
                 }}
               >
@@ -140,6 +144,9 @@ export default function QueueScreen({ onChange }: { onChange: () => void }) {
                 className="btn btn-danger-ghost"
                 onClick={async () => {
                   await removeFromOutbox(item.localId);
+                  // Черновик удалён самим техником — снимаем жалобу у администратора, иначе он
+                  // будет разбираться с проблемой, которой уже нет.
+                  await api.delete(`/api/draft-issues/${item.localId}`).catch(() => undefined);
                   await load();
                 }}
               >

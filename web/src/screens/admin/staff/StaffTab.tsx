@@ -30,7 +30,15 @@ export function StaffTab({ onDone, onError }: TabProps) {
     api.get<Location[]>('/api/locations').then(setLocations).catch(onError);
     api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
   };
+  const [draftIssues, setDraftIssues] = useState<Array<Record<string, string | null>>>([]);
+  const loadDraftIssues = () => {
+    api
+      .get<Array<Record<string, string | null>>>('/api/draft-issues')
+      .then(setDraftIssues)
+      .catch(() => setDraftIssues([]));
+  };
   useEffect(load, []);
+  useEffect(loadDraftIssues, []);
 
   const loadScope = async (staffId: number) => {
     try {
@@ -66,6 +74,36 @@ export function StaffTab({ onDone, onError }: TabProps) {
           }}
           onError={onError}
         />
+      )}
+
+      {draftIssues.length > 0 && (
+        <div className="card" style={{ borderColor: 'var(--bad)' }}>
+          <strong>Застрявшие черновики техников ({draftIssues.length})</strong>
+          <div className="muted" style={{ marginTop: 4 }}>
+            Обслуживание не ушло с телефона техника и ждёт его действия. Строка пропадёт сама,
+            когда черновик отправится или будет удалён.
+          </div>
+          {draftIssues.map((issue) => (
+            <div
+              key={String(issue.local_id)}
+              style={{ marginTop: 10, borderTop: '1px solid var(--line)', paddingTop: 10 }}
+            >
+              <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <strong>{issue.technician_name ?? 'неизвестный техник'}</strong>
+                <span className="muted mono">
+                  аппарат № {String(issue.machine_number)}
+                  {issue.machine_address ? ` — ${issue.machine_address}` : ''}
+                </span>
+              </div>
+              <div className="muted mono" style={{ fontSize: 11.5, marginTop: 2 }}>
+                обслуживание за {new Date(String(issue.occurred_at)).toLocaleString('ru-RU')}
+                {' · последняя попытка '}
+                {new Date(String(issue.updated_at)).toLocaleString('ru-RU')}
+              </div>
+              <div className="alert error" style={{ marginTop: 6 }}>{issue.error_message}</div>
+            </div>
+          ))}
+        </div>
       )}
 
       {staff.map((person) => (

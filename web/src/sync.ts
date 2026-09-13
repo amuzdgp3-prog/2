@@ -47,6 +47,9 @@ async function runSync(): Promise<SyncResult> {
     try {
       await uploadOne(item);
       await removeFromOutbox(item.localId);
+      // Черновик уехал — если по нему висела жалоба у администратора, снимаем её. Ошибка здесь
+      // не должна ронять синхронизацию: обслуживание уже сохранено, это лишь уборка списка.
+      await api.delete(`/api/draft-issues/${item.localId}`).catch(() => undefined);
       sent += 1;
     } catch (error) {
       if (error instanceof OfflineError) {
@@ -61,6 +64,17 @@ async function runSync(): Promise<SyncResult> {
       }
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         await markRejected(item.localId, error.message, error.code);
+        // Доклад администратору: техник в поле один на один с отказом, и без этого о проблеме
+        // никто не узнает, пока он сам не позвонит (DECISION-048).
+        await api
+          .post('/api/draft-issues', {
+            localId: item.localId,
+            machineNumber: item.machineNumber,
+            occurredAt: item.occurredAt,
+            errorCode: error.code,
+            errorMessage: error.message,
+          })
+          .catch(() => undefined);
         rejected += 1;
         continue;
       }
