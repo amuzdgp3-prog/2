@@ -72,7 +72,8 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
  * Service. На десктопе и на телефоне — обе раскладки таблицы (владелец явно настоял на таблице
  * и на телефоне, карточки не подошли), но с разным набором колонок, переключаемым CSS-классами
- * (.desktop-only/.mobile-only): полная таблица на 13 колонок на широком экране (DECISION-053) и
+ * (.desktop-only/.mobile-only): полная таблица на 14 колонок на широком экране (DECISION-053,
+ * счётчик игр добавлен отдельно после столбца «Адрес») и
  * узкая на 10 — только то, без чего строку не понять с одного взгляда — на телефоне (DECISION-054).
  * Остальные цифры в обоих случаях доступны по тому же тапу на строку, в общей ServiceDetail. */
 export default function ServiceLogScreen() {
@@ -215,6 +216,7 @@ export default function ServiceLogScreen() {
               <th>Дата / время</th>
               <th className="num">№</th>
               <th>Адрес</th>
+              <th className="num" style={{ paddingLeft: 24 }}>Счётчик</th>
               <th>Техник</th>
               <th className="num">Дней</th>
               <th className="num">Новых игр</th>
@@ -245,6 +247,7 @@ export default function ServiceLogScreen() {
                     </td>
                     <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
                     <td className="wrap">{row.address || row.machine_model || '—'}</td>
+                    <td className="num mono" style={{ paddingLeft: 24 }}>{row.game_counter}</td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td className="num mono">{periodDays ?? '—'}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
@@ -262,7 +265,7 @@ export default function ServiceLogScreen() {
                   </tr>
                   {isOpen && (
                     <tr key={`${row.id}-detail`}>
-                      <td colSpan={13} style={{ padding: 0 }}>
+                      <td colSpan={14} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} />
                       </td>
                     </tr>
@@ -271,7 +274,7 @@ export default function ServiceLogScreen() {
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
