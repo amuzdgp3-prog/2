@@ -121,6 +121,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       to?: string;
       technicianId?: string;
       locationId?: string;
+      machineType?: string;
       search?: string;
       limit?: string;
       offset?: string;
@@ -143,8 +144,13 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     }
     if (request.query.search) {
       const needle = `%${request.query.search}%`;
+      // p.address, а не только l.name: адрес хранится в установке аппарата и у 13 установок из 170
+      // отличается от названия точки, которое в этих случаях — широкая ветка вроде «СПб». Без него
+      // строка, показанная в колонке «Адрес», не находилась поиском по этому же адресу
+      // (DECISION-047).
       conditions.push(
-        `(s.machine_number ILIKE ${push(needle)} OR m.model ILIKE ${push(needle)} OR l.name ILIKE ${push(needle)})`,
+        `(s.machine_number ILIKE ${push(needle)} OR m.model ILIKE ${push(needle)}`
+        + ` OR l.name ILIKE ${push(needle)} OR p.address ILIKE ${push(needle)})`,
       );
     }
     if (request.query.locationId) {
@@ -155,6 +161,10 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
           UNION
           SELECT child.id FROM locations child JOIN subtree ON child.parent_id = subtree.id
         ) SELECT id FROM subtree)`);
+    }
+
+    if (request.query.machineType) {
+      conditions.push(`m.machine_type = ${push(request.query.machineType)}`);
     }
 
     const scope = machineScopePredicate(request.actor, 's.machine_number', params.length + 1);
