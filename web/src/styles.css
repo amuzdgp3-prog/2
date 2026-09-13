@@ -704,3 +704,43 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
      специфичности, чем один класс .row2) держит их в одной. */
   .row2.row2-tight { grid-template-columns: 1fr 1fr; gap: 6px; }
 }
+
+/* Наклейки на аппараты (Аппараты → «Наклейки»): скрыт по умолчанию, виден только при печати.
+   Изоляция через visibility, не display: display:none на .sticker-print-sheet при печати снял бы
+   и сам лист, а не только окружение — visibility:hidden на всём документе с explicit visibility:
+   visible на листе прячет вкладки/меню/карточки, не трогая раскладку самого листа (у которого
+   position:absolute относительно печатной страницы, а не относительно спрятанного родителя). */
+.sticker-print-sheet { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  .sticker-print-sheet, .sticker-print-sheet * { visibility: visible; }
+  .sticker-print-sheet {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 7cm);
+  gap: 2mm;
+}
+.sticker-label {
+  width: 7cm;
+  height: 3cm;
+  box-sizing: border-box;
+  border: 1px dashed #999;
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  padding: 2mm;
+  break-inside: avoid;
+}
+.sticker-label-text { min-width: 0; }
+.sticker-label-number { font-weight: 600; font-size: 12px; }
+.sticker-label-address {
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}

@@ -4,6 +4,7 @@ import { PageSizeSelect } from '../../../components/ui/PageSizeSelect';
 import type { Machine, ToySet, Terminal, Location, TabProps } from '../types';
 import { EditMachineForm } from './EditMachineForm';
 import { InstallMachineForm } from './InstallMachineForm';
+import { StickerSheet } from './StickerSheet';
 
 export function MachinesTab({ onDone, onError }: TabProps) {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -17,6 +18,8 @@ export function MachinesTab({ onDone, onError }: TabProps) {
   const [moveChoice, setMoveChoice] = useState<Record<string, string>>({});
   const [detachTerminalChoice, setDetachTerminalChoice] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState('');
+  const [stickerMode, setStickerMode] = useState(false);
+  const [selectedStickers, setSelectedStickers] = useState<Set<string>>(new Set());
   // /api/machines always returns the full fleet (technicians' offline cache needs the whole
   // list), so the row-count setting only limits what this admin table renders, not the request.
   const [pageSize, setPageSize] = useState(50);
@@ -60,6 +63,15 @@ export function MachinesTab({ onDone, onError }: TabProps) {
     : machines;
   const activeMachines = filteredMachines.filter((machine) => machine.status !== 'RETIRED');
   const retiredMachines = filteredMachines.filter((machine) => machine.status === 'RETIRED');
+  // Наклейка без адреса бессмысленна — эти аппараты не предлагаются к выбору вовсе, а не молча
+  // печатаются пустыми.
+  const stickerable = activeMachines.filter((machine) => machine.address);
+  const toggleSticker = (machineNumber: string) => {
+    const next = new Set(selectedStickers);
+    if (next.has(machineNumber)) next.delete(machineNumber);
+    else next.add(machineNumber);
+    setSelectedStickers(next);
+  };
 
   const setStatus = async (machineNumber: string, status: 'ACTIVE' | 'RETIRED') => {
     if (status === 'RETIRED' && !confirm(`Списать аппарат № ${machineNumber}? Он пропадёт из основного списка (историю можно найти в разделе «Списанные»).`)) {
@@ -125,9 +137,45 @@ export function MachinesTab({ onDone, onError }: TabProps) {
 
   return (
     <>
-      <button className="primary" onClick={() => setCreating(!creating)} style={{ marginBottom: 12 }}>
-        {creating ? 'Отмена' : '+ Установить аппарат'}
-      </button>
+      <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+        <button className="primary" onClick={() => setCreating(!creating)}>
+          {creating ? 'Отмена' : '+ Установить аппарат'}
+        </button>
+        <button
+          onClick={() => {
+            setStickerMode(!stickerMode);
+            setSelectedStickers(new Set());
+          }}
+        >
+          {stickerMode ? 'Отмена' : 'Наклейки'}
+        </button>
+      </div>
+
+      {stickerMode && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div className="row" style={{ gap: 6 }}>
+              <button onClick={() => setSelectedStickers(new Set(stickerable.map((m) => m.machine_number)))}>
+                Выбрать все
+              </button>
+              <button onClick={() => setSelectedStickers(new Set())}>Снять всё</button>
+              <span className="muted">
+                выбрано {selectedStickers.size} из {stickerable.length}
+                {stickerable.length !== activeMachines.length
+                  ? ` (у ${activeMachines.length - stickerable.length} аппаратов без адреса наклейку не сделать)`
+                  : ''}
+              </span>
+            </div>
+            <button
+              className="primary"
+              disabled={selectedStickers.size === 0}
+              onClick={() => window.print()}
+            >
+              Печать наклеек ({selectedStickers.size})
+            </button>
+          </div>
+        </div>
+      )}
 
       {creating && (
         <InstallMachineForm
@@ -157,9 +205,21 @@ export function MachinesTab({ onDone, onError }: TabProps) {
       {activeMachines.slice(0, pageSize).map((machine) => (
         <div className="card" key={machine.machine_number}>
           <div className="row">
-            <div>
-              <strong>№ {machine.machine_number} {machine.address ? `— ${machine.address}` : ''}</strong>
-              <div className="muted">{machine.location_name ?? 'нет активной установки'} · {machine.machine_type}</div>
+            <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+              {stickerMode && (
+                <input
+                  type="checkbox"
+                  style={{ marginTop: 4 }}
+                  disabled={!machine.address}
+                  title={machine.address ? undefined : 'нет адреса — наклейку не сделать'}
+                  checked={selectedStickers.has(machine.machine_number)}
+                  onChange={() => toggleSticker(machine.machine_number)}
+                />
+              )}
+              <div>
+                <strong>№ {machine.machine_number} {machine.address ? `— ${machine.address}` : ''}</strong>
+                <div className="muted">{machine.location_name ?? 'нет активной установки'} · {machine.machine_type}</div>
+              </div>
             </div>
             <div className="row" style={{ gap: 6 }}>
               <button onClick={() => setEditing(editing?.machine_number === machine.machine_number ? null : machine)}>
@@ -283,6 +343,8 @@ export function MachinesTab({ onDone, onError }: TabProps) {
           )}
         </div>
       ))}
+
+      <StickerSheet machines={stickerable.filter((m) => selectedStickers.has(m.machine_number))} />
 
       {retiredMachines.length > 0 && (
         <details className="card">
