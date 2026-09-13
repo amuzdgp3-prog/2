@@ -5,8 +5,17 @@ import { computeOverdue } from '../calc';
 import { MachineTag } from '../components/ui/MachineTag';
 import { extractMachineNumber, QrScannerButton } from '../components/ui/QrScanner';
 import { RoiBadge } from '../components/ui/RoiBadge';
-import { getMeta, readCachedMachines, type CachedMachine } from '../db';
+import { getMeta, readCachedMachines, readTasks, type CachedMachine } from '../db';
 import { refreshCatalog } from '../sync';
+
+/** «1 задача», «2 задачи», «5 задач» — иначе плашка читается как машинный перевод. */
+function taskWord(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'задача';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'задачи';
+  return 'задач';
+}
 
 export default function MachinesScreen() {
   const { user } = useAuth();
@@ -22,6 +31,19 @@ export default function MachinesScreen() {
     setSyncedAt((await getMeta<string>('machines_synced_at')) ?? null);
   };
 
+  const countTasks = async (): Promise<void> => {
+    try {
+      const tasks = await readTasks();
+      setOpenTasks(tasks.filter((task) => task.status === 'OPEN').length);
+    } catch {
+      setOpenTasks(0);
+    }
+  };
+
+  useEffect(() => {
+    void countTasks();
+  }, []);
+
   useEffect(() => {
     // The cache renders instantly and keeps the list usable with no connection; the network
     // refresh then updates it in place.
@@ -29,6 +51,9 @@ export default function MachinesScreen() {
       try {
         await refreshCatalog();
         await load();
+        // Задачи приезжают тем же обновлением каталога, поэтому счётчик пересчитывается здесь же:
+        // иначе пришедшая задача показалась бы только при следующем открытии приложения.
+        await countTasks();
         setStatus(null);
       } catch {
         setStatus('Показан сохранённый список: сервер недоступен');
@@ -65,12 +90,16 @@ export default function MachinesScreen() {
     [machines],
   );
 
+  // Открытые задачи читаются из локального кэша, а не из сети: плашка обязана появиться и тогда,
+  // когда техник открыл приложение уже без связи (DECISION-051).
+  const [openTasks, setOpenTasks] = useState(0);
+
   return (
     <>
       {status && <div className="alert warn">{status}</div>}
       {scanError && <div className="alert error">{scanError}</div>}
 
-      <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+      <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <input
           type="text"
           className="search-big"
@@ -94,6 +123,29 @@ export default function MachinesScreen() {
             navigate(`/service/${encodeURIComponent(machineNumber)}`);
           }}
         />
+
+        {/* Оповещение занимает пустое место справа от кнопки сканирования: на телефоне строка
+            поиска забирает всю ширину, кнопка уходит на следующую строку, и правее неё остаётся
+            незанятая половина экрана — самое заметное место, мимо которого техник не пройдёт. */}
+        {openTasks > 0 && (
+          <Link to="/tasks" className="task-alert" style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
+            <div
+              className="row"
+              style={{
+                background: 'var(--brass)',
+                border: '1px solid var(--brass-deep)',
+                borderRadius: 'var(--r-md)',
+                padding: '10px 12px',
+                gap: 8,
+              }}
+            >
+              <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>
+                ☑ {openTasks} {taskWord(openTasks)}
+              </span>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 12.5 }}>Открыть →</span>
+            </div>
+          </Link>
+        )}
       </div>
 
       {user?.role === 'TECHNICIAN' && overdueCount > 0 && (
