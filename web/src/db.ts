@@ -219,3 +219,24 @@ export async function readTaskOutbox(): Promise<QueuedTaskClose[]> {
 export async function removeTaskClose(taskId: number): Promise<void> {
   await (await db()).delete('taskOutbox', taskId);
 }
+
+/**
+ * Очистка локального кэша при выходе из системы (DECISION-052).
+ *
+ * Телефон может быть общим, и кэш принадлежит конкретному человеку: аппараты — его зоне
+ * ответственности, задачи — лично ему. Без очистки следующий вошедший видит чужой список, пока не
+ * отработает обновление каталога, а у администратора в кэше оказываются вообще все задачи системы.
+ *
+ * Очереди НЕ трогаются намеренно. В outbox лежат неотправленные обслуживания вместе с
+ * фотографиями счётчиков — единственный экземпляр этой работы, и стирать его при выходе значило бы
+ * терять деньги техника. Он выйдет, войдёт снова и доотправит.
+ */
+export async function clearCachedCatalog(): Promise<void> {
+  const instance = await db();
+  for (const store of ['machines', 'toys', 'tasks'] as const) {
+    const tx = instance.transaction(store, 'readwrite');
+    await tx.store.clear();
+    await tx.done;
+  }
+  await instance.delete('meta', 'machines_synced_at');
+}

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken, setToken } from './api';
+import { clearCachedCatalog } from './db';
 
 export type Role = 'ADMIN' | 'TECHNICIAN' | 'BOSS';
 
@@ -61,6 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem(USER_KEY);
     setUser(null);
+    // Кэш принадлежит конкретному человеку: аппараты — его зоне ответственности, задачи — лично
+    // ему. Без очистки следующий вошедший на этом же телефоне видит чужой список (DECISION-052).
+    // Очереди неотправленной работы при этом сохраняются: там единственный экземпляр обслуживаний
+    // вместе с фотографиями счётчиков.
+    void clearCachedCatalog();
     // The router never resets the URL on its own: without this, whichever page happened to be
     // open at logout (e.g. a specific machine's service form) stays in the address bar and is
     // exactly what greets the next person who logs in on this device/browser, regardless of who

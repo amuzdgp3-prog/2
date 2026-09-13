@@ -31,6 +31,9 @@ export default function MachinesScreen() {
     setSyncedAt((await getMeta<string>('machines_synced_at')) ?? null);
   };
 
+  // Считается только технику: у администратора в списке задач лежат ВСЕ задачи системы, а не его
+  // личные, и плашка «задача для вас» на вкладке «Аппараты» вводила бы в заблуждение
+  // (DECISION-052).
   const countTasks = async (): Promise<void> => {
     try {
       const tasks = await readTasks();
@@ -127,7 +130,7 @@ export default function MachinesScreen() {
         {/* Оповещение занимает пустое место справа от кнопки сканирования: на телефоне строка
             поиска забирает всю ширину, кнопка уходит на следующую строку, и правее неё остаётся
             незанятая половина экрана — самое заметное место, мимо которого техник не пройдёт. */}
-        {openTasks > 0 && (
+        {user?.role === 'TECHNICIAN' && openTasks > 0 && (
           <Link to="/tasks" className="task-alert" style={{ textDecoration: 'none', flex: 1, minWidth: 0 }}>
             <div
               className="row"
