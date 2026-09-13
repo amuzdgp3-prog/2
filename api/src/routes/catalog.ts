@@ -863,14 +863,19 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
   app.get('/api/staff', auth, async (request) => {
     assertAdmin(request.actor);
     const result = await pool.query(
-      'SELECT id, login, full_name, role, is_active FROM staff ORDER BY full_name',
+      'SELECT id, login, full_name, role, is_active, is_field_technician FROM staff ORDER BY full_name',
     );
     return result.rows;
   });
 
   app.patch<{
     Params: { id: string };
-    Body: { fullName?: string; role?: 'ADMIN' | 'TECHNICIAN' | 'BOSS'; isActive?: boolean };
+    Body: {
+      fullName?: string;
+      role?: 'ADMIN' | 'TECHNICIAN' | 'BOSS';
+      isActive?: boolean;
+      isFieldTechnician?: boolean;
+    };
   }>('/api/staff/:id', auth, async (request) =>
     withTransaction((client) =>
       updateStaffProfile(client, request.actor, Number(request.params.id), request.body),

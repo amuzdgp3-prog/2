@@ -556,21 +556,43 @@ export async function technicianReport(
     return `$${params.length}`;
   };
 
-  const conditions: string[] = ['s.technician_id IS NOT NULL'];
+  // Служебные записи исключаются: под «Админом» залита вся историческая база, и без этого
+  // фильтра он занимал бы первую строку с отрывом в два порядка (DECISION-046/049).
+  const conditions: string[] = ['s.technician_id IS NOT NULL', 'st.is_field_technician'];
   if (filters.from) conditions.push(`s.service_date >= ${push(filters.from)}::date`);
   if (filters.to) conditions.push(`s.service_date <= ${push(filters.to)}::date`);
+  if (filters.technicianId) conditions.push(`s.technician_id = ${push(filters.technicianId)}`);
   const scope = machineScopePredicate(actor, 's.machine_number', params.length + 1);
   params.push(...scope.params);
   conditions.push(scope.sql);
 
+  // Факты, а не производные метрики эффективности: сколько выездов, на скольких аппаратах, сколько
+  // игрушек вложено и сколько денег собрано за период. Лаговая атрибуция выручки «предыдущему
+  // технику» здесь сознательно не делается — на текущих данных пар для неё почти нет, и рейтинг
+  // сравнил бы одного человека с самим собой (DECISION-046).
   const result = await client.query(
-    `SELECT st.id, st.full_name, COUNT(*)::int AS services,
-            SUM(s.new_games) AS new_games, SUM(s.revenue) AS revenue,
-            SUM(s.cash_amount) AS cash, SUM(s.cashless_amount) AS cashless,
-            SUM(s.toy_cost) AS toy_cost
-     FROM services s
-     JOIN staff st ON st.id = s.technician_id
-     WHERE ${conditions.join(' AND ')}
+    `WITH filtered AS (
+       SELECT s.id, s.technician_id, s.machine_number, s.service_date, s.new_games,
+              s.revenue, s.cash_amount, s.cashless_amount, s.toy_cost
+       FROM services s
+       JOIN staff st ON st.id = s.technician_id
+       WHERE ${conditions.join(' AND ')}
+     )
+     SELECT st.id, st.full_name,
+            COUNT(*)::int AS services,
+            COUNT(DISTINCT f.machine_number)::int AS machines,
+            MIN(f.service_date) AS first_service,
+            MAX(f.service_date) AS last_service,
+            SUM(f.new_games) AS new_games,
+            SUM(f.revenue) AS revenue,
+            SUM(f.cash_amount) AS cash,
+            SUM(f.cashless_amount) AS cashless,
+            SUM(f.toy_cost) AS toy_cost,
+            COALESCE(SUM((
+              SELECT SUM(td.quantity) FROM toy_distributions td WHERE td.service_id = f.id
+            )), 0)::int AS toys_given
+     FROM filtered f
+     JOIN staff st ON st.id = f.technician_id
      GROUP BY st.id, st.full_name
      ORDER BY st.full_name`,
     params,

@@ -4,7 +4,8 @@ import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { hashPassword } from '../lib/password.js';
 import { assertAdmin } from '../lib/scope.js';
 
-const STAFF_COLUMNS = 'id, login, full_name, role, is_active, created_at, updated_at';
+const STAFF_COLUMNS =
+  'id, login, full_name, role, is_active, is_field_technician, created_at, updated_at';
 
 /**
  * Guards against locking everyone out: an operation that would leave zero active ADMIN accounts
@@ -31,7 +32,7 @@ export async function updateStaffProfile(
   client: Client,
   actor: Actor,
   staffId: number,
-  patch: { fullName?: string; role?: Role; isActive?: boolean },
+  patch: { fullName?: string; role?: Role; isActive?: boolean; isFieldTechnician?: boolean },
 ): Promise<Record<string, unknown>> {
   assertAdmin(actor);
 
@@ -50,10 +51,19 @@ export async function updateStaffProfile(
     `UPDATE staff SET
        full_name = COALESCE($2, full_name),
        role      = COALESCE($3::staff_role, role),
-       is_active = COALESCE($4, is_active)
+       is_active = COALESCE($4, is_active),
+       -- Учитывать ли сотрудника в отчёте по техникам: служебные записи снимаются этим флагом,
+       -- роль для отличия не годится (DECISION-049).
+       is_field_technician = COALESCE($5, is_field_technician)
      WHERE id = $1
      RETURNING ${STAFF_COLUMNS}`,
-    [staffId, patch.fullName ?? null, patch.role ?? null, patch.isActive ?? null],
+    [
+      staffId,
+      patch.fullName ?? null,
+      patch.role ?? null,
+      patch.isActive ?? null,
+      patch.isFieldTechnician ?? null,
+    ],
   );
 
   await auditUpdate(client, actor, 'staff', staffId, before.rows[0], after.rows[0]);
