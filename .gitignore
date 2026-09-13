@@ -4,3 +4,4 @@ dist/
 data/photos/
 *.tsbuildinfo
 backups/
+.import-fedor-images/
