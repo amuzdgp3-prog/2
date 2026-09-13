@@ -1,7 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../api';
+import { formatMoney } from '../../calc';
 import type { Machine, TabProps } from './types';
 import { Section } from './shared/Section';
+
+/**
+ * datetime-local принимает местное время без секунд. Обрезка до минуты всегда даёт момент не
+ * позже исходного, поэтому первая непривязанная транзакция остаётся внутри новой привязки.
+ */
+function toLocalInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export function TerminalsTab({ onDone, onError }: TabProps) {
   const [terminals, setTerminals] = useState<Array<Record<string, string | number | null>>>([]);
@@ -9,6 +20,7 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
   const [serial, setSerial] = useState('');
   const [provider, setProvider] = useState('');
   const [bindTo, setBindTo] = useState<Record<number, string>>({});
+  const [bindFrom, setBindFrom] = useState<Record<number, string>>({});
 
   const load = () => {
     api.get<Array<Record<string, string | number | null>>>('/api/terminals').then(setTerminals).catch(onError);
@@ -56,6 +68,16 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
               <div className="muted">
                 {terminal.bound_machine ? `на аппарате № ${terminal.bound_machine}` : 'на складе'}
               </div>
+              {Number(terminal.unmatched_count ?? 0) > 0 && (
+                <div className="alert error" style={{ marginTop: 6 }}>
+                  Непривязанный безнал: {terminal.unmatched_count} транз. на{' '}
+                  {formatMoney(terminal.unmatched_amount ?? 0)} ₽, первая —{' '}
+                  {new Date(String(terminal.earliest_unmatched)).toLocaleString('ru-RU')}.
+                  {terminal.bound_machine
+                    ? ' Эти деньги пришли до текущей привязки.'
+                    : ' При привязке поставьте дату начала не позже первой транзакции.'}
+                </div>
+              )}
             </div>
             {terminal.bound_machine ? (
               <button
@@ -75,7 +97,7 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
                 Снять
               </button>
             ) : (
-              <div className="row" style={{ gap: 6 }}>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                 <select
                   value={bindTo[terminal.id as number] ?? ''}
                   onChange={(event) =>
@@ -89,13 +111,38 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
                     </option>
                   ))}
                 </select>
+                <input
+                  type="datetime-local"
+                  title="Дата начала привязки; пусто — с текущего момента"
+                  value={bindFrom[terminal.id as number] ?? ''}
+                  onChange={(event) =>
+                    setBindFrom({ ...bindFrom, [terminal.id as number]: event.target.value })
+                  }
+                />
+                {terminal.earliest_unmatched && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBindFrom({
+                        ...bindFrom,
+                        [terminal.id as number]: toLocalInput(String(terminal.earliest_unmatched)),
+                      })
+                    }
+                  >
+                    с первой транзакции
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     try {
                       await api.post('/api/terminals/bind', {
                         terminalId: terminal.id,
                         machineNumber: bindTo[terminal.id as number],
-                        startedAt: new Date().toISOString(),
+                        // Пусто — «с этого момента», как было всегда. Дата из поля — привязка
+                        // задним числом, чтобы забрать безнал, пришедший до заведения терминала.
+                        startedAt: bindFrom[terminal.id as number]
+                          ? new Date(bindFrom[terminal.id as number]).toISOString()
+                          : new Date().toISOString(),
                       });
                       onDone('Терминал привязан');
                       load();
