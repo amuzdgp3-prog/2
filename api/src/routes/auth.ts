@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool } from '../db/pool.js';
 import { unauthorized } from '../lib/errors.js';
+import { assertLoginAllowed, recordLoginFailure, recordLoginSuccess } from '../lib/loginThrottle.js';
 import { verifyPassword } from '../lib/password.js';
 
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -18,14 +19,17 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const { login, password } = request.body;
+      assertLoginAllowed(login);
       const result = await pool.query(
         'SELECT id, login, full_name, role, password_hash, is_active FROM staff WHERE login = $1',
         [login],
       );
       const staff = result.rows[0];
       if (!staff || !staff.is_active || !(await verifyPassword(password, staff.password_hash))) {
+        recordLoginFailure(login);
         throw unauthorized('неверный логин или пароль');
       }
+      recordLoginSuccess(login);
 
       const token = app.jwt.sign(
         { sub: staff.id, login: staff.login, role: staff.role },
