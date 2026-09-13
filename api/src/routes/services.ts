@@ -25,6 +25,10 @@ const serviceBodySchema = {
     testGames: { type: 'integer', minimum: 0 },
     photoObjectKey: { type: 'string', minLength: 1 },
     notes: { type: 'string' },
+    // Только администратор реально может им воспользоваться (commands/services.ts,
+    // DECISION-055) — задавать бумажный бланк техника задним числом. Техник, приславший это же
+    // поле, будет проигнорирован там же, не здесь: схема тут не знает про роль.
+    technicianId: { type: ['integer', 'null'] },
     toys: {
       type: 'array',
       items: {

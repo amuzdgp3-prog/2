@@ -20,6 +20,12 @@ export interface ServiceInput {
    * либо присылает то же самое с этим флагом.
    */
   confirmCounterJump?: boolean;
+  /**
+   * Кому засчитать визит (DECISION-055). Только для администратора: он может внести бумажный
+   * бланк техника задним числом и указать, чей это визит, — сам техник указать чужой id не может,
+   * ниже это форсируется через actor.id независимо от того, что он прислал.
+   */
+  technicianId?: number | null;
   machineNumber: string;
   occurredAt: string;
   gameCounter: number;
@@ -251,6 +257,24 @@ export async function createService(
   }
   await assertPhotoExists(client, input.photoObjectKey);
 
+  // Администратор может явно указать техника (для бумажных бланков, внесённых задним числом);
+  // сам техник — только себя, id из тела запроса в этом случае полностью игнорируется, а не просто
+  // перезаписывается тем же значением, чтобы не создать иллюзию, что параметр вообще учитывается.
+  let assignedTechnicianId: number | null = actor.role === 'TECHNICIAN' ? actor.id : null;
+  if (actor.role === 'ADMIN' && input.technicianId != null) {
+    const technician = await client.query<{ role: string; is_active: boolean }>(
+      'SELECT role, is_active FROM staff WHERE id = $1',
+      [input.technicianId],
+    );
+    if (technician.rowCount === 0 || technician.rows[0].role !== 'TECHNICIAN') {
+      throw badRequest('INVALID_TECHNICIAN', 'указанный сотрудник не является техником');
+    }
+    if (!technician.rows[0].is_active) {
+      throw badRequest('INVALID_TECHNICIAN', 'указанный техник отключён');
+    }
+    assignedTechnicianId = input.technicianId;
+  }
+
   const machine = await client.query<{ price_per_game: string; counter_divisor: string }>(
     'SELECT price_per_game, counter_divisor FROM machines WHERE machine_number = $1',
     [input.machineNumber],
@@ -295,7 +319,7 @@ export async function createService(
     notes: input.notes,
     toys: input.toys ?? [],
     kind: 'REGULAR',
-    technicianId: actor.role === 'TECHNICIAN' ? actor.id : null,
+    technicianId: assignedTechnicianId,
   });
 
   if (alreadyExisted) {
