@@ -1,5 +1,6 @@
 import type { Client } from '../db/pool.js';
 import { assertNoCounterJump } from '../domain/counterAnomaly.js';
+import { assertCountersMoveForward } from '../domain/counterMonotonicity.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
 import { auditDelete, auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -250,19 +251,33 @@ export async function createService(
   }
   await assertPhotoExists(client, input.photoObjectKey);
 
+  const machine = await client.query<{ price_per_game: string; counter_divisor: string }>(
+    'SELECT price_per_game, counter_divisor FROM machines WHERE machine_number = $1',
+    [input.machineNumber],
+  );
+  const divisor = Number(machine.rows[0]?.counter_divisor) > 0
+    ? Number(machine.rows[0].counter_divisor)
+    : 1;
+
+  // Монотонность проверяется всегда: показание меньше предыдущего — это не «подозрительно», а
+  // невозможно, и подтверждать тут нечего.
+  await assertCountersMoveForward(client, {
+    placementId: placement.id,
+    occurredAt: input.occurredAt,
+    gameCounter: input.gameCounter,
+    prizeCounter: input.prizeCounter,
+    testGames: input.testGames ?? 0,
+    counterDivisor: divisor,
+  });
+
   if (!input.confirmCounterJump) {
-    const machine = await client.query<{ price_per_game: string; counter_divisor: string }>(
-      'SELECT price_per_game, counter_divisor FROM machines WHERE machine_number = $1',
-      [input.machineNumber],
-    );
-    const divisor = Number(machine.rows[0]?.counter_divisor);
     await assertNoCounterJump(client, {
       placementId: placement.id,
       machineNumber: input.machineNumber,
       occurredAt: input.occurredAt,
       gameCounter: input.gameCounter,
       testGames: input.testGames ?? 0,
-      counterDivisor: divisor > 0 ? divisor : 1,
+      counterDivisor: divisor,
       pricePerGame: Number(machine.rows[0]?.price_per_game ?? 0),
     });
   }

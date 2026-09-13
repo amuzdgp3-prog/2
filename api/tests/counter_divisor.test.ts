@@ -130,7 +130,12 @@ describe('counter divisor', () => {
     });
 
     assert.equal(created.status, 400);
-    assert.equal((created.body as { error: string }).error, 'NEGATIVE_NEW_GAMES');
+    // Раньше здесь ожидался общий NEGATIVE_NEW_GAMES из пересчёта цепочки. С DECISION-048 этот
+    // случай ловится раньше и называется своим именем: техник видит «тестовых игр указано 20, а
+    // счётчик вырос всего на 5», а не «расчёт даёт отрицательное количество новых игр: проверьте
+    // показания и тестовые игры», где смешаны две разные причины. Отказ тот же, причина точнее.
+    assert.equal((created.body as { error: string }).error, 'TEST_GAMES_EXCEED_GROWTH');
+    assert.match(String((created.body as { message: string }).message), /20/);
 
     const services = await pool.query('SELECT COUNT(*)::int AS count FROM services WHERE machine_number = $1', [
       'M-D4',
