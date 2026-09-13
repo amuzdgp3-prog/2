@@ -1053,9 +1053,28 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
   // ---------------------------------------------------------------- terminals
   app.get('/api/terminals', auth, async () => {
     const result = await pool.query(
-      `SELECT t.*, b.machine_number AS bound_machine, b.started_at AS bound_since
+      // unmatched_* — безнал этого терминала, который не попал ни в одну привязку. Админке это
+      // нужно, чтобы при привязке предложить дату начала с первой такой транзакции: иначе
+      // терминал, физически поставленный раньше, чем его завели в систему, оставит эти дни
+      // непривязанными — ровно так в миграции 06.09 повисли 88 250 ₽ (DECISION-038/043).
+      // Одна группировка по непривязанным строкам вместо подзапроса на каждый терминал: частичный
+      // индекс cashless_unmatched_idx не содержит номера терминала, и LATERAL-вариант пробегал его
+      // заново для каждого из 85 терминалов.
+      `SELECT t.*, b.machine_number AS bound_machine, b.started_at AS bound_since,
+              coalesce(u.unmatched_count, 0) AS unmatched_count,
+              coalesce(u.unmatched_amount, 0) AS unmatched_amount,
+              u.earliest_unmatched
        FROM terminals t
        LEFT JOIN terminal_bindings b ON b.terminal_id = t.id AND b.ended_at IS NULL
+       LEFT JOIN (
+         SELECT terminal_external_id,
+                count(*)::int AS unmatched_count,
+                sum(amount) AS unmatched_amount,
+                min(occurred_at) AS earliest_unmatched
+         FROM cashless_transactions
+         WHERE match_status = 'UNMATCHED'
+         GROUP BY terminal_external_id
+       ) u ON u.terminal_external_id = t.serial
        ORDER BY t.serial`,
     );
     return result.rows;
