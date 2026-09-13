@@ -7,9 +7,10 @@ import type { Machine } from '../types';
  * (`.sticker-print-sheet`), а не отдельным PDF — в web нет ни одной PDF-библиотеки, а печать
  * браузера уже даёт сохранение в PDF там, где это нужно, без новой зависимости.
  *
- * Размер наклейки 7×3 см, 3 в ряд — то же соотношение, что в generate_stickers.py (офлайн-скрипт
- * владельца для наклеек по свободному списку адресов, не связанному с базой). Эта форма кладёт на
- * наклейку реальный адрес аппарата из базы и добавляет QR-код, которого в том скрипте не было.
+ * Размер наклейки 7×6.5 см по требованию владельца: крупный QR-код сверху, под ним адрес. Число
+ * колонок подбирается под ширину листа, см. .sticker-grid в styles.css. Офлайн-скрипт владельца
+ * generate_stickers.py делал наклейки 7×3 см по свободному списку адресов, не связанному с базой,
+ * и без QR-кода; эта форма берёт реальный адрес аппарата из базы.
  */
 export function StickerSheet({ machines }: { machines: Machine[] }) {
   return (
@@ -17,7 +18,8 @@ export function StickerSheet({ machines }: { machines: Machine[] }) {
       <div className="sticker-grid">
         {machines.map((machine) => (
           <div className="sticker-label" key={machine.machine_number}>
-            <QrCode value={machineQrValue(machine.machine_number)} size={72} />
+            {/* 140px ≈ 3.7 см — максимум, при котором под кодом остаётся место на две строки адреса. */}
+            <QrCode value={machineQrValue(machine.machine_number)} size={140} />
             <div className="sticker-label-text">
               <div className="sticker-label-number">№ {machine.machine_number}</div>
               <div className="sticker-label-address">{machine.address ?? machine.location_name ?? ''}</div>

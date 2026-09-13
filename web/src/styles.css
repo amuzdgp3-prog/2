@@ -721,26 +721,34 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
     left: 0;
   }
 }
+/* Размер наклейки 7×6.5 см задан владельцем. Колонки не фиксируются числом, а подбираются под
+   ширину листа (auto-fill): при 7 см и полях 8 мм на A4 помещаются две в ряд и четыре ряда, то
+   есть восемь наклеек на страницу. Жёсткие «три в ряд» дали бы ровно 21 см — всю ширину A4 без
+   единого миллиметра полей, куда ни один принтер не печатает. */
+@page { margin: 8mm; }
+
 .sticker-grid {
   display: grid;
-  grid-template-columns: repeat(3, 7cm);
+  grid-template-columns: repeat(auto-fill, 7cm);
   gap: 2mm;
 }
 .sticker-label {
   width: 7cm;
-  height: 3cm;
+  height: 6.5cm;
   box-sizing: border-box;
   border: 1px dashed #999;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3mm;
-  padding: 2mm;
+  padding: 3mm;
   break-inside: avoid;
 }
-.sticker-label-text { min-width: 0; }
-.sticker-label-number { font-weight: 600; font-size: 12px; }
+.sticker-label-text { width: 100%; text-align: center; }
+.sticker-label-number { font-weight: 600; font-size: 13px; }
 .sticker-label-address {
-  font-size: 11px;
-  line-height: 1.25;
+  font-size: 13px;
+  line-height: 1.3;
   overflow-wrap: break-word;
 }
