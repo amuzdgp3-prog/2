@@ -1,11 +1,15 @@
 import { ApiError, OfflineError, api } from './api';
 import {
   cacheMachines,
+  cacheTasks,
   cacheToys,
   markRejected,
   readOutbox,
+  readTaskOutbox,
   removeFromOutbox,
+  removeTaskClose,
   type CachedMachine,
+  type CachedTask,
   type QueuedService,
 } from './db';
 
@@ -42,6 +46,8 @@ async function runSync(): Promise<SyncResult> {
   const pending = queue.filter((item) => item.status === 'PENDING');
   let sent = 0;
   let rejected = 0;
+
+  await syncTaskCloses();
 
   for (const item of pending) {
     try {
@@ -113,4 +119,30 @@ export async function refreshCatalog(): Promise<void> {
   await cacheMachines(machines);
   const toys = await api.get<Array<{ id: number; name: string; unit_cost: string }>>('/api/toys');
   await cacheToys(toys);
+  // Задачи кэшируются вместе со справочником: техник должен видеть список дел на маршрут, уже
+  // находясь в подвале торгового центра без связи (DECISION-050).
+  const tasks = await api.get<CachedTask[]>('/api/tasks?status=OPEN');
+  await cacheTasks(tasks);
+}
+
+/**
+ * Отправка закрытий задач, сделанных офлайн. Идёт отдельно от очереди обслуживаний: у задачи нет
+ * фотографии и нет цепочки счётчиков, её отказ не должен блокировать отправку денег, а отказ
+ * обслуживания — мешать отметить выполненное поручение.
+ */
+async function syncTaskCloses(): Promise<void> {
+  for (const item of await readTaskOutbox()) {
+    try {
+      await api.post(`/api/tasks/${item.taskId}/close`, { note: item.note });
+      await removeTaskClose(item.taskId);
+    } catch (error) {
+      if (error instanceof OfflineError) return;
+      // Задача удалена или закрыта кем-то другим — повторять бессмысленно, снимаем из очереди.
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        await removeTaskClose(item.taskId);
+        continue;
+      }
+      return;
+    }
+  }
 }

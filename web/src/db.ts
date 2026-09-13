@@ -58,17 +58,53 @@ interface MonitorSchema extends DBSchema {
   outbox: { key: string; value: QueuedService };
   toys: { key: number; value: { id: number; name: string; unit_cost: string } };
   meta: { key: string; value: unknown };
+  tasks: { key: number; value: CachedTask };
+  taskOutbox: { key: number; value: QueuedTaskClose };
+}
+
+/** Задача, скачанная для работы офлайн (DECISION-050). */
+export interface CachedTask {
+  id: number;
+  title: string;
+  details: string;
+  status: 'OPEN' | 'DONE' | 'CANCELLED';
+  machine_number: string | null;
+  machine_address: string | null;
+  location_name: string | null;
+  assigned_to: number | null;
+  assigned_name: string | null;
+  due_date: string | null;
+}
+
+/**
+ * Закрытие задачи, сделанное офлайн. Ключ — id самой задачи, а не случайный: техник может нажать
+ * «выполнено» дважды, и очередь не должна превращать это в две отправки. Сервер тоже идемпотентен,
+ * но полагаться только на него значило бы гонять лишние запросы с телефона в поле.
+ */
+export interface QueuedTaskClose {
+  taskId: number;
+  note: string;
+  closedAt: string;
 }
 
 let database: Promise<IDBPDatabase<MonitorSchema>> | null = null;
 
 function db(): Promise<IDBPDatabase<MonitorSchema>> {
-  database ??= openDB<MonitorSchema>('apixspb-monitor', 1, {
-    upgrade(instance) {
-      instance.createObjectStore('machines', { keyPath: 'machine_number' });
-      instance.createObjectStore('outbox', { keyPath: 'localId' });
-      instance.createObjectStore('toys', { keyPath: 'id' });
-      instance.createObjectStore('meta');
+  database ??= openDB<MonitorSchema>('apixspb-monitor', 2, {
+    upgrade(instance, oldVersion) {
+      // Версия 1 уже стоит на телефонах техников, поэтому новые хранилища добавляются отдельной
+      // веткой, а не пересозданием базы: иначе обновление приложения стёрло бы неотправленные
+      // черновики вместе с фотографиями счётчиков.
+      if (oldVersion < 1) {
+        instance.createObjectStore('machines', { keyPath: 'machine_number' });
+        instance.createObjectStore('outbox', { keyPath: 'localId' });
+        instance.createObjectStore('toys', { keyPath: 'id' });
+        instance.createObjectStore('meta');
+      }
+      if (oldVersion < 2) {
+        instance.createObjectStore('tasks', { keyPath: 'id' });
+        instance.createObjectStore('taskOutbox', { keyPath: 'taskId' });
+      }
     },
   });
   return database;
@@ -151,4 +187,35 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {
   return (await db()).get('meta', key) as Promise<T | undefined>;
+}
+
+export async function cacheTasks(tasks: CachedTask[]): Promise<void> {
+  const instance = await db();
+  const tx = instance.transaction('tasks', 'readwrite');
+  await tx.store.clear();
+  for (const task of tasks) await tx.store.put(task);
+  await tx.done;
+}
+
+export async function readTasks(): Promise<CachedTask[]> {
+  return (await db()).getAll('tasks');
+}
+
+/**
+ * Ставит закрытие задачи в очередь и сразу помечает задачу выполненной в локальном кэше, чтобы
+ * техник видел результат немедленно, а не после возвращения связи.
+ */
+export async function queueTaskClose(taskId: number, note: string): Promise<void> {
+  const instance = await db();
+  await instance.put('taskOutbox', { taskId, note, closedAt: new Date().toISOString() });
+  const task = await instance.get('tasks', taskId);
+  if (task) await instance.put('tasks', { ...task, status: 'DONE' });
+}
+
+export async function readTaskOutbox(): Promise<QueuedTaskClose[]> {
+  return (await db()).getAll('taskOutbox');
+}
+
+export async function removeTaskClose(taskId: number): Promise<void> {
+  await (await db()).delete('taskOutbox', taskId);
 }
