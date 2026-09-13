@@ -27,7 +27,14 @@ import { resolveServiceInterval } from '../domain/serviceIntervals.js';
 import { auditDelete, auditInsert, auditUpdate } from '../lib/audit.js';
 import { hashPassword } from '../lib/password.js';
 import { deleteStaff, setStaffPassword, updateStaffProfile } from '../commands/staff.js';
-import { notFound } from '../lib/errors.js';
+import { badRequest, notFound } from '../lib/errors.js';
+import {
+  createMachineType,
+  deleteMachineType,
+  listMachineTypes,
+  renameMachineType,
+  setMachineTypeActive,
+} from '../commands/machineTypes.js';
 import {
   applyToySetInBulk,
   assignToySetToMachine,
@@ -1108,4 +1115,38 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     );
     return result.rows;
   });
+
+  // ----------------------------------------------------------- типы аппаратов
+  app.get('/api/machine-types', auth, async (request) =>
+    withTransaction((client) => listMachineTypes(client, request.actor)));
+
+  app.post<{ Body: { name: string } }>('/api/machine-types', auth, async (request) =>
+    withTransaction((client) => createMachineType(client, request.actor, request.body)));
+
+  app.patch<{ Params: { name: string }; Body: { name?: string; isActive?: boolean } }>(
+    '/api/machine-types/:name',
+    auth,
+    async (request) =>
+      withTransaction(async (client) => {
+        const current = decodeURIComponent(request.params.name);
+        // Переименование и переключение активности приходят одним PATCH, но выполняются по
+        // очереди: после переименования дальше работаем уже с новым именем.
+        let name = current;
+        let row = null;
+        if (request.body.name !== undefined) {
+          row = await renameMachineType(client, request.actor, current, { name: request.body.name });
+          name = row.name;
+        }
+        if (request.body.isActive !== undefined) {
+          row = await setMachineTypeActive(client, request.actor, name, request.body.isActive);
+        }
+        if (!row) throw badRequest('NOTHING_TO_UPDATE', 'не передано ни одного изменяемого поля');
+        return row;
+      }));
+
+  app.delete<{ Params: { name: string } }>('/api/machine-types/:name', auth, async (request) =>
+    withTransaction(async (client) => {
+      await deleteMachineType(client, request.actor, decodeURIComponent(request.params.name));
+      return { ok: true };
+    }));
 }

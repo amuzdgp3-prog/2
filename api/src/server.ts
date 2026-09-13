@@ -31,6 +31,10 @@ declare module 'fastify' {
  * business rule they protect.
  */
 const CONSTRAINT_MESSAGES: Record<string, { code: string; message: string }> = {
+  machines_machine_type_fkey: {
+    code: 'UNKNOWN_MACHINE_TYPE',
+    message: 'такого типа аппарата нет в справочнике — заведите его в разделе «Типы»',
+  },
   services_one_per_placement_date: {
     code: 'SERVICE_DATE_TAKEN',
     message: 'на этот аппарат уже есть обслуживание за эту дату',

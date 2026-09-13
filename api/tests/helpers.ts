@@ -128,6 +128,7 @@ export async function installTestMachine(
   context: TestContext,
   input: {
     machineNumber: string;
+    machineType?: string;
     pricePerGame: number | string;
     counterDivisor?: number | string | null;
     initialGameCounter?: number;
@@ -158,6 +159,7 @@ export async function installTestMachine(
     headers: authHeader(context.adminToken),
     payload: {
       machineNumber: input.machineNumber,
+      ...(input.machineType ? { machineType: input.machineType } : {}),
       pricePerGame: input.pricePerGame,
       counterDivisor: input.counterDivisor ?? 1,
       locationId,
