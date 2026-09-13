@@ -60,7 +60,7 @@ async function runSync(): Promise<SyncResult> {
         return { sent, rejected, remaining: pending.length - sent - rejected, offline: false };
       }
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-        await markRejected(item.localId, error.message);
+        await markRejected(item.localId, error.message, error.code);
         rejected += 1;
         continue;
       }
@@ -87,6 +87,9 @@ async function uploadOne(item: QueuedService): Promise<void> {
     notes: item.notes,
     toys: item.toys,
     photoObjectKey: uploaded.objectKey,
+    // Ставится, только когда техник уже увидел предупреждение о скачке счётчика и подтвердил
+    // показание вручную в черновиках (DECISION-048).
+    ...(item.confirmCounterJump ? { confirmCounterJump: true } : {}),
   });
 }
 

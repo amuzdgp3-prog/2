@@ -44,6 +44,13 @@ export interface QueuedService {
   queuedAt: string;
   status: 'PENDING' | 'REJECTED';
   error?: string;
+  /**
+   * Подтверждение подозрительного скачка счётчика (DECISION-048). Ставится только вручную, когда
+   * техник перепроверил показание и настаивает на нём; тогда сервер перестаёт возражать.
+   */
+  confirmCounterJump?: boolean;
+  /** Код ошибки сервера — по нему черновик показывает подходящее действие, а не общий текст. */
+  errorCode?: string;
 }
 
 interface MonitorSchema extends DBSchema {
@@ -110,11 +117,32 @@ export async function removeFromOutbox(localId: string): Promise<void> {
   await (await db()).delete('outbox', localId);
 }
 
-export async function markRejected(localId: string, error: string): Promise<void> {
+export async function markRejected(
+  localId: string,
+  error: string,
+  errorCode?: string,
+): Promise<void> {
   const instance = await db();
   const item = await instance.get('outbox', localId);
   if (!item) return;
-  await instance.put('outbox', { ...item, status: 'REJECTED', error });
+  await instance.put('outbox', { ...item, status: 'REJECTED', error, errorCode });
+}
+
+/**
+ * Повторная постановка отклонённого черновика в очередь с подтверждением скачка счётчика
+ * (DECISION-048): техник перепроверил показание и настаивает на нём.
+ */
+export async function confirmCounterJumpAndRequeue(localId: string): Promise<void> {
+  const instance = await db();
+  const item = await instance.get('outbox', localId);
+  if (!item) return;
+  await instance.put('outbox', {
+    ...item,
+    status: 'PENDING',
+    error: undefined,
+    errorCode: undefined,
+    confirmCounterJump: true,
+  });
 }
 
 export async function setMeta(key: string, value: unknown): Promise<void> {

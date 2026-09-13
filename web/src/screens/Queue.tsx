@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MachineTag } from '../components/ui/MachineTag';
-import { readOutbox, removeFromOutbox, type QueuedService } from '../db';
+import { confirmCounterJumpAndRequeue, readOutbox, removeFromOutbox, type QueuedService } from '../db';
 import { syncOutbox } from '../sync';
 
 /** Черновики (docs/design/mockups/03_tech_drafts.html): ожидающие отправки и отклонённые сервером. */
@@ -112,6 +112,23 @@ export default function QueueScreen({ onChange }: { onChange: () => void }) {
             >
               {item.error}
             </div>
+            {item.errorCode === 'COUNTER_JUMP_SUSPECTED' && (
+              <button
+                className="btn btn-ghost btn-block"
+                style={{ marginTop: 10 }}
+                onClick={async () => {
+                  if (!confirm(
+                    'Показание перепроверено и верно?\n\n'
+                    + 'Подтвердите, только если убедились, что счётчик переписан с ЭТОГО аппарата. '
+                    + 'Если это показание другого аппарата, вернитесь и исправьте его.',
+                  )) return;
+                  await confirmCounterJumpAndRequeue(item.localId);
+                  await load();
+                }}
+              >
+                Показание верное, отправить
+              </button>
+            )}
             <div className="row" style={{ marginTop: 10, gap: 8 }}>
               <Link
                 to={`/service/${encodeURIComponent(item.machineNumber)}/${item.localId}`}
