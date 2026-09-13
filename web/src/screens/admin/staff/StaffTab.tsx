@@ -95,6 +95,26 @@ export function StaffTab({ onDone, onError }: TabProps) {
               </button>
             )}
             <button
+              onClick={async () => {
+                const turningOff = person.is_active;
+                if (turningOff && !confirm(
+                  `Отключить сотрудника «${person.full_name}»?\n\n`
+                  + 'Вход по его логину перестанет работать сразу, вместе с уже выданным токеном '
+                  + 'на его телефоне. История обслуживаний сохранится полностью. '
+                  + 'Отключение обратимо.',
+                )) return;
+                try {
+                  await api.patch(`/api/staff/${person.id}`, { isActive: !person.is_active });
+                  onDone(turningOff ? 'Сотрудник отключён' : 'Сотрудник снова активен');
+                  load();
+                } catch (caught) {
+                  onError(caught);
+                }
+              }}
+            >
+              {person.is_active ? 'Отключить' : 'Включить'}
+            </button>
+            <button
               className="btn-danger-ghost"
               onClick={async () => {
                 if (!confirm(`Удалить сотрудника «${person.full_name}»? Отменить нельзя.`)) return;
