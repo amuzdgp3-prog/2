@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { readOutbox } from './db';
 import { syncOutbox } from './sync';
-import AdminScreen from './screens/admin';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
 import HistoryScreen from './screens/History';
@@ -14,6 +13,16 @@ import QueueScreen from './screens/Queue';
 import ReportsScreen from './screens/Reports';
 import ServiceFormScreen from './screens/ServiceForm';
 import ServiceLogScreen from './screens/ServiceLog';
+
+/**
+ * Админка грузится отдельным чанком и только когда администратор реально открывает /admin.
+ * Маршрут и так закрыт проверкой isAdmin, но проверка эта — в рантайме, а не на границе сборки:
+ * при обычном импорте весь код админки (10 вкладок, формы сотрудников, терминалов, iVend)
+ * попадал в общий бандл и уезжал на телефон каждому технику в поле, который его никогда не
+ * увидит. Динамический import() — единственная граница, по которой Vite режет чанки; разбиение
+ * Admin.tsx на файлы само по себе на размер бандла не влияло.
+ */
+const AdminScreen = lazy(() => import('./screens/admin'));
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -260,7 +269,18 @@ export default function App() {
           <Route path="/owner-report" element={canSeeReports ? <OwnerReportScreen /> : <Navigate to="/" />} />
           <Route path="/log" element={canSeeReports ? <ServiceLogScreen /> : <Navigate to="/" />} />
           <Route path="/reports" element={canSeeReports ? <ReportsScreen /> : <Navigate to="/" />} />
-          <Route path="/admin" element={isAdmin ? <AdminScreen /> : <Navigate to="/" />} />
+          <Route
+            path="/admin"
+            element={
+              isAdmin ? (
+                <Suspense fallback={<div className="muted">Загрузка…</div>}>
+                  <AdminScreen />
+                </Suspense>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
