@@ -61,13 +61,16 @@ export default function ServiceLogScreen() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [technicianId, setTechnicianId] = useState('');
+  const [machineType, setMachineType] = useState('');
   const [technicians, setTechnicians] = useState<StaffOption[]>([]);
+  const [machineTypes, setMachineTypes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<StaffOption[]>('/api/staff').then((staff) => setTechnicians(staff.filter((s) => s.role === 'TECHNICIAN'))).catch(() => setTechnicians([]));
+    api.get<Array<{ name: string }>>('/api/machine-types').then((rows) => setMachineTypes(rows.map((r) => r.name))).catch(() => setMachineTypes([]));
   }, []);
 
   const query = useMemo(() => {
@@ -76,8 +79,9 @@ export default function ServiceLogScreen() {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (technicianId) params.set('technicianId', technicianId);
+    if (machineType) params.set('machineType', machineType);
     return params.toString();
-  }, [search, from, to, technicianId, page, pageSize]);
+  }, [search, from, to, technicianId, machineType, page, pageSize]);
 
   const load = () => {
     api
@@ -92,7 +96,7 @@ export default function ServiceLogScreen() {
   useEffect(load, [query]);
 
   // Any filter or page-size change should jump back to page 1, otherwise you can land on an empty page.
-  useEffect(() => setPage(0), [search, from, to, technicianId, pageSize]);
+  useEffect(() => setPage(0), [search, from, to, technicianId, machineType, pageSize]);
 
   const remove = async (id: number) => {
     if (!confirm('Удалить обслуживание? Цепочка аппарата будет пересчитана.')) return;
@@ -167,6 +171,15 @@ export default function ServiceLogScreen() {
             <option value="">Все</option>
             {technicians.map((tech) => (
               <option key={tech.id} value={tech.id}>{tech.full_name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="fld">
+          <label>Тип аппарата</label>
+          <select value={machineType} onChange={(event) => setMachineType(event.target.value)}>
+            <option value="">Все</option>
+            {machineTypes.map((name) => (
+              <option key={name} value={name}>{name}</option>
             ))}
           </select>
         </div>

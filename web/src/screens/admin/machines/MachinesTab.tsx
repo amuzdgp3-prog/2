@@ -18,6 +18,8 @@ export function MachinesTab({ onDone, onError }: TabProps) {
   const [moveChoice, setMoveChoice] = useState<Record<string, string>>({});
   const [detachTerminalChoice, setDetachTerminalChoice] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [machineTypes, setMachineTypes] = useState<string[]>([]);
   const [stickerMode, setStickerMode] = useState(false);
   const [selectedStickers, setSelectedStickers] = useState<Set<string>>(new Set());
   // /api/machines always returns the full fleet (technicians' offline cache needs the whole
@@ -29,6 +31,10 @@ export function MachinesTab({ onDone, onError }: TabProps) {
     api.get<Location[]>('/api/locations').then(setLocations).catch(onError);
     api.get<Terminal[]>('/api/terminals').then(setTerminals).catch(onError);
     api.get<ToySet[]>('/api/toy-sets').then(setToySets).catch(onError);
+    api
+      .get<Array<{ name: string }>>('/api/machine-types')
+      .then((rows) => setMachineTypes(rows.map((row) => row.name)))
+      .catch(() => setMachineTypes([]));
   };
 
   const assignToySet = async (machineNumber: string, setId: number | null) => {
@@ -61,8 +67,11 @@ export function MachinesTab({ onDone, onError }: TabProps) {
           .includes(needle),
       )
     : machines;
-  const activeMachines = filteredMachines.filter((machine) => machine.status !== 'RETIRED');
-  const retiredMachines = filteredMachines.filter((machine) => machine.status === 'RETIRED');
+  const byType = typeFilter
+    ? filteredMachines.filter((machine) => machine.machine_type === typeFilter)
+    : filteredMachines;
+  const activeMachines = byType.filter((machine) => machine.status !== 'RETIRED');
+  const retiredMachines = byType.filter((machine) => machine.status === 'RETIRED');
   // Наклейка без адреса бессмысленна — эти аппараты не предлагаются к выбору вовсе, а не молча
   // печатаются пустыми.
   const stickerable = activeMachines.filter((machine) => machine.address);
@@ -190,12 +199,19 @@ export function MachinesTab({ onDone, onError }: TabProps) {
         />
       )}
 
-      <input
-        placeholder="Номер или адрес аппарата"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        style={{ marginBottom: 12 }}
-      />
+      <div className="row" style={{ gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        <input
+          placeholder="Номер или адрес аппарата"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+          <option value="">— все типы —</option>
+          {machineTypes.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </div>
 
       <div className="row" style={{ margin: '4px 0 12px', justifyContent: 'space-between' }}>
         <span className="muted">Показано {Math.min(activeMachines.length, pageSize)} из {activeMachines.length}</span>

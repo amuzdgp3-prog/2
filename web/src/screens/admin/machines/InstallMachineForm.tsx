@@ -10,9 +10,19 @@ export function InstallMachineForm({
   onDone,
   onError,
 }: TabProps & { locations: Location[]; terminals: Terminal[] }) {
+  // Тип берётся из справочника (DECISION-047), а не вводится руками: раньше опечатка заводила
+  // новый тип молча. Отключённые типы в список не попадают.
+  const [machineTypes, setMachineTypes] = useState<Array<{ name: string; is_active: boolean }>>([]);
+  useEffect(() => {
+    api
+      .get<Array<{ name: string; is_active: boolean }>>('/api/machine-types')
+      .then((rows) => setMachineTypes(rows.filter((row) => row.is_active)))
+      .catch(() => setMachineTypes([]));
+  }, []);
+
   const [form, setForm] = useState({
     machineNumber: '',
-    machineType: 'CRANE',
+    machineType: '',
     model: '',
     pricePerGame: '100',
     counterDivisor: '1.00',
@@ -90,7 +100,12 @@ export function InstallMachineForm({
             </div>
             <div>
               <label>Тип</label>
-              <input value={form.machineType} onChange={set('machineType')} />
+              <select value={form.machineType} onChange={set('machineType')} required>
+                <option value="">— выберите тип —</option>
+                {machineTypes.map((type) => (
+                  <option key={type.name} value={type.name}>{type.name}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="grid-2">
