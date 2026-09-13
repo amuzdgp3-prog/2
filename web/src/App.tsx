@@ -3,7 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './auth';
 import { readOutbox } from './db';
 import { syncOutbox } from './sync';
-import AdminScreen from './screens/Admin';
+import AdminScreen from './screens/admin';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
 import HistoryScreen from './screens/History';
