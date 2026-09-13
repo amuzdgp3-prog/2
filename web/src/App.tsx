@@ -13,6 +13,7 @@ import QueueScreen from './screens/Queue';
 import ReportsScreen from './screens/Reports';
 import ServiceFormScreen from './screens/ServiceForm';
 import ServiceLogScreen from './screens/ServiceLog';
+import TasksScreen from './screens/Tasks';
 
 /**
  * Админка грузится отдельным чанком и только когда администратор реально открывает /admin.
@@ -142,6 +143,7 @@ export default function App() {
   const links = (
     <>
       <NavLink to="/" end><span>▦</span>Аппараты</NavLink>
+      <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>
       <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>
       {isTechnician && <NavLink to="/forgotten"><span>⏰</span>Забытые</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
@@ -263,6 +265,7 @@ export default function App() {
             element={<ServiceFormScreen onQueued={refreshQueueCount} />}
           />
           <Route path="/history/:machineNumber" element={<HistoryScreen />} />
+          <Route path="/tasks" element={<TasksScreen />} />
           <Route path="/queue" element={<QueueScreen onChange={refreshQueueCount} />} />
           <Route path="/forgotten" element={isTechnician ? <ForgottenScreen /> : <Navigate to="/" />} />
           <Route path="/dashboard" element={canSeeReports ? <DashboardScreen /> : <Navigate to="/" />} />
