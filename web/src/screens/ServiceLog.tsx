@@ -70,10 +70,11 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
 }
 
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
- * Service. Таблица на широком экране (DECISION-053) и карточки на телефоне — два разных markup'а
- * на одних данных, переключаемые CSS-классами (.desktop-only/.mobile-only), а не одна таблица,
- * подогнанная под оба случая сразу: 13 колонок нормально стоят в ряд на мониторе и никак не
- * смотрятся сжатыми в горизонтальный скролл на экране в 380px. */
+ * Service. На десктопе и на телефоне — обе раскладки таблицы (владелец явно настоял на таблице
+ * и на телефоне, карточки не подошли), но с разным набором колонок, переключаемым CSS-классами
+ * (.desktop-only/.mobile-only): полная таблица на 13 колонок на широком экране (DECISION-053) и
+ * узкая на 10 — только то, без чего строку не понять с одного взгляда — на телефоне (DECISION-054).
+ * Остальные цифры в обоих случаях доступны по тому же тапу на строку, в общей ServiceDetail. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -276,52 +277,73 @@ export default function ServiceLogScreen() {
         </table>
       </div>
 
-      <div className="mobile-only">
-        {rows.length === 0 && (
-          <div className="card muted" style={{ textAlign: 'center' }}>Ничего не найдено</div>
-        )}
-        {rows.map((row) => {
-          const { periodDays } = serviceMeta(row);
-          const { date, time } = splitDateTime(row.occurred_at);
-          const isOpen = expanded === row.id;
-          return (
-            <div className="card" key={row.id}>
-              <div className="tappable" onClick={() => setExpanded(isOpen ? null : row.id)}>
-                <div className="row" style={{ alignItems: 'flex-start' }}>
-                  <div className="mono">
-                    <div style={{ fontWeight: 600 }}>{date}</div>
-                    <div className="muted" style={{ fontSize: 11 }}>{time}</div>
-                  </div>
-                  <span className="mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</span>
-                </div>
-                <div className="wrap" style={{ marginTop: 8 }}>{row.address || row.machine_model || '—'}</div>
-                <div className="muted" style={{ marginTop: 2 }}>{row.technician_name ?? '—'}</div>
-
-                <div className="row" style={{ marginTop: 10, gap: 12 }}>
-                  <div>
-                    <div className="muted" style={{ fontSize: 11 }}>Новых игр</div>
-                    <div className="mono">+{formatGames(row.new_games)}</div>
-                  </div>
-                  <div>
-                    <div className="muted" style={{ fontSize: 11 }}>Выручка</div>
-                    <div className="mono">{formatMoney(row.revenue)} ₽</div>
-                  </div>
-                  <RoiBadge value={row.revenue_to_cost_ratio} />
-                </div>
-              </div>
-
-              {isOpen && <ServiceDetail row={row} periodDays={periodDays} />}
-
-              <div className="row" style={{ marginTop: 10, gap: 8 }}>
-                <div onClick={(event) => event.stopPropagation()}>
-                  <PhotoCell objectKey={row.photo_object_key} />
-                </div>
-                {row.notes && <div className="muted wrap" style={{ flex: 1, fontSize: 12.5 }}>{row.notes}</div>}
-                <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>
-              </div>
-            </div>
-          );
-        })}
+      {/* Телефон: та же таблица, не карточки (владелец настоял на этом отдельно) — но только те
+          столбцы, без которых нельзя понять строку с одного взгляда: дата/время, номер, адрес,
+          дней, счётчик игр (сырое показание, а не «новых игр» — так попросил владелец), выручка,
+          нал и безнал отдельно, техник, фото. Остальное (себестоимость, ROI, игр/день, комментарий,
+          удаление) — по тому же тапу на строку, в общей ServiceDetail, а не теряется. */}
+      <div className="table-wrap scroll-x table-tall mobile-only">
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th className="num">№</th>
+              <th>Адрес</th>
+              <th className="num">Дней</th>
+              <th className="num">Счётчик</th>
+              <th className="num">Выручка</th>
+              <th className="num">Нал</th>
+              <th className="num">Безнал</th>
+              <th>Техник</th>
+              <th>Фото</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const { periodDays } = serviceMeta(row);
+              const { date, time } = splitDateTime(row.occurred_at);
+              const isOpen = expanded === row.id;
+              return (
+                <>
+                  <tr
+                    key={row.id}
+                    className="tappable"
+                    onClick={() => setExpanded(isOpen ? null : row.id)}
+                  >
+                    <td className="mono">
+                      <div>{date}</div>
+                      <div className="muted" style={{ fontSize: 11 }}>{time}</div>
+                    </td>
+                    <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
+                    <td className="wrap">{row.address || row.machine_model || '—'}</td>
+                    <td className="num mono">{periodDays ?? '—'}</td>
+                    <td className="num mono">{row.game_counter}</td>
+                    <td className="num">{formatMoney(row.revenue)} ₽</td>
+                    <td className="num">{formatMoney(row.cash_amount)} ₽</td>
+                    <td className="num">{formatMoney(row.cashless_amount)} ₽</td>
+                    <td>{row.technician_name ?? '—'}</td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <PhotoCell objectKey={row.photo_object_key} />
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr key={`${row.id}-detail`}>
+                      <td colSpan={10} style={{ padding: 0 }}>
+                        <ServiceDetail row={row} periodDays={periodDays} />
+                        <div style={{ margin: '0 12px 12px' }}>
+                          <button className="icon-btn danger" onClick={() => remove(row.id)}>✕ Удалить</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr><td colSpan={10} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="pagination">
@@ -375,12 +397,16 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
             <div className="cell"><b className="mono">{formatMoney(row.price_per_game_snapshot)} ₽</b><span>цена игры</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cash_amount)} ₽</b><span>нал</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cashless_amount)} ₽</b><span>безнал</span></div>
+            <div className="cell"><RoiBadge value={row.revenue_to_cost_ratio} /><span>ROI</span></div>
           </div>
           <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки:</div>
           <ToyList toys={row.toys} />
           <div className="mono" style={{ marginTop: 6, fontSize: 12 }}>
             Себестоимость игрушек: <b>{formatMoney(row.toy_cost)} ₽</b>
           </div>
+          {row.notes && (
+            <div className="muted wrap" style={{ marginTop: 6, fontSize: 12 }}>Комментарий: {row.notes}</div>
+          )}
         </div>
 
         <div>
