@@ -1,4 +1,5 @@
 import type { Client } from '../db/pool.js';
+import { assertNoCounterJump } from '../domain/counterAnomaly.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
 import { auditDelete, auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -12,6 +13,12 @@ export interface ToyLine {
 
 export interface ServiceInput {
   localId: string;
+  /**
+   * Подтверждение подозрительного скачка счётчика (DECISION-048). Проверка — предупреждение, а не
+   * запрет: получив COUNTER_JUMP_SUSPECTED, техник перепроверяет показание и либо исправляет его,
+   * либо присылает то же самое с этим флагом.
+   */
+  confirmCounterJump?: boolean;
   machineNumber: string;
   occurredAt: string;
   gameCounter: number;
@@ -242,6 +249,23 @@ export async function createService(
     throw badRequest('FUTURE_OCCURRED_AT', 'обслуживание не может быть датировано будущим временем');
   }
   await assertPhotoExists(client, input.photoObjectKey);
+
+  if (!input.confirmCounterJump) {
+    const machine = await client.query<{ price_per_game: string; counter_divisor: string }>(
+      'SELECT price_per_game, counter_divisor FROM machines WHERE machine_number = $1',
+      [input.machineNumber],
+    );
+    const divisor = Number(machine.rows[0]?.counter_divisor);
+    await assertNoCounterJump(client, {
+      placementId: placement.id,
+      machineNumber: input.machineNumber,
+      occurredAt: input.occurredAt,
+      gameCounter: input.gameCounter,
+      testGames: input.testGames ?? 0,
+      counterDivisor: divisor > 0 ? divisor : 1,
+      pricePerGame: Number(machine.rows[0]?.price_per_game ?? 0),
+    });
+  }
 
   const { row, alreadyExisted } = await insertServiceRow(client, actor, {
     localId: input.localId,
