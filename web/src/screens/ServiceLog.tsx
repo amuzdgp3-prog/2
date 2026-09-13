@@ -18,7 +18,6 @@ interface ServiceLogRow {
   occurred_at: string;
   machine_number: string;
   machine_model: string;
-  location_name: string;
   address: string | null;
   technician_name: string | null;
   game_counter: number;
@@ -52,11 +51,6 @@ interface StaffOption {
   role: string;
 }
 
-interface LocationOption {
-  id: number;
-  name: string;
-}
-
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемая таблица всех Service. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
@@ -67,16 +61,13 @@ export default function ServiceLogScreen() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [technicianId, setTechnicianId] = useState('');
-  const [locationId, setLocationId] = useState('');
   const [technicians, setTechnicians] = useState<StaffOption[]>([]);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
     api.get<StaffOption[]>('/api/staff').then((staff) => setTechnicians(staff.filter((s) => s.role === 'TECHNICIAN'))).catch(() => setTechnicians([]));
-    api.get<LocationOption[]>('/api/locations').then(setLocations).catch(() => setLocations([]));
   }, []);
 
   const query = useMemo(() => {
@@ -85,9 +76,8 @@ export default function ServiceLogScreen() {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (technicianId) params.set('technicianId', technicianId);
-    if (locationId) params.set('locationId', locationId);
     return params.toString();
-  }, [search, from, to, technicianId, locationId, page, pageSize]);
+  }, [search, from, to, technicianId, page, pageSize]);
 
   const load = () => {
     api
@@ -102,7 +92,7 @@ export default function ServiceLogScreen() {
   useEffect(load, [query]);
 
   // Any filter or page-size change should jump back to page 1, otherwise you can land on an empty page.
-  useEffect(() => setPage(0), [search, from, to, technicianId, locationId, pageSize]);
+  useEffect(() => setPage(0), [search, from, to, technicianId, pageSize]);
 
   const remove = async (id: number) => {
     if (!confirm('Удалить обслуживание? Цепочка аппарата будет пересчитана.')) return;
@@ -180,15 +170,6 @@ export default function ServiceLogScreen() {
             ))}
           </select>
         </div>
-        <div className="fld">
-          <label>Точка</label>
-          <select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-            <option value="">Все</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>{location.name}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div className="table-wrap scroll-x">
@@ -228,7 +209,7 @@ export default function ServiceLogScreen() {
                       })}
                     </td>
                     <td className="num"><MachineTag number={row.machine_number} /></td>
-                    <td className="wrap">{row.address || row.machine_model || '—'}<div className="muted" style={{ fontSize: 11 }}>{row.location_name}</div></td>
+                    <td className="wrap">{row.address || row.machine_model || '—'}</td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td className="num mono">{periodDays ?? '—'}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
