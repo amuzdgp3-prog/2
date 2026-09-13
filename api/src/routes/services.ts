@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
+import { listDraftIssues, reportDraftIssue, resolveDraftIssue } from '../commands/draftIssues.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertAdmin, assertMachineInScope, machineScopePredicate } from '../lib/scope.js';
@@ -320,4 +321,28 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     }
     return { removed: orphans.rowCount };
   });
+  // ------------------------------------------- застрявшие черновики техников
+  app.post<{
+    Body: {
+      localId: string;
+      machineNumber: string;
+      occurredAt: string;
+      errorCode: string;
+      errorMessage: string;
+    };
+  }>('/api/draft-issues', auth, async (request) =>
+    withTransaction(async (client) => {
+      await reportDraftIssue(client, request.actor, request.body);
+      return { ok: true };
+    }));
+
+  app.delete<{ Params: { localId: string } }>('/api/draft-issues/:localId', auth, async (request) =>
+    withTransaction(async (client) => {
+      await resolveDraftIssue(client, request.actor, request.params.localId);
+      return { ok: true };
+    }));
+
+  app.get('/api/draft-issues', auth, async (request) =>
+    withTransaction((client) => listDraftIssues(client, request.actor)));
+
 }
