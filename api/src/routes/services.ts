@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
 import { listDraftIssues, reportDraftIssue, resolveDraftIssue } from '../commands/draftIssues.js';
+import { closeTask, createTask, listTasks, reopenTask } from '../commands/tasks.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertAdmin, assertMachineInScope, machineScopePredicate } from '../lib/scope.js';
@@ -344,5 +345,40 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
 
   app.get('/api/draft-issues', auth, async (request) =>
     withTransaction((client) => listDraftIssues(client, request.actor)));
+
+  // ------------------------------------------------------ задачи техникам
+  app.get<{ Querystring: { status?: string; assignedTo?: string } }>(
+    '/api/tasks',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        listTasks(client, request.actor, {
+          status: request.query.status,
+          assignedTo: request.query.assignedTo ? Number(request.query.assignedTo) : undefined,
+        })),
+  );
+
+  app.post<{
+    Body: {
+      title: string;
+      details?: string;
+      machineNumber?: string | null;
+      locationId?: number | null;
+      assignedTo?: number | null;
+      dueDate?: string | null;
+    };
+  }>('/api/tasks', auth, async (request) =>
+    withTransaction((client) => createTask(client, request.actor, request.body)));
+
+  app.post<{ Params: { id: string }; Body: { note?: string; cancel?: boolean } }>(
+    '/api/tasks/:id/close',
+    auth,
+    async (request) =>
+      withTransaction((client) =>
+        closeTask(client, request.actor, Number(request.params.id), request.body ?? {})),
+  );
+
+  app.post<{ Params: { id: string } }>('/api/tasks/:id/reopen', auth, async (request) =>
+    withTransaction((client) => reopenTask(client, request.actor, Number(request.params.id))));
 
 }
