@@ -103,6 +103,7 @@ export default function ReportsScreen() {
   const [classifierId, setClassifierId] = useState('');
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
+  const [technicians, setTechnicians] = useState<Array<Record<string, string | number>>>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -126,6 +127,10 @@ export default function ReportsScreen() {
     Promise.all([
       api.get<ReportResponse>(`/api/reports/financial?${query}`).then(setReport),
       api.get<MonthlyRow[]>(`/api/reports/monthly?${monthlyQuery}`).then(setMonthly).catch(() => setMonthly([])),
+      api
+        .get<Array<Record<string, string | number>>>(`/api/reports/technicians?${query}`)
+        .then(setTechnicians)
+        .catch(() => setTechnicians([])),
     ])
       .catch((caught) => setError((caught as Error).message))
       .finally(() => setLoading(false));
@@ -282,6 +287,47 @@ export default function ReportsScreen() {
                   <td className="num" style={{ color: row.roi === null ? undefined : Number(row.roi) >= 3 ? 'var(--good)' : Number(row.roi) >= 2 ? 'var(--warn)' : 'var(--bad)', fontWeight: 700 }}>
                     {row.roi ?? '—'}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {technicians.length > 0 && (
+        <div className="table-wrap scroll-x" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: '0 0 8px' }}>По техникам за период</h3>
+          <div className="muted" style={{ marginBottom: 8, fontSize: 12.5 }}>
+            Факты за период, а не оценка эффективности: выручка здесь — та, что собрана в выезды
+            этого техника, и зависит от маршрута не меньше, чем от работы. Служебные учётные записи
+            в таблицу не входят.
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Техник</th>
+                <th className="num">Выездов</th>
+                <th className="num">Аппаратов</th>
+                <th className="num">Игрушек</th>
+                <th className="num">Новых игр</th>
+                <th className="num">Собрано</th>
+                <th className="num">Нал</th>
+                <th className="num">Безнал</th>
+                <th className="num">Себест. игрушек</th>
+              </tr>
+            </thead>
+            <tbody>
+              {technicians.map((row) => (
+                <tr key={String(row.id)}>
+                  <td>{String(row.full_name)}</td>
+                  <td className="num">{String(row.services)}</td>
+                  <td className="num">{String(row.machines)}</td>
+                  <td className="num">{String(row.toys_given)}</td>
+                  <td className="num">{formatGames(String(row.new_games))}</td>
+                  <td className="num">{formatMoney(String(row.revenue))} ₽</td>
+                  <td className="num">{formatMoney(String(row.cash))} ₽</td>
+                  <td className="num">{formatMoney(String(row.cashless))} ₽</td>
+                  <td className="num">{formatMoney(String(row.toy_cost))} ₽</td>
                 </tr>
               ))}
             </tbody>

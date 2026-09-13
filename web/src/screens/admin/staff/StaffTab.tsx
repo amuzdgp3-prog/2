@@ -152,6 +152,28 @@ export function StaffTab({ onDone, onError }: TabProps) {
             >
               {person.is_active ? 'Отключить' : 'Включить'}
             </button>
+            {person.role === 'TECHNICIAN' && (
+              <label className="row" style={{ gap: 6, fontSize: 12.5, alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={person.is_field_technician}
+                  onChange={async (event) => {
+                    try {
+                      await api.patch(`/api/staff/${person.id}`, {
+                        isFieldTechnician: event.target.checked,
+                      });
+                      onDone(event.target.checked
+                        ? 'Сотрудник учитывается в отчёте по техникам'
+                        : 'Сотрудник исключён из отчёта по техникам');
+                      load();
+                    } catch (caught) {
+                      onError(caught);
+                    }
+                  }}
+                />
+                в отчёте по техникам
+              </label>
+            )}
             <button
               className="btn-danger-ghost"
               onClick={async () => {
