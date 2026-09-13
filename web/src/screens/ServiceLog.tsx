@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, getToken } from '../api';
 import { daysBetween, formatGames, formatMoney } from '../calc';
-import { MachineTag } from '../components/ui/MachineTag';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
 import { RoiBadge } from '../components/ui/RoiBadge';
@@ -51,7 +50,30 @@ interface StaffOption {
   role: string;
 }
 
-/** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемая таблица всех Service. */
+/** Дата и время двумя отдельными строками, а не «10.09, 09:17» в одну: так дата и время короче по
+ * горизонтали в таблице (первое, что мешало таблице поместиться на мониторе без прокрутки) и
+ * читаются раздельно на телефоне, где важнее дата крупно, а не точная минута. */
+function splitDateTime(iso: string): { date: string; time: string } {
+  const value = new Date(iso);
+  return {
+    date: value.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+    time: value.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+  };
+}
+
+/** Дней с прошлого обслуживания и темп — общий расчёт для табличной и карточной раскладки одной
+ * и той же строки, чтобы они не разошлись при будущей правке только одной из двух вёрсток. */
+function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: number | null } {
+  const periodDays = daysBetween(row.prev_occurred_at, row.occurred_at);
+  const perDay = periodDays && periodDays > 0 ? Number(row.new_games) / periodDays : null;
+  return { periodDays, perDay };
+}
+
+/** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
+ * Service. Таблица на широком экране (DECISION-053) и карточки на телефоне — два разных markup'а
+ * на одних данных, переключаемые CSS-классами (.desktop-only/.mobile-only), а не одна таблица,
+ * подогнанная под оба случая сразу: 13 колонок нормально стоят в ряд на мониторе и никак не
+ * смотрятся сжатыми в горизонтальный скролл на экране в 380px. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -185,7 +207,7 @@ export default function ServiceLogScreen() {
         </div>
       </div>
 
-      <div className="table-wrap scroll-x table-tall">
+      <div className="table-wrap scroll-x table-tall desktop-only">
         <table>
           <thead>
             <tr>
@@ -206,8 +228,8 @@ export default function ServiceLogScreen() {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const periodDays = daysBetween(row.prev_occurred_at, row.occurred_at);
-              const perDay = periodDays && periodDays > 0 ? Number(row.new_games) / periodDays : null;
+              const { periodDays, perDay } = serviceMeta(row);
+              const { date, time } = splitDateTime(row.occurred_at);
               const isOpen = expanded === row.id;
               return (
                 <>
@@ -217,11 +239,10 @@ export default function ServiceLogScreen() {
                     onClick={() => setExpanded(isOpen ? null : row.id)}
                   >
                     <td className="mono">
-                      {new Date(row.occurred_at).toLocaleString('ru-RU', {
-                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-                      })}
+                      <div>{date}</div>
+                      <div className="muted" style={{ fontSize: 11 }}>{time}</div>
                     </td>
-                    <td className="num"><MachineTag number={row.machine_number} /></td>
+                    <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
                     <td className="wrap">{row.address || row.machine_model || '—'}</td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td className="num mono">{periodDays ?? '—'}</td>
@@ -255,6 +276,54 @@ export default function ServiceLogScreen() {
         </table>
       </div>
 
+      <div className="mobile-only">
+        {rows.length === 0 && (
+          <div className="card muted" style={{ textAlign: 'center' }}>Ничего не найдено</div>
+        )}
+        {rows.map((row) => {
+          const { periodDays } = serviceMeta(row);
+          const { date, time } = splitDateTime(row.occurred_at);
+          const isOpen = expanded === row.id;
+          return (
+            <div className="card" key={row.id}>
+              <div className="tappable" onClick={() => setExpanded(isOpen ? null : row.id)}>
+                <div className="row" style={{ alignItems: 'flex-start' }}>
+                  <div className="mono">
+                    <div style={{ fontWeight: 600 }}>{date}</div>
+                    <div className="muted" style={{ fontSize: 11 }}>{time}</div>
+                  </div>
+                  <span className="mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</span>
+                </div>
+                <div className="wrap" style={{ marginTop: 8 }}>{row.address || row.machine_model || '—'}</div>
+                <div className="muted" style={{ marginTop: 2 }}>{row.technician_name ?? '—'}</div>
+
+                <div className="row" style={{ marginTop: 10, gap: 12 }}>
+                  <div>
+                    <div className="muted" style={{ fontSize: 11 }}>Новых игр</div>
+                    <div className="mono">+{formatGames(row.new_games)}</div>
+                  </div>
+                  <div>
+                    <div className="muted" style={{ fontSize: 11 }}>Выручка</div>
+                    <div className="mono">{formatMoney(row.revenue)} ₽</div>
+                  </div>
+                  <RoiBadge value={row.revenue_to_cost_ratio} />
+                </div>
+              </div>
+
+              {isOpen && <ServiceDetail row={row} periodDays={periodDays} />}
+
+              <div className="row" style={{ marginTop: 10, gap: 8 }}>
+                <div onClick={(event) => event.stopPropagation()}>
+                  <PhotoCell objectKey={row.photo_object_key} />
+                </div>
+                {row.notes && <div className="muted wrap" style={{ flex: 1, fontSize: 12.5 }}>{row.notes}</div>}
+                <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="pagination">
         <div className="info">Показано {shownFrom}–{shownTo} из {total}</div>
         <div className="row" style={{ gap: 14 }}>
@@ -274,18 +343,28 @@ export default function ServiceLogScreen() {
   );
 }
 
-function toyLines(toys: ToyLine[] | null): string {
-  if (!toys || toys.length === 0) return '—';
-  return toys.map((toy) => `${toy.name} ×${toy.quantity} (${formatMoney(String(Number(toy.quantity) * Number(toy.unitCost)))} ₽)`).join(', ');
+/** Расход игрушек в столбик — по одной на строку, а не одной длинной строкой через запятую,
+ * которая на телефоне переносилась куда придётся и её было тяжело читать построчно. */
+function ToyList({ toys }: { toys: ToyLine[] | null }) {
+  if (!toys || toys.length === 0) return <span className="muted">—</span>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+      {toys.map((toy) => (
+        <div key={toy.toyId} className="mono" style={{ fontSize: 12 }}>
+          {toy.name} ×{toy.quantity} — {formatMoney(String(Number(toy.quantity) * Number(toy.unitCost)))} ₽
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** Полная карточка обслуживания при раскрытии строки — себестоимость и разбивка по игрушкам (в
  * штуках и в рублях), плюс что было на прошлом обслуживании этой же цепочки и как текущее к нему
- * относится (Δ по дням и по счётчику). */
+ * относится (Δ по дням и по счётчику). Общая и для табличной, и для карточной раскладки. */
 function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: number | null }) {
   const hasPrev = row.prev_occurred_at !== null;
   return (
-    <div className="readonly-prev" style={{ margin: '0 12px 12px' }}>
+    <div className="readonly-prev" style={{ margin: '10px 0 0' }}>
       <div className="grid-2" style={{ gap: 16 }}>
         <div>
           <div className="lbl">ЭТО ОБСЛУЖИВАНИЕ</div>
@@ -297,10 +376,9 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
             <div className="cell"><b className="mono">{formatMoney(row.cash_amount)} ₽</b><span>нал</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cashless_amount)} ₽</b><span>безнал</span></div>
           </div>
-          <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-            Игрушки: {toyLines(row.toys)}
-          </div>
-          <div className="mono" style={{ marginTop: 4, fontSize: 12 }}>
+          <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки:</div>
+          <ToyList toys={row.toys} />
+          <div className="mono" style={{ marginTop: 6, fontSize: 12 }}>
             Себестоимость игрушек: <b>{formatMoney(row.toy_cost)} ₽</b>
           </div>
         </div>
@@ -322,10 +400,9 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
                 <div className="cell"><RoiBadge value={row.prev_revenue_to_cost_ratio} /><span>ROI</span></div>
                 <div className="cell"><b className="mono">{periodDays ?? '—'} дн.</b><span>прошло с прошлого раза</span></div>
               </div>
-              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-                Игрушки в прошлый раз: {toyLines(row.prev_toys)}
-              </div>
-              <div className="mono" style={{ marginTop: 4, fontSize: 12 }}>
+              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки в прошлый раз:</div>
+              <ToyList toys={row.prev_toys} />
+              <div className="mono" style={{ marginTop: 6, fontSize: 12 }}>
                 Δ счётчик: <b>+{row.game_counter - (row.prev_game_counter ?? row.game_counter)}</b>
                 {' · '}
                 Δ выручка: <b>{formatMoney(String(Number(row.revenue) - Number(row.prev_revenue ?? 0)))} ₽</b>

@@ -239,6 +239,13 @@ input.search-big { font-size: 18px; padding: 14px 14px; }
 /* Постоянный сайдбар на широком экране; на телефоне остаётся нижняя навигация. */
 .sidebar { display: none; }
 
+/* Журнал обслуживаний переключается между таблицей (.desktop-only) и карточками (.mobile-only) по
+   ширине экрана. Базовое правило обязано стоять ДО медиа-блока ниже, который его переопределяет
+   на широких экранах: при равной специфичности побеждает более поздний по тексту файла, а не более
+   поздний по ширине экрана — та же ловушка, что уже разобрана в комментарии к .table-wrap.scroll-x
+   ниже по файлу, просто с другой правкой поймана на себе. */
+.desktop-only { display: none; }
+
 @media (min-width: 900px) {
   .sidebar {
     position: fixed;
@@ -290,8 +297,14 @@ input.search-big { font-size: 18px; padding: 14px 14px; }
     padding-bottom: 40px;
   }
 
+  /* Журнал обслуживаний (DECISION-053): 1800px практически никогда не упирается в реальный
+     монитор, но и не растягивает строки таблицы на всю ширину ультраширокого экрана до
+     нечитаемости — тот же компромисс, что и обычный max-width, просто для другого экрана. */
+  .app.app-wide { max-width: 1800px; }
+
   .nav { display: none; }
   .mobile-only { display: none !important; }
+  .desktop-only { display: block; }
 }
 
 .topbar {
@@ -487,6 +500,10 @@ th { color: var(--ink-soft); font-weight: 500; }
   border: 1px dashed var(--line);
   border-radius: var(--r-md);
   padding: 12px 13px;
+  /* Журнал (DECISION-053) распахивает свою таблицу до 1800px, но раскрытая деталь строки — два
+     столбца коротких карточек и списка игрушек — тонет в такой ширине пустым местом, а не
+     становится удобнее читать. Тот же читаемый предел, что и у обычного .app. */
+  max-width: 1100px;
 }
 .readonly-prev .lbl { font-size: 11px; font-weight: 700; color: var(--ink-faint); letter-spacing: .03em; margin-bottom: 8px; }
 .readonly-prev .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }

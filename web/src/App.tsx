@@ -73,6 +73,11 @@ export default function App() {
   // tab bar at the same time made the two fixed bars overlap on top of each other.
   const hideBottomNav = location.pathname.startsWith('/service/');
   const isHomeScreen = location.pathname === '/';
+  // Журнал — таблица на 13 колонок, которую на широком мониторе иначе зажимало бы в те же 1100px,
+  // что и обычный читаемый текст остальных экранов, заставляя её скроллиться по горизонтали при
+  // пустующем месте справа. Ширится только этот один экран, остальные держат прежнюю читаемую
+  // ширину (DECISION-053).
+  const isWideLayout = location.pathname === '/log';
 
   useEffect(() => {
     const goOnline = () => setOnline(true);
@@ -200,7 +205,7 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="app">
+      <div className={isWideLayout ? 'app app-wide' : 'app'}>
         <div className="topbar">
           <h1>Apixspb</h1>
           <div className="row" style={{ gap: 6 }}>
