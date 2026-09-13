@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Client } from '../db/pool.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
-import { auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
+import { auditUpdate, type Actor } from '../lib/audit.js';
 import { lockMachines } from '../lib/locks.js';
 import { assertAdmin } from '../lib/scope.js';
 
@@ -150,7 +150,11 @@ export async function importCashless(
 
     if (inserted.rowCount === 1) {
       insertedIds.push(inserted.rows[0].id as number);
-      await auditInsert(client, actor, 'cashless_transaction', inserted.rows[0].id, inserted.rows[0]);
+      // Раньше здесь стоял auditInsert на каждую строку (DECISION-043): 155 298 из 171 тысяч
+      // записей audit_log — точные копии cashless_transactions, таблицы, которая и так
+      // неизменяема и полностью читаема сама по себе (rowCount, отфильтрованный по provider/
+      // occurred_at). Аудит остаётся там, где он несёт информацию, которой нет в самой таблице —
+      // на ручной правке сохранённой транзакции (updateCashlessTransaction ниже, auditUpdate).
     }
   }
 
