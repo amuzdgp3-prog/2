@@ -185,7 +185,7 @@ export default function ServiceLogScreen() {
         </div>
       </div>
 
-      <div className="table-wrap scroll-x">
+      <div className="table-wrap scroll-x table-tall">
         <table>
           <thead>
             <tr>

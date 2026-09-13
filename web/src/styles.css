@@ -752,3 +752,19 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
   line-height: 1.3;
   overflow-wrap: break-word;
 }
+
+/* Журнал обслуживаний: длинные таблицы на полсотни строк. Шапка липнет к верху, иначе на середине
+   списка колонки перестают быть подписаны и тринадцать колонок цифр теряют смысл.
+   Модификатор отдельный (.table-tall), а не общий для всех `.scroll-x`: липкость требует, чтобы
+   прокручивалась сама обёртка, а не страница, и ограничение высоты полезно длинному журналу, но
+   испортило бы короткие таблицы на других экранах, где оно превратило бы три строки в окошко с
+   полосой прокрутки. */
+.table-wrap.table-tall { max-height: 70vh; overflow-y: auto; }
+.table-wrap.table-tall thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.table-wrap tbody tr:nth-child(even of :not([hidden])) { background: color-mix(in srgb, var(--paper-deep) 45%, transparent); }
+.table-wrap tbody tr:hover { background: var(--paper-deep); }
