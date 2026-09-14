@@ -56,6 +56,23 @@ interface EffectivenessResponse {
   meta: { totalPairs: number; minPairs: number; fleetIndexP90: number | null };
 }
 
+/**
+ * Готовый вывод по строке — обычными словами, без статистики. Читается по границам интервала:
+ * пока он накрывает 1,00, отличить работу человека от случайности нельзя, и таблица обязана
+ * говорить это прямо, а не оставлять владельца сравнивать десятые доли.
+ */
+function effectivenessVerdict(row: EffectivenessRow): { text: string; tone: 'good' | 'bad' | 'plain' } {
+  if (!row.enoughData) return { text: 'Мало выездов — рано судить', tone: 'plain' };
+  if (row.index === null || row.indexCi === null) {
+    return { text: 'Не с чем сравнить: у аппаратов нет прошлых периодов', tone: 'plain' };
+  }
+  const [low, high] = row.indexCi;
+  if (low > 1) return { text: 'Поднимает выручку — это уже не случайность', tone: 'good' };
+  if (high < 1) return { text: 'Стабильно ниже обычного — стоит разобраться', tone: 'bad' };
+  if (row.index >= 1) return { text: 'Как обычно, скорее чуть лучше; данных ещё мало', tone: 'plain' };
+  return { text: 'Как обычно, скорее чуть хуже; данных ещё мало', tone: 'plain' };
+}
+
 interface MonthlyRow {
   monthStart: string;
   services: number;
@@ -366,65 +383,105 @@ export default function ReportsScreen() {
       {effectiveness && effectiveness.rows.length > 0 && (
         <div className="table-wrap scroll-x" style={{ marginBottom: 20 }}>
           <h3 style={{ margin: '0 0 8px' }}>Эффективность техников</h3>
-          <div className="muted" style={{ marginBottom: 8, fontSize: 12.5 }}>
-            Считается по парам «подготовил аппарат → следующий выезд закрыл период»: выручка
-            периода засчитывается тому, кто аппарат <strong>подготовил</strong>, а не тому, кто
-            снял деньги. Главный столбец — <strong>индекс</strong>: 1,00 значит «аппараты
-            зарабатывали ровно столько, сколько зарабатывают обычно», 1,20 — на 20 % больше.
-            Каждая пара сравнивается с нормой этого же аппарата, поэтому разная проходимость точек
-            на сравнение не влияет. «Выручка в сутки» приведена для справки — по ней техников
-            сравнивать нельзя, она зависит от маршрута. Меньше {effectiveness.meta.minPairs} пар —
-            оценка не выдаётся.
+          <div style={{ marginBottom: 10, fontSize: 13, lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Как это считается.</strong> Техник приехал, разложил игрушки, протёр стекло —
+              и до следующего приезда аппарат что-то зарабатывает. Эта выручка засчитывается
+              <strong> тому, кто аппарат подготовил</strong>, а не тому, кто потом забрал деньги.
+            </p>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Почему можно сравнивать людей с разных маршрутов.</strong> Каждый аппарат
+              сравнивается сам с собой: не важно, бойкая точка или тихая — важно, заработал он
+              больше или меньше, чем зарабатывает на этой точке обычно.
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Главный столбец — «Оценка».</strong> 1,00 — аппараты заработали как обычно.
+              1,20 — на 20 % больше обычного. 0,80 — на 20 % меньше. Меньше{' '}
+              {effectiveness.meta.minPairs} сравнимых выездов — оценку не показываем, чтобы не
+              судить о человеке по случайности.
+            </p>
           </div>
           <table>
             <thead>
               <tr>
                 <th>Техник</th>
-                <th className="num">Пар</th>
-                <th className="num">Из них в индексе</th>
-                <th className="num" style={{ paddingLeft: 24 }}>Индекс</th>
-                <th className="num">Интервал</th>
-                <th className="num">Стабильность</th>
-                <th className="num">Отдача на игрушки</th>
-                <th className="num">Выручка в сутки</th>
-                <th className="num">Собрано за периоды</th>
+                <th className="num">Выездов</th>
+                <th className="num">Сравнимых</th>
+                <th className="num" style={{ paddingLeft: 24 }}>Оценка</th>
+                <th className="num">От и до</th>
+                <th>Что это значит</th>
+                <th className="num">Ровность</th>
+                <th className="num">На рубль игрушек</th>
+                <th className="num">₽ в сутки</th>
+                <th className="num">Собрано</th>
               </tr>
             </thead>
             <tbody>
-              {effectiveness.rows.map((row) => (
-                <tr key={row.technicianId}>
-                  <td>{row.technicianName}</td>
-                  <td className="num mono">{row.pairs}</td>
-                  <td className={row.pairsWithIndex < row.pairs ? 'num mono muted' : 'num mono'}>
-                    {row.pairsWithIndex}
-                  </td>
-                  <td className="num mono" style={{ paddingLeft: 24, fontWeight: 700 }}>
-                    {row.index === null ? '—' : row.index.toFixed(2)}
-                  </td>
-                  <td className="num mono muted">
-                    {row.indexCi === null
-                      ? '—'
-                      : `${row.indexCi[0].toFixed(2)} — ${row.indexCi[1].toFixed(2)}`}
-                  </td>
-                  <td className="num mono">
-                    {row.stability === null ? '—' : row.stability.toFixed(2)}
-                  </td>
-                  <td className="num mono">
-                    {row.returnOnToys === null ? '—' : `×${row.returnOnToys.toFixed(1)}`}
-                  </td>
-                  <td className="num">{formatMoney(String(row.revenuePerDay))} ₽</td>
-                  <td className="num">{formatMoney(String(row.totalRevenue))} ₽</td>
-                </tr>
-              ))}
+              {effectiveness.rows.map((row) => {
+                const verdict = effectivenessVerdict(row);
+                return (
+                  <tr key={row.technicianId}>
+                    <td>{row.technicianName}</td>
+                    <td className="num mono">{row.pairs}</td>
+                    <td className={row.pairsWithIndex < row.pairs ? 'num mono muted' : 'num mono'}>
+                      {row.pairsWithIndex}
+                    </td>
+                    <td className="num mono" style={{ paddingLeft: 24, fontWeight: 700 }}>
+                      {row.index === null ? '—' : row.index.toFixed(2)}
+                    </td>
+                    <td className="num mono muted">
+                      {row.indexCi === null
+                        ? '—'
+                        : `${row.indexCi[0].toFixed(2)} — ${row.indexCi[1].toFixed(2)}`}
+                    </td>
+                    <td
+                      className="wrap"
+                      style={{
+                        fontSize: 12.5,
+                        color: verdict.tone === 'good'
+                          ? 'var(--good)'
+                          : verdict.tone === 'bad'
+                            ? 'var(--bad)'
+                            : undefined,
+                      }}
+                    >
+                      {verdict.text}
+                    </td>
+                    <td className="num mono">
+                      {row.stability === null ? '—' : row.stability.toFixed(2)}
+                    </td>
+                    <td className="num mono">
+                      {row.returnOnToys === null ? '—' : `×${row.returnOnToys.toFixed(1)}`}
+                    </td>
+                    <td className="num">{formatMoney(String(row.revenuePerDay))} ₽</td>
+                    <td className="num">{formatMoney(String(row.totalRevenue))} ₽</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-            Интервал — доверительный, 95 %: если он широкий и накрывает 1,00, данных пока мало,
-            чтобы отличить работу техника от случайности. Стабильность — разброс от выезда к
-            выезду: 0,2 ровно, 0,8 рвано. Отдача на игрушки — сколько рублей принёс каждый рубль
-            вложенных игрушек. «Из них в индексе» — пар, у которых нашлось с чем сравнивать: если у
-            аппарата всего один закрытый период, норму по нему не построить, и такая пара в индекс
-            не входит. Всего пар за период: {effectiveness.meta.totalPairs}.
+          <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>«От и до»</strong> — честные границы оценки. Пока между ними попадает 1,00,
+              сказать «работает лучше» или «работает хуже» нельзя: выездов ещё слишком мало, и
+              разница может быть простым везением. Чем больше кругов по маршрутам, тем уже
+              становятся эти границы. Вот когда они целиком уйдут выше 1,00 или ниже — это уже
+              факт, а не совпадение.
+            </p>
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>«Выездов» и «сравнимых».</strong> Сравнимый — это выезд, после которого
+              аппарат успели закрыть следующим приездом, и у самого аппарата есть прошлые периоды,
+              с которыми можно сравнить. Если у точки это первый закрытый период в истории,
+              сравнивать не с чем, и такой выезд в оценку не идёт.
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Остальные столбцы.</strong> «Ровность» — одинаково ли человек работает от
+              выезда к выезду: 0,2 — ровно, 0,8 — как повезёт. «На рубль игрушек» — сколько рублей
+              выручки принёс каждый рубль вложенных игрушек. <strong>«₽ в сутки» — только для
+              справки, сравнивать людей по ней нельзя</strong>: она зависит от того, какие точки
+              человеку достались, а не от того, как он работал. Всего пар за период:{' '}
+              {effectiveness.meta.totalPairs}.
+            </p>
           </div>
         </div>
       )}
