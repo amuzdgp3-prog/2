@@ -311,13 +311,22 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     },
   );
 
-  /** Orphan photo cleanup: objects never associated with a committed Service. */
+  /**
+   * Orphan photo cleanup: objects never associated with a committed Service.
+   *
+   * Чеки прочих расходов (миграция 020) живут в той же photo_objects, поэтому проверяются обе
+   * ссылки. Без второго условия уборка сносила бы чеки как «ничьи» — они не привязаны ни к
+   * одному обслуживанию, и файл исчезал бы, оставляя в затратах ссылку в никуда.
+   */
   app.post('/api/photos/cleanup', auth, async (request) => {
     assertAdmin(request.actor);
     const orphans = await pool.query(
       `DELETE FROM photo_objects po
        WHERE po.uploaded_at < now() - ($1 || ' hours')::interval
          AND NOT EXISTS (SELECT 1 FROM services s WHERE s.photo_object_key = po.object_key)
+         AND NOT EXISTS (
+           SELECT 1 FROM business_expenses e WHERE e.photo_object_key = po.object_key
+         )
        RETURNING object_key`,
       [config.orphanPhotoTtlHours],
     );

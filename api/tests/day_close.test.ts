@@ -143,6 +143,79 @@ describe('закрытие дня техником', () => {
     assert.equal(Number(days[0].fuel), 400);
   });
 
+  it('прочих трат за день может быть несколько — они не перезаписывают друг друга', async () => {
+    // Зарплата и бензин одни на день, а парковка, мойка и запчасть за тот же день — разные
+    // записи. Если бы уникальный индекс из миграции 019 остался прежним, вторая не сохранилась бы.
+    const first = await context.app.inject({
+      method: 'POST',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+      payload: { workDate: '2026-09-10', amount: '300', comment: 'Парковка' },
+    });
+    assert.equal(first.statusCode, 200, first.body);
+
+    const second = await context.app.inject({
+      method: 'POST',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+      payload: { workDate: '2026-09-10', amount: '750', comment: 'Мойка', photoObjectKey: null },
+    });
+    assert.equal(second.statusCode, 200, second.body);
+
+    const mine = await context.app.inject({
+      method: 'GET',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+    });
+    const rows = mine.json() as Array<{ id: number; amount: string; comment: string }>;
+    assert.equal(rows.length, 2, 'обе траты на месте');
+    assert.deepEqual(rows.map((row) => row.comment).sort(), ['Мойка', 'Парковка']);
+  });
+
+  it('трату можно сохранить без чека, но нельзя без назначения', async () => {
+    const noComment = await context.app.inject({
+      method: 'POST',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+      payload: { workDate: '2026-09-10', amount: '100', comment: '  ' },
+    });
+    assert.equal(noComment.statusCode, 400);
+    assert.equal(noComment.json().error, 'COMMENT_REQUIRED');
+
+    // Чек владелец разрешил не требовать: его дают не везде.
+    const noReceipt = await context.app.inject({
+      method: 'POST',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+      payload: { workDate: '2026-09-10', amount: '100', comment: 'Без чека' },
+    });
+    assert.equal(noReceipt.statusCode, 200, noReceipt.body);
+    assert.equal(noReceipt.json().photo_object_key, null);
+  });
+
+  it('техник убирает свою запись, но не чужую и не запись владельца', async () => {
+    const mine = await context.app.inject({
+      method: 'GET',
+      url: '/api/day-close/other',
+      headers: authHeader(context.technicianToken),
+    });
+    const target = (mine.json() as Array<{ id: number }>)[0];
+
+    const byStranger = await context.app.inject({
+      method: 'DELETE',
+      url: `/api/day-close/other/${target.id}`,
+      headers: authHeader(otherTechToken),
+    });
+    assert.equal(byStranger.statusCode, 403, 'чужую запись убрать нельзя');
+
+    const byOwner = await context.app.inject({
+      method: 'DELETE',
+      url: `/api/day-close/other/${target.id}`,
+      headers: authHeader(context.technicianToken),
+    });
+    assert.equal(byOwner.statusCode, 200, byOwner.body);
+  });
+
   it('владелец видит самоотчёты в общем гроссбухе, с именем техника', async () => {
     const response = await context.app.inject({
       method: 'GET',

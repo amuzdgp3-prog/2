@@ -124,6 +124,79 @@ export async function closeDay(
   return { workDate: input.workDate, salary: salary.toFixed(2), fuel: fuel.toFixed(2) };
 }
 
+/**
+ * Прочая трата техника: парковка, мойка, запчасть. В отличие от зарплаты и бензина, таких за день
+ * может быть несколько, поэтому каждая — отдельная запись со своим назначением и своим чеком,
+ * а не перезаписываемая величина дня (миграция 020 сужает под это уникальный индекс).
+ */
+export interface OtherExpenseInput {
+  workDate: string;
+  amount: string;
+  /** На что потрачено. Без этого чек и сумма ни о чём не говорят при разборе в конце месяца. */
+  comment: string;
+  /** Фото чека. Необязательно: чек дают не везде, и отказ принять трату был бы хуже. */
+  photoObjectKey?: string | null;
+}
+
+export async function addOtherExpense(
+  client: Client,
+  actor: Actor,
+  input: OtherExpenseInput,
+): Promise<Record<string, unknown>> {
+  if (actor.id === null) throw forbidden('нужна учётная запись сотрудника');
+  assertWorkDate(input.workDate);
+  const amount = assertAmount(input.amount, 'Сумма');
+  if (amount === 0) throw badRequest('INVALID_AMOUNT', 'сумма должна быть больше нуля');
+  if (!input.comment?.trim()) {
+    throw badRequest('COMMENT_REQUIRED', 'укажите, на что потрачено');
+  }
+
+  const inserted = await client.query(
+    `INSERT INTO business_expenses
+       (category, expense_date, amount, comment, created_by, staff_id, source, photo_object_key)
+     VALUES ('OTHER', $1::date, $2, $3, $4, $4, 'TECHNICIAN', $5)
+     RETURNING *`,
+    [input.workDate, amount, input.comment.trim(), actor.id, input.photoObjectKey ?? null],
+  );
+  await auditInsert(client, actor, 'business_expense', inserted.rows[0].id, inserted.rows[0]);
+  return inserted.rows[0];
+}
+
+/** Техник убирает СВОЮ ошибочную запись. Чужие и записи владельца не трогает. */
+export async function removeOwnExpense(
+  client: Client,
+  actor: Actor,
+  id: number,
+): Promise<void> {
+  if (actor.id === null) throw forbidden('нужна учётная запись сотрудника');
+  const removed = await client.query(
+    `DELETE FROM business_expenses
+     WHERE id = $1 AND staff_id = $2 AND source = 'TECHNICIAN'
+     RETURNING *`,
+    [id, actor.id],
+  );
+  if (removed.rowCount === 0) throw forbidden('это не ваша запись');
+  await auditDelete(client, actor, 'business_expense', id, removed.rows[0]);
+}
+
+/** Прочие траты техника за период — списком, с чеками. */
+export async function listMyOtherExpenses(
+  client: Client,
+  actor: Actor,
+  limitDays = 30,
+): Promise<Array<Record<string, unknown>>> {
+  if (actor.id === null) throw forbidden('нужна учётная запись сотрудника');
+  const result = await client.query(
+    `SELECT id, expense_date, amount, comment, photo_object_key
+     FROM business_expenses
+     WHERE staff_id = $1 AND source = 'TECHNICIAN' AND category = 'OTHER'
+       AND expense_date >= (now() - ($2::int || ' days')::interval)::date
+     ORDER BY expense_date DESC, id DESC`,
+    [actor.id, limitDays],
+  );
+  return result.rows;
+}
+
 /** Последние закрытые дни этого техника — чтобы он видел, что уже сдал, и не вводил второй раз. */
 export async function listMyDayCloses(
   client: Client,

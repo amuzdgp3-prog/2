@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { pool, withTransaction } from '../db/pool.js';
 import { createExpense, deleteExpense, listExpenses, updateExpense } from '../commands/expenses.js';
-import { closeDay, listMyDayCloses, type DayCloseInput } from '../commands/dayClose.js';
+import {
+  addOtherExpense,
+  closeDay,
+  listMyDayCloses,
+  listMyOtherExpenses,
+  removeOwnExpense,
+  type DayCloseInput,
+  type OtherExpenseInput,
+} from '../commands/dayClose.js';
 
 export async function registerExpenseRoutes(app: FastifyInstance): Promise<void> {
   const auth = { preHandler: app.authenticate };
@@ -42,6 +50,52 @@ export async function registerExpenseRoutes(app: FastifyInstance): Promise<void>
     } finally {
       client.release();
     }
+  });
+
+  /**
+   * Прочая трата техника. Отдельная запись, а не величина дня: за день их может быть несколько,
+   * у каждой своё назначение и свой чек.
+   */
+  app.post<{ Body: OtherExpenseInput }>(
+    '/api/day-close/other',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['workDate', 'amount', 'comment'],
+          properties: {
+            workDate: { type: 'string' },
+            amount: { type: ['string', 'number'] },
+            comment: { type: 'string' },
+            photoObjectKey: { type: ['string', 'null'] },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) => addOtherExpense(client, request.actor, {
+        workDate: request.body.workDate,
+        amount: String(request.body.amount),
+        comment: request.body.comment,
+        photoObjectKey: request.body.photoObjectKey ?? null,
+      })),
+  );
+
+  app.get<{ Querystring: { days?: string } }>('/api/day-close/other', auth, async (request) => {
+    const client = await pool.connect();
+    try {
+      return await listMyOtherExpenses(client, request.actor, Number(request.query.days) || 30);
+    } finally {
+      client.release();
+    }
+  });
+
+  /** Техник убирает свою ошибочную запись. Чужие записи и гроссбух владельца недоступны. */
+  app.delete<{ Params: { id: string } }>('/api/day-close/other/:id', auth, async (request) => {
+    await withTransaction((client) =>
+      removeOwnExpense(client, request.actor, Number(request.params.id)));
+    return { ok: true };
   });
 
   app.get<{ Querystring: { from?: string; to?: string } }>('/api/expenses', auth, async (request) => {
