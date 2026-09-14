@@ -4,8 +4,10 @@ import {
   cacheTasks,
   cacheToys,
   markRejected,
+  readDayCloseOutbox,
   readOutbox,
   readTaskOutbox,
+  removeDayClose,
   removeFromOutbox,
   removeTaskClose,
   type CachedMachine,
@@ -48,6 +50,7 @@ async function runSync(): Promise<SyncResult> {
   let rejected = 0;
 
   await syncTaskCloses();
+  await syncDayCloses();
 
   for (const item of pending) {
     try {
@@ -130,6 +133,32 @@ export async function refreshCatalog(): Promise<void> {
  * фотографии и нет цепочки счётчиков, её отказ не должен блокировать отправку денег, а отказ
  * обслуживания — мешать отметить выполненное поручение.
  */
+/**
+ * Отправка закрытий дня. Сервер идемпотентен по «техник + дата», поэтому повтор безопасен: если
+ * связь оборвалась уже после записи, вторая попытка перезапишет ту же сумму, а не добавит вторую.
+ */
+async function syncDayCloses(): Promise<void> {
+  for (const item of await readDayCloseOutbox()) {
+    try {
+      await api.post('/api/day-close', {
+        workDate: item.workDate,
+        salary: item.salary,
+        fuel: item.fuel,
+      });
+      await removeDayClose(item.workDate);
+    } catch (error) {
+      if (error instanceof OfflineError) return;
+      // Сервер отказал по существу (отрицательная сумма, дата из будущего) — повтор не поможет,
+      // и держать такую запись в очереди значит блокировать все последующие дни.
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        await removeDayClose(item.workDate);
+        continue;
+      }
+      return;
+    }
+  }
+}
+
 async function syncTaskCloses(): Promise<void> {
   for (const item of await readTaskOutbox()) {
     try {

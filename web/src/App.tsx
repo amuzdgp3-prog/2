@@ -5,6 +5,7 @@ import { readOutbox } from './db';
 import { syncOutbox } from './sync';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
+import MoneyScreen from './screens/Money';
 import HistoryScreen from './screens/History';
 import LoginScreen from './screens/Login';
 import MachinesScreen from './screens/Machines';
@@ -151,6 +152,7 @@ export default function App() {
       <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>
       <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>
       {isTechnician && <NavLink to="/forgotten"><span>⏰</span>Забытые</NavLink>}
+      {isTechnician && <NavLink to="/money"><span>₽</span>Деньги</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
       {canSeeReports && <NavLink to="/owner-report"><span>▤</span>Отчёт владельцу</NavLink>}
       {canSeeReports && <NavLink to="/log"><span>☰</span>Журнал</NavLink>}
@@ -273,6 +275,7 @@ export default function App() {
           <Route path="/tasks" element={<TasksScreen />} />
           <Route path="/queue" element={<QueueScreen onChange={refreshQueueCount} />} />
           <Route path="/forgotten" element={isTechnician ? <ForgottenScreen /> : <Navigate to="/" />} />
+          <Route path="/money" element={isTechnician ? <MoneyScreen /> : <Navigate to="/" />} />
           <Route path="/dashboard" element={canSeeReports ? <DashboardScreen /> : <Navigate to="/" />} />
           <Route path="/owner-report" element={canSeeReports ? <OwnerReportScreen /> : <Navigate to="/" />} />
           <Route path="/log" element={canSeeReports ? <ServiceLogScreen /> : <Navigate to="/" />} />

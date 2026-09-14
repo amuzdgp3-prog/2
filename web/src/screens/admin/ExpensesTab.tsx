@@ -10,6 +10,12 @@ interface Expense {
   expense_date: string;
   amount: string;
   comment: string;
+  /** ADMIN — запись владельца, TECHNICIAN — самоотчёт техника при закрытии дня (миграция 019). */
+  source: 'ADMIN' | 'TECHNICIAN';
+  /** Чьи это деньги: кому зарплата, кто заправлялся. Пусто у исторических записей. */
+  staff_name: string | null;
+  /** Кто внёс запись. У самоотчёта совпадает со staff_name. */
+  created_by_name: string | null;
 }
 
 const EXPENSE_CATEGORY_LABELS: Record<Expense['category'], string> = {
@@ -88,6 +94,12 @@ export function ExpensesTab({ onDone, onError }: TabProps) {
                 <div>
                   <strong>{formatMoney(expense.amount)} ₽</strong>
                   <span className="muted"> · {EXPENSE_CATEGORY_LABELS[expense.category]} · {expense.expense_date}</span>
+                  {expense.staff_name && (
+                    <span className="muted"> · {expense.staff_name}</span>
+                  )}
+                  {expense.source === 'TECHNICIAN' && (
+                    <span className="chip" style={{ marginLeft: 8, fontSize: 11 }}>со слов техника</span>
+                  )}
                   {expense.comment && <div className="muted">{expense.comment}</div>}
                 </div>
                 <div className="row" style={{ gap: 6 }}>

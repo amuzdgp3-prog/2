@@ -60,6 +60,20 @@ interface MonitorSchema extends DBSchema {
   meta: { key: string; value: unknown };
   tasks: { key: number; value: CachedTask };
   taskOutbox: { key: number; value: QueuedTaskClose };
+  dayCloseOutbox: { key: string; value: QueuedDayClose };
+}
+
+/**
+ * Закрытие дня, сделанное офлайн. Ключ — сама дата дня, а не случайный идентификатор: техник
+ * может поправить сумму и отправить второй раз, и в очереди должна остаться одна, последняя
+ * версия за этот день. Сервер тоже перезаписывает, но дублировать отправки с телефона в поле
+ * незачем.
+ */
+export interface QueuedDayClose {
+  workDate: string;
+  salary: string;
+  fuel: string;
+  queuedAt: string;
 }
 
 /** Задача, скачанная для работы офлайн (DECISION-050). */
@@ -90,7 +104,7 @@ export interface QueuedTaskClose {
 let database: Promise<IDBPDatabase<MonitorSchema>> | null = null;
 
 function db(): Promise<IDBPDatabase<MonitorSchema>> {
-  database ??= openDB<MonitorSchema>('apixspb-monitor', 2, {
+  database ??= openDB<MonitorSchema>('apixspb-monitor', 3, {
     upgrade(instance, oldVersion) {
       // Версия 1 уже стоит на телефонах техников, поэтому новые хранилища добавляются отдельной
       // веткой, а не пересозданием базы: иначе обновление приложения стёрло бы неотправленные
@@ -104,6 +118,9 @@ function db(): Promise<IDBPDatabase<MonitorSchema>> {
       if (oldVersion < 2) {
         instance.createObjectStore('tasks', { keyPath: 'id' });
         instance.createObjectStore('taskOutbox', { keyPath: 'taskId' });
+      }
+      if (oldVersion < 3) {
+        instance.createObjectStore('dayCloseOutbox', { keyPath: 'workDate' });
       }
     },
   });
@@ -218,6 +235,24 @@ export async function readTaskOutbox(): Promise<QueuedTaskClose[]> {
 
 export async function removeTaskClose(taskId: number): Promise<void> {
   await (await db()).delete('taskOutbox', taskId);
+}
+
+/** Ставит закрытие дня в очередь. Повторная отправка за ту же дату заменяет запись в очереди. */
+export async function queueDayClose(workDate: string, salary: string, fuel: string): Promise<void> {
+  await (await db()).put('dayCloseOutbox', {
+    workDate,
+    salary,
+    fuel,
+    queuedAt: new Date().toISOString(),
+  });
+}
+
+export async function readDayCloseOutbox(): Promise<QueuedDayClose[]> {
+  return (await db()).getAll('dayCloseOutbox');
+}
+
+export async function removeDayClose(workDate: string): Promise<void> {
+  await (await db()).delete('dayCloseOutbox', workDate);
 }
 
 /**
