@@ -300,14 +300,19 @@ export async function loadVisitPairs(
     return `$${params.length}`;
   };
 
-  // Служебные учётные записи исключаются тем же признаком, что и в факт-отчёте (DECISION-049).
-  const conditions: string[] = ['s.technician_id IS NOT NULL', 'st.is_field_technician'];
-  if (filters.from) conditions.push(`s.service_date >= ${push(filters.from)}::date`);
-  if (filters.to) conditions.push(`s.service_date <= ${push(filters.to)}::date`);
-  if (filters.technicianId) conditions.push(`s.technician_id = ${push(filters.technicianId)}`);
+  // Цепочка строится по ВСЕМ выездам на установке, без фильтров: закрывающий выезд может
+  // оказаться и за границей отчётного периода, и под служебной учётной записью, но период он всё
+  // равно закрывает. Если фильтровать до окна, последняя пара периода молча пропадает — на этом
+  // тест и поймал первую версию запроса. Фильтры применяются ниже, к выезду ПОДГОТОВКИ.
   const scope = machineScopePredicate(actor, 's.machine_number', params.length + 1);
   params.push(...scope.params);
-  conditions.push(scope.sql);
+
+  // Служебные учётные записи исключаются тем же признаком, что и в факт-отчёте (DECISION-049),
+  // но только как исполнители подготовки — закрывать период они могут.
+  const setupConditions: string[] = ['c.technician_id IS NOT NULL', 'st.is_field_technician'];
+  if (filters.from) setupConditions.push(`c.service_date >= ${push(filters.from)}::date`);
+  if (filters.to) setupConditions.push(`c.service_date <= ${push(filters.to)}::date`);
+  if (filters.technicianId) setupConditions.push(`c.technician_id = ${push(filters.technicianId)}`);
 
   const result = await client.query(
     `WITH chain AS (
@@ -317,8 +322,7 @@ export async function loadVisitPairs(
               LEAD(s.revenue)     OVER w AS closing_revenue,
               LEAD(s.occurred_at) OVER w AS closing_at
        FROM services s
-       JOIN staff st ON st.id = s.technician_id
-       WHERE ${conditions.join(' AND ')}
+       WHERE ${scope.sql}
        WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
      )
      SELECT c.technician_id, st.full_name, c.machine_number,
@@ -329,6 +333,7 @@ export async function loadVisitPairs(
      JOIN staff st ON st.id = c.technician_id
      WHERE c.closing_id IS NOT NULL
        AND c.closing_at > c.occurred_at
+       AND ${setupConditions.join(' AND ')}
      ORDER BY c.technician_id, c.occurred_at`,
     params,
   );

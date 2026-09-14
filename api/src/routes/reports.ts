@@ -10,6 +10,7 @@ import {
   toCsv,
   type ReportFilters,
 } from '../domain/reports.js';
+import { technicianEffectiveness } from '../domain/technicianEffectiveness.js';
 import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
 import { sendTelegramDocument } from '../integrations/telegram.js';
@@ -77,6 +78,24 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       client.release();
     }
   });
+
+  /**
+   * Эффективность техников (DECISION-046 закрыт 14.09.2026). Отдельный эндпоинт, а не расширение
+   * /api/reports/technicians: тот отчёт сознательно остаётся отчётом голых фактов, и одно не
+   * должно ломать другое.
+   */
+  app.get<{ Querystring: Record<string, string> }>(
+    '/api/reports/technician-effectiveness',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        return await technicianEffectiveness(client, request.actor, parseFilters(request.query));
+      } finally {
+        client.release();
+      }
+    },
+  );
 
   app.get<{ Querystring: Record<string, string> }>('/api/reports/export.csv', auth, async (request, reply) => {
     const client = await pool.connect();
