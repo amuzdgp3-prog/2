@@ -749,19 +749,21 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
     left: 0;
   }
 }
-/* Размер наклейки 7×6.5 см задан владельцем. Колонки не фиксируются числом, а подбираются под
-   ширину листа (auto-fill): при 7 см и полях 8 мм на A4 помещаются две в ряд и четыре ряда, то
-   есть восемь наклеек на страницу. Жёсткие «три в ряд» дали бы ровно 21 см — всю ширину A4 без
-   единого миллиметра полей, куда ни один принтер не печатает. */
-@page { margin: 8mm; }
+/* Высота наклейки 6.5 см задана владельцем, ширина изначально тоже (7 см), но три наклейки по
+   7 см — ровно 21 см, вся ширина A4 без миллиметра на поля, поэтому раньше в ряд помещалось только
+   две (auto-fill). По просьбе владельца перешли на жёсткую сетку в три колонки: сама наклейка сужена
+   до ~6.5 см (лишнее — это пустой отступ вокруг QR и текста, а не сам QR, у него фиксированный
+   размер 140px в QrCode ниже), поля листа уменьшены до 5 мм — этого достаточно для большинства
+   принтеров и даёт три в ряд на четыре ряда, то есть 12 наклеек на страницу вместо 8. */
+@page { margin: 5mm; }
 
 .sticker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 7cm);
+  grid-template-columns: repeat(3, 1fr);
   gap: 2mm;
 }
 .sticker-label {
-  width: 7cm;
+  width: 100%;
   height: 6.5cm;
   box-sizing: border-box;
   border: 1px dashed #999;
@@ -769,8 +771,8 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3mm;
-  padding: 3mm;
+  gap: 2mm;
+  padding: 2mm;
   break-inside: avoid;
 }
 .sticker-label-text { width: 100%; text-align: center; }
