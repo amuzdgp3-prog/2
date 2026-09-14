@@ -14,6 +14,7 @@ import { technicianEffectiveness } from '../domain/technicianEffectiveness.js';
 import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
 import { sendTelegramDocument } from '../integrations/telegram.js';
+import { sendReportEmail } from '../integrations/email.js';
 import { badRequest } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
@@ -324,6 +325,35 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
         const buffer = await workbook.xlsx.writeBuffer();
         const filename = `Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`;
         await sendTelegramDocument(botToken, chatId, Buffer.from(buffer), filename, filename);
+        return { ok: true };
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  /** Второй канал доставки того же файла — электронная почта. Появился после того, как выяснилось,
+   * что сеть сервера не пропускает Telegram (DECISION-074): владелец переключился на почту, но
+   * код отправки в Telegram не удалён — если сеть починят (например, через уже установленный
+   * VPN), кнопка выше снова заработает без доработок. */
+  app.post<{ Querystring: { year?: string; month?: string } }>(
+    '/api/reports/monthly-excel/send-email',
+    auth,
+    async (request) => {
+      assertAdmin(request.actor);
+      const apiKey = process.env.RESEND_API_KEY;
+      const from = process.env.RESEND_FROM;
+      const to = process.env.REPORT_OWNER_EMAIL;
+      if (!apiKey || !from || !to) {
+        throw badRequest('EMAIL_NOT_CONFIGURED', 'отправка на почту не настроена (нет ключа, отправителя или адреса получателя)');
+      }
+      const { year, month } = parseYearMonth(request.query);
+      const client = await pool.connect();
+      try {
+        const workbook = await buildMonthlyReportWorkbook(client, request.actor, { year, month });
+        const buffer = await workbook.xlsx.writeBuffer();
+        const filename = `Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`;
+        await sendReportEmail(apiKey, from, to, Buffer.from(buffer), filename, filename);
         return { ok: true };
       } finally {
         client.release();

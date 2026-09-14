@@ -80,7 +80,7 @@ describe('business expenses — admin-only ledger for fuel/salary/card/other ove
     }
   });
 
-  it('lets BOSS and ADMIN download the monthly xlsx report, but only ADMIN send it to Telegram', async () => {
+  it('lets BOSS and ADMIN download the monthly xlsx report, but only ADMIN send it to Telegram or email', async () => {
     const excel = await context.app.inject({
       method: 'GET',
       url: '/api/reports/monthly-excel?year=2026&month=8',
@@ -95,6 +95,13 @@ describe('business expenses — admin-only ledger for fuel/salary/card/other ove
       headers: authHeader(context.bossToken),
     });
     assert.equal(send.statusCode, 403);
+
+    const sendEmail = await context.app.inject({
+      method: 'POST',
+      url: '/api/reports/monthly-excel/send-email?year=2026&month=8',
+      headers: authHeader(context.bossToken),
+    });
+    assert.equal(sendEmail.statusCode, 403);
   });
 });
 

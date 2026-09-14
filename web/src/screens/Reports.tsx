@@ -137,6 +137,8 @@ export default function ReportsScreen() {
   const [excelBusy, setExcelBusy] = useState(false);
   const [telegramBusy, setTelegramBusy] = useState(false);
   const [telegramNotice, setTelegramNotice] = useState<string | null>(null);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [locations, setLocations] = useState<Array<{ id: number; name: string }>>([]);
   const [locationId, setLocationId] = useState('');
   const [classifiers, setClassifiers] = useState<Array<{ id: number; name: string; parent_id: number | null }>>([]);
@@ -229,6 +231,21 @@ export default function ReportsScreen() {
     }
   };
 
+  /** Второй канал доставки того же файла — на почту, появился после DECISION-074 (сеть сервера
+   * не пропускает Telegram). Кнопка выше не убрана — если сеть починят, снова заработает сама. */
+  const sendMonthlyExcelToEmail = async () => {
+    setEmailBusy(true);
+    setEmailNotice(null);
+    try {
+      await api.post(`/api/reports/monthly-excel/send-email?year=${excelYear}&month=${excelMonth}`, {});
+      setEmailNotice('Отчёт отправлен на почту');
+    } catch (caught) {
+      setEmailNotice(`Не удалось отправить: ${(caught as Error).message}`);
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
   return (
     <>
       {error && <div className="alert error">{error}</div>}
@@ -300,8 +317,14 @@ export default function ReportsScreen() {
               {telegramBusy ? 'Отправляю…' : 'Отправить в Telegram'}
             </button>
           )}
+          {user?.role === 'ADMIN' && (
+            <button onClick={sendMonthlyExcelToEmail} disabled={emailBusy}>
+              {emailBusy ? 'Отправляю…' : 'Отправить на почту'}
+            </button>
+          )}
         </div>
         {telegramNotice && <div className="muted">{telegramNotice}</div>}
+        {emailNotice && <div className="muted">{emailNotice}</div>}
       </div>
 
       <MonthlyChart rows={monthly} />

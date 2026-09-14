@@ -2461,3 +2461,34 @@ IP, Telegram среди них нет. Маршрутизацию/файрвол
 заработает только после того, как с сервера появится сетевой путь до `api.telegram.org` —
 маршрутизация части трафика через уже установленный AmneziaVPN (добавить IP/домен Telegram в
 сплит-туннель `amn0`) или иначе, по решению владельца.
+
+## DECISION-075. Второй канал доставки отчёта — электронная почта (Resend), рядом с Telegram
+
+Продолжение DECISION-074. Раз сеть сервера не пропускает Telegram, владелец попросил добавить
+отправку того же ежемесячного отчёта на почту, явно не удаляя код отправки в Telegram — если сеть
+починят, кнопка выше снова заработает сама, без доработок.
+
+**Выбор способа.** Сеть до SMTP (`smtp.mail.ru`, `smtp.gmail.com`, `smtp.yandex.ru`) и до
+почтовых HTTP-API (Resend/Mailgun/SendGrid) на этом сервере открыта — в отличие от Telegram,
+блокировки нет. Владелец выбрал HTTP API (тот же паттерн, что уже даёт `integrations/telegram.ts`
+для Telegram и `integrations/ivend.ts` для iVend — обычный `fetch`, без новых npm-зависимостей),
+а не SMTP-библиотеку. Провайдер — Resend: тестовый отправитель `onboarding@resend.dev` шлёт без
+подтверждения домена через DNS, пока получатель — сам владелец аккаунта; подтверждение своего
+домена понадобится отдельным шагом, если писем станет больше одного адресата.
+
+**Код.** Новый `integrations/email.ts` — `sendReportEmail(apiKey, from, to, buffer, filename,
+subject)`, `POST https://api.resend.com/emails` с вложением base64. Тот же класс бага, что уже
+нашли и починили для Telegram и iVend (у `fetch` нет таймаута по умолчанию) — сразу добавлен
+`AbortSignal.timeout` (30с, `EMAIL_SEND_TIMEOUT_MS`) и `try/catch`, превращающий сбой в обычную
+деловую ошибку. Новый эндпоинт `POST /api/reports/monthly-excel/send-email` в `routes/reports.ts` —
+только `ADMIN`, зеркало `send-telegram`, читает `RESEND_API_KEY`/`RESEND_FROM`/`REPORT_OWNER_EMAIL`
+из окружения и явно сообщает `EMAIL_NOT_CONFIGURED`, если чего-то не хватает. Кнопка «Отправить на
+почту» в `Reports.tsx` — рядом с «Отправить в Telegram», не вместо неё.
+
+Тесты: `tests/email_timeout.test.ts` (зависшее соединение обрывается по таймауту, ненастроенный
+канал даёт понятную ошибку) по образцу `tests/telegram_timeout.test.ts`; `tests/expenses.test.ts`
+дополнен проверкой, что `BOSS` получает 403 и на `send-email`. Все 203 теста проходят.
+
+**Открытый момент.** `RESEND_API_KEY` в `.env` пока пуст — владелец ещё не завёл аккаунт на
+resend.com. Как только заведёт и пришлёт ключ, `REPORT_OWNER_EMAIL=skiti30rus@mail.ru` и
+`RESEND_FROM=onboarding@resend.dev` уже настроены, отправка заработает без изменений кода.
