@@ -73,11 +73,19 @@ export async function listExpenses(
   assertAdmin(actor);
   const params: unknown[] = [];
   const conditions: string[] = [];
-  if (filters.from) { params.push(filters.from); conditions.push(`expense_date >= $${params.length}::date`); }
-  if (filters.to) { params.push(filters.to); conditions.push(`expense_date <= $${params.length}::date`); }
+  if (filters.from) { params.push(filters.from); conditions.push(`e.expense_date >= $${params.length}::date`); }
+  if (filters.to) { params.push(filters.to); conditions.push(`e.expense_date <= $${params.length}::date`); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  // Имена подтягиваются здесь, а не в интерфейсе: владельцу нужно видеть, ЧЬИ это деньги
+  // (staff_id) и кто запись внёс (created_by) — для самоотчётов техников это разные вещи только
+  // на словах, но для записей владельца за сотрудника расходятся.
   const result = await client.query(
-    `SELECT * FROM business_expenses ${where} ORDER BY expense_date DESC, id DESC`,
+    `SELECT e.*, owner.full_name AS staff_name, author.full_name AS created_by_name
+     FROM business_expenses e
+     LEFT JOIN staff owner  ON owner.id  = e.staff_id
+     LEFT JOIN staff author ON author.id = e.created_by
+     ${where}
+     ORDER BY e.expense_date DESC, e.id DESC`,
     params,
   );
   return result.rows;
