@@ -4,6 +4,7 @@ import { CashlessTab } from './CashlessTab';
 import { CatalogTab } from './CatalogTab';
 import { ConsumptionTab } from './ConsumptionTab';
 import { ExpensesTab } from './ExpensesTab';
+import { ExpenseSummaryTab } from './ExpenseSummaryTab';
 import { LocationsTab } from './LocationsTab';
 import { MachineTypesTab } from './MachineTypesTab';
 import { MachinesTab } from './machines/MachinesTab';
@@ -12,7 +13,7 @@ import { TasksTab } from './TasksTab';
 import { TerminalsTab } from './TerminalsTab';
 import { ToysTab } from './ToysTab';
 
-type Tab = 'machines' | 'tasks' | 'types' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'expenses' | 'audit';
+type Tab = 'machines' | 'tasks' | 'types' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'expenses' | 'expense-summary' | 'audit';
 
 export default function AdminScreen() {
   const [tab, setTab] = useState<Tab>('machines');
@@ -41,6 +42,7 @@ export default function AdminScreen() {
         <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
         <button className={tab === 'consumption' ? 'active' : ''} onClick={() => setTab('consumption')}>Расход</button>
         <button className={tab === 'expenses' ? 'active' : ''} onClick={() => setTab('expenses')}>Затраты</button>
+        <button className={tab === 'expense-summary' ? 'active' : ''} onClick={() => setTab('expense-summary')}>Сводка расходов</button>
         <button className={tab === 'cashless' ? 'active' : ''} onClick={() => setTab('cashless')}>Безнал</button>
         <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Аудит</button>
       </div>
@@ -58,6 +60,7 @@ export default function AdminScreen() {
       {tab === 'toys' && <ToysTab onDone={report} onError={fail} />}
       {tab === 'consumption' && <ConsumptionTab onDone={report} onError={fail} />}
       {tab === 'expenses' && <ExpensesTab onDone={report} onError={fail} />}
+      {tab === 'expense-summary' && <ExpenseSummaryTab onDone={report} onError={fail} />}
       {tab === 'cashless' && <CashlessTab onDone={report} onError={fail} />}
       {tab === 'audit' && <AuditTab onDone={report} onError={fail} />}
     </>

@@ -20,6 +20,15 @@ interface DayRow {
   fuel: string;
 }
 
+/** Прочая трата: парковка, мойка, запчасть. За день их может быть несколько. */
+interface OtherExpense {
+  id: number;
+  expense_date: string;
+  amount: string;
+  comment: string;
+  photo_object_key: string | null;
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -38,6 +47,13 @@ export default function MoneyScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Прочие расходы: отдельный список, а не поле дня.
+  const [others, setOthers] = useState<OtherExpense[]>([]);
+  const [otherAmount, setOtherAmount] = useState('');
+  const [otherComment, setOtherComment] = useState('');
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [otherBusy, setOtherBusy] = useState(false);
+
   const loadQueued = async () => {
     const items = await readDayCloseOutbox();
     setQueued(items.map((item) => ({ workDate: item.workDate, salary: item.salary, fuel: item.fuel })));
@@ -47,8 +63,54 @@ export default function MoneyScreen() {
     await loadQueued();
     try {
       setDays(await api.get<DayRow[]>('/api/day-close/mine'));
+      setOthers(await api.get<OtherExpense[]>('/api/day-close/other'));
     } catch {
       // Нет связи — показываем только то, что лежит в очереди на телефоне.
+    }
+  };
+
+  /**
+   * Прочая трата уходит на сервер сразу, без офлайн-очереди: к ней может прилагаться фото чека,
+   * а копить фотографии на телефоне ради траты, которую можно внести и завтра задним числом,
+   * смысла нет. Зарплата и бензин — другое дело, их сдают каждый день, поэтому там очередь есть.
+   */
+  const addOther = async (event: FormEvent) => {
+    event.preventDefault();
+    setOtherBusy(true);
+    try {
+      let photoObjectKey: string | null = null;
+      if (receipt) {
+        const localId = crypto.randomUUID();
+        const form = new FormData();
+        form.append('localId', localId);
+        form.append('file', receipt, `${localId}.jpg`);
+        photoObjectKey = (await api.upload<{ objectKey: string }>('/api/photos', form)).objectKey;
+      }
+      await api.post('/api/day-close/other', {
+        workDate,
+        amount: otherAmount,
+        comment: otherComment,
+        photoObjectKey,
+      });
+      setOtherAmount('');
+      setOtherComment('');
+      setReceipt(null);
+      setNotice('Трата записана');
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Не удалось записать трату');
+    } finally {
+      setOtherBusy(false);
+    }
+  };
+
+  const removeOther = async (id: number) => {
+    if (!confirm('Убрать эту трату?')) return;
+    try {
+      await api.delete(`/api/day-close/other/${id}`);
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Не удалось убрать');
     }
   };
 
@@ -130,6 +192,83 @@ export default function MoneyScreen() {
           {busy ? 'Сохраняю…' : 'Сохранить день'}
         </button>
       </form>
+
+      <h3>Прочие расходы</h3>
+      <p className="muted" style={{ marginTop: -8 }}>
+        Парковка, мойка, запчасть. За один день можно внести несколько — каждую отдельно. Дата
+        берётся из поля «День» выше, так что вчерашнюю трату тоже можно записать. Чек по желанию.
+      </p>
+
+      <form className="card stack" onSubmit={addOther}>
+        <div>
+          <label htmlFor="otherAmount">Сумма, ₽</label>
+          <input
+            id="otherAmount"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            placeholder="0"
+            value={otherAmount}
+            onChange={(event) => setOtherAmount(event.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="otherComment">На что потрачено</label>
+          <input
+            id="otherComment"
+            type="text"
+            placeholder="напр. парковка у ТЦ"
+            value={otherComment}
+            onChange={(event) => setOtherComment(event.target.value)}
+            required
+          />
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <label htmlFor="receipt-camera" className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
+            📷 Снять чек
+          </label>
+          <label htmlFor="receipt-gallery" className="btn btn-ghost" style={{ flex: 1, textAlign: 'center', cursor: 'pointer' }}>
+            🖼 Из галереи
+          </label>
+        </div>
+        <input
+          id="receipt-camera"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+        />
+        <input
+          id="receipt-gallery"
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(event) => setReceipt(event.target.files?.[0] ?? null)}
+        />
+        {receipt && <div className="muted">Чек прикреплён: {receipt.name}</div>}
+        <button className="primary" type="submit" disabled={otherBusy}>
+          {otherBusy ? 'Записываю…' : 'Записать трату'}
+        </button>
+      </form>
+
+      {others.length > 0 && (
+        <div className="stack">
+          {others.map((row) => (
+            <div className="card card-pad row" key={row.id}>
+              <div>
+                <strong>{formatMoney(row.amount)} ₽</strong>
+                <span className="muted"> · {humanDate(row.expense_date)}</span>
+                <div className="muted">{row.comment}</div>
+                {row.photo_object_key && <div className="muted" style={{ fontSize: 12 }}>чек приложен</div>}
+              </div>
+              <button onClick={() => removeOther(row.id)}>Убрать</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <h3>Последние дни</h3>
       {rows.length === 0 && <p className="muted">Пока ничего не внесено</p>}

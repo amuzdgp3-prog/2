@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { pool, withTransaction } from '../db/pool.js';
-import { createExpense, deleteExpense, listExpenses, updateExpense } from '../commands/expenses.js';
+import {
+  createExpense,
+  deleteExpense,
+  expenseSummary,
+  listExpenses,
+  updateExpense,
+} from '../commands/expenses.js';
 import {
   addOtherExpense,
   closeDay,
@@ -106,6 +112,20 @@ export async function registerExpenseRoutes(app: FastifyInstance): Promise<void>
       client.release();
     }
   });
+
+  /** Сводка расходов по людям и дням плюс личные траты владельца отдельным блоком. */
+  app.get<{ Querystring: { from?: string; to?: string } }>(
+    '/api/expenses/summary',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        return await expenseSummary(client, request.actor, request.query);
+      } finally {
+        client.release();
+      }
+    },
+  );
 
   app.post<{ Body: Parameters<typeof createExpense>[2] }>('/api/expenses', auth, async (request) =>
     withTransaction((client) => createExpense(client, request.actor, request.body)),
