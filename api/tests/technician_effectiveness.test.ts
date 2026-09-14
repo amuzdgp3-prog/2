@@ -5,6 +5,7 @@ import {
   aggregatePairs,
   bootstrapCi,
   coefficientOfVariation,
+  filterPairsForPeriod,
   percentile,
   weightedMean,
   weightedVariance,
@@ -27,6 +28,7 @@ function pair(overrides: Partial<RawPair> & Pick<RawPair, 'machineNumber' | 'rev
   return {
     technicianId: overrides.technicianId ?? 1,
     technicianName: overrides.technicianName ?? 'Техник',
+    isFieldTechnician: overrides.isFieldTechnician ?? true,
     machineNumber: overrides.machineNumber,
     setupServiceId: overrides.setupServiceId ?? 1,
     setupDate: overrides.setupDate ?? '2026-09-01',
@@ -157,6 +159,24 @@ describe('порог доверия и граничные случаи', () => {
     assert.equal(below?.index, null, 'ниже порога оценка не выдаётся вообще');
     assert.equal(atThreshold?.enoughData, true);
     assert.ok(atThreshold?.index !== null, 'ровно на пороге оценка уже есть');
+  });
+
+  it('служебная запись не оценивается, но задаёт норму аппарата', () => {
+    // Почти вся история парка записана на служебную запись «Админ». Если выкинуть её пары до
+    // расчёта норм, у аппарата с длинной историей сравнивать оказывается не с чем, и полевой
+    // техник остаётся без индекса — ровно это и происходило до правки.
+    const raw = [
+      pair({ machineNumber: 'M', revenue: 1000, technicianId: 2, technicianName: 'Админ', isFieldTechnician: false }),
+      pair({ machineNumber: 'M', revenue: 1000, technicianId: 2, technicianName: 'Админ', isFieldTechnician: false }),
+      pair({ machineNumber: 'M', revenue: 2000, technicianId: 7, technicianName: 'Полевой' }),
+    ];
+    const withIndex = withMachineIndex(raw);
+    const field = withIndex.find((item) => item.technicianId === 7);
+    assert.equal(field?.index, 2, 'норма взялась из пар служебной записи');
+
+    const report = aggregatePairs(filterPairsForPeriod(withIndex, {}));
+    assert.equal(report.rows.length, 1, 'в оценке остался только полевой техник');
+    assert.equal(report.rows[0].technicianId, 7);
   });
 
   it('порог применяется к числу пар, на которых держится сама оценка', () => {

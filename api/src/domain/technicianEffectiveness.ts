@@ -44,8 +44,16 @@ export const MIN_PAIRS = 3;
 
 /** Одна пара «подготовил → закрыли период». */
 export interface VisitPair {
-  technicianId: number;
+  /** null — подготовка без указанного техника: в норму аппарата входит, в оценку нет. */
+  technicianId: number | null;
   technicianName: string;
+  /**
+   * Полевой ли техник делал подготовку. Служебная учётная запись («Админ», под которой залита
+   * вся историческая база) оценку не получает, но её пары остаются наблюдениями о том, сколько
+   * аппарат зарабатывает обычно, — иначе у аппарата с многомесячной историей не оказывается
+   * нормы вовсе.
+   */
+  isFieldTechnician: boolean;
   machineNumber: string;
   /** Визит N: тот, чью работу оцениваем. */
   setupServiceId: number;
@@ -227,8 +235,10 @@ export function aggregatePairs(pairs: VisitPair[]): TechnicianEffectivenessRepor
   const indexed = pairs.filter((pair) => pair.index !== null);
   const fleetIndexP90 = percentile(indexed.map((pair) => pair.index as number), 0.9);
 
+  // Сюда приходят только пары, прошедшие filterPairsForPeriod, то есть с известным техником.
   const byTechnician = new Map<number, VisitPair[]>();
   for (const pair of pairs) {
+    if (pair.technicianId === null) continue;
     const list = byTechnician.get(pair.technicianId) ?? [];
     list.push(pair);
     byTechnician.set(pair.technicianId, list);
@@ -315,15 +325,11 @@ export async function loadVisitPairs(
   const scope = machineScopePredicate(actor, 's.machine_number', params.length + 1);
   params.push(...scope.params);
 
-  // Служебные учётные записи исключаются тем же признаком, что и в факт-отчёте (DECISION-049),
-  // но только как исполнители подготовки — закрывать период они могут.
-  //
-  // Фильтры периода и техника здесь НЕ применяются: они нужны для того, чтобы решить, чьи пары
-  // попадут в оценку, но норма аппарата должна строиться по всей его истории. Иначе у техника,
-  // у которого в отчётном месяце по одному закрытому периоду на точку, сравнивать оказывается не
-  // с чем, и индекс не считается вовсе. Отбор по периоду и технику делается после расчёта норм.
-  const setupConditions: string[] = ['c.technician_id IS NOT NULL', 'st.is_field_technician'];
-
+  // Никакие фильтры здесь не применяются — ни по периоду, ни по технику, ни по служебной учётной
+  // записи. Всё это решает, чьи пары попадут в ОЦЕНКУ, но норма аппарата должна строиться по всей
+  // его истории: почти вся она записана на служебную запись «Админ», и если отсечь её здесь, у
+  // аппарата с двадцатью закрытыми периодами не окажется нормы вообще. Отбор в оценку — ниже,
+  // в filterPairsForPeriod.
   const result = await client.query(
     `WITH chain AS (
        SELECT s.id, s.placement_id, s.machine_number, s.occurred_at, s.service_date,
@@ -335,15 +341,14 @@ export async function loadVisitPairs(
        WHERE ${scope.sql}
        WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
      )
-     SELECT c.technician_id, st.full_name, c.machine_number,
+     SELECT c.technician_id, st.full_name, st.is_field_technician, c.machine_number,
             c.id AS setup_id, c.service_date AS setup_date,
             c.closing_id, c.closing_revenue, c.toy_cost,
             EXTRACT(EPOCH FROM (c.closing_at - c.occurred_at)) / 86400 AS period_days
      FROM chain c
-     JOIN staff st ON st.id = c.technician_id
+     LEFT JOIN staff st ON st.id = c.technician_id
      WHERE c.closing_id IS NOT NULL
        AND c.closing_at > c.occurred_at
-       AND ${setupConditions.join(' AND ')}
      ORDER BY c.technician_id, c.occurred_at`,
     params,
   );
@@ -353,8 +358,9 @@ export async function loadVisitPairs(
     const revenue = Number(row.closing_revenue);
     const toyCostAtSetup = Number(row.toy_cost);
     return {
-      technicianId: Number(row.technician_id),
-      technicianName: row.full_name as string,
+      technicianId: row.technician_id === null ? null : Number(row.technician_id),
+      technicianName: (row.full_name as string | null) ?? '—',
+      isFieldTechnician: row.is_field_technician === true,
       machineNumber: row.machine_number as string,
       setupServiceId: Number(row.setup_id),
       setupDate: String(row.setup_date),
@@ -368,9 +374,14 @@ export async function loadVisitPairs(
   });
 }
 
-/** Отбор пар в оценку: по дате ПОДГОТОВКИ (пункт 8 разбора) и по запрошенному технику. */
+/**
+ * Отбор пар в оценку: только полевые техники (DECISION-049), по дате ПОДГОТОВКИ (пункт 8 разбора)
+ * и по запрошенному технику. Всё, что сюда не прошло, уже сыграло свою роль раньше — в норме
+ * аппарата.
+ */
 export function filterPairsForPeriod(pairs: VisitPair[], filters: ReportFilters): VisitPair[] {
   return pairs.filter((pair) => {
+    if (pair.technicianId === null || !pair.isFieldTechnician) return false;
     if (filters.from && pair.setupDate < filters.from) return false;
     if (filters.to && pair.setupDate > filters.to) return false;
     if (filters.technicianId && pair.technicianId !== filters.technicianId) return false;
