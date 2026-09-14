@@ -215,7 +215,14 @@ export function withMachineIndex(pairs: Omit<VisitPair, 'index'>[]): VisitPair[]
   });
 }
 
-/** Сводит пары по технику: веса — дни периода, метрики — по правилам разбора. */
+/**
+ * Сводит пары по технику: веса — дни периода, метрики — по правилам разбора.
+ *
+ * Порог MIN_PAIRS проверяется отдельно для каждой группы метрик — по тому числу пар, на котором
+ * метрика реально держится. Иначе техник с шестью выездами, из которых сравнимы только два,
+ * получал бы индекс «по шести парам», хотя за цифрой стоят две: ровно та беда, ради которой порог
+ * и вводился.
+ */
 export function aggregatePairs(pairs: VisitPair[]): TechnicianEffectivenessReport {
   const indexed = pairs.filter((pair) => pair.index !== null);
   const fleetIndexP90 = percentile(indexed.map((pair) => pair.index as number), 0.9);
@@ -245,6 +252,7 @@ export function aggregatePairs(pairs: VisitPair[]): TechnicianEffectivenessRepor
       : null;
 
     const enoughData = list.length >= MIN_PAIRS;
+    const enoughForIndex = withIndex.length >= MIN_PAIRS;
 
     rows.push({
       technicianId,
@@ -262,14 +270,14 @@ export function aggregatePairs(pairs: VisitPair[]): TechnicianEffectivenessRepor
           withToys.map((pair) => pair.toyCostAtSetup),
         )
         : null,
-      index: enoughData ? index : null,
-      indexCi: enoughData && withIndex.length >= 2
+      index: enoughForIndex ? index : null,
+      indexCi: enoughForIndex
         ? bootstrapCi(
           withIndex.map((pair) => pair.index as number),
           withIndex.map((pair) => pair.periodDays),
         )
         : null,
-      scaled: enoughData && index !== null && fleetIndexP90 !== null && fleetIndexP90 > 0
+      scaled: enoughForIndex && index !== null && fleetIndexP90 !== null && fleetIndexP90 > 0
         ? index / fleetIndexP90
         : null,
       enoughData,
@@ -309,10 +317,12 @@ export async function loadVisitPairs(
 
   // Служебные учётные записи исключаются тем же признаком, что и в факт-отчёте (DECISION-049),
   // но только как исполнители подготовки — закрывать период они могут.
+  //
+  // Фильтры периода и техника здесь НЕ применяются: они нужны для того, чтобы решить, чьи пары
+  // попадут в оценку, но норма аппарата должна строиться по всей его истории. Иначе у техника,
+  // у которого в отчётном месяце по одному закрытому периоду на точку, сравнивать оказывается не
+  // с чем, и индекс не считается вовсе. Отбор по периоду и технику делается после расчёта норм.
   const setupConditions: string[] = ['c.technician_id IS NOT NULL', 'st.is_field_technician'];
-  if (filters.from) setupConditions.push(`c.service_date >= ${push(filters.from)}::date`);
-  if (filters.to) setupConditions.push(`c.service_date <= ${push(filters.to)}::date`);
-  if (filters.technicianId) setupConditions.push(`c.technician_id = ${push(filters.technicianId)}`);
 
   const result = await client.query(
     `WITH chain AS (
@@ -358,11 +368,22 @@ export async function loadVisitPairs(
   });
 }
 
+/** Отбор пар в оценку: по дате ПОДГОТОВКИ (пункт 8 разбора) и по запрошенному технику. */
+export function filterPairsForPeriod(pairs: VisitPair[], filters: ReportFilters): VisitPair[] {
+  return pairs.filter((pair) => {
+    if (filters.from && pair.setupDate < filters.from) return false;
+    if (filters.to && pair.setupDate > filters.to) return false;
+    if (filters.technicianId && pair.technicianId !== filters.technicianId) return false;
+    return true;
+  });
+}
+
 export async function technicianEffectiveness(
   client: Client,
   actor: Actor,
   filters: ReportFilters,
 ): Promise<TechnicianEffectivenessReport> {
-  const raw = await loadVisitPairs(client, actor, filters);
-  return aggregatePairs(withMachineIndex(raw));
+  // Нормы аппаратов — по всей доступной истории, оценка — только по парам отчётного периода.
+  const all = withMachineIndex(await loadVisitPairs(client, actor, filters));
+  return aggregatePairs(filterPairsForPeriod(all, filters));
 }

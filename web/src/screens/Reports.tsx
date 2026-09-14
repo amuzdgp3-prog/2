@@ -33,6 +33,29 @@ interface ReportResponse {
   totals: { services: number; newGames: string; revenue: string; cashless: string; cash: string; toyCost: string };
 }
 
+/** Эффективность техника: пары «подготовил аппарат → следующий выезд закрыл период». */
+interface EffectivenessRow {
+  technicianId: number;
+  technicianName: string;
+  pairs: number;
+  pairsWithToys: number;
+  pairsWithIndex: number;
+  totalDays: number;
+  totalRevenue: number;
+  revenuePerDay: number;
+  stability: number | null;
+  returnOnToys: number | null;
+  index: number | null;
+  indexCi: [number, number] | null;
+  scaled: number | null;
+  enoughData: boolean;
+}
+
+interface EffectivenessResponse {
+  rows: EffectivenessRow[];
+  meta: { totalPairs: number; minPairs: number; fleetIndexP90: number | null };
+}
+
 interface MonthlyRow {
   monthStart: string;
   services: number;
@@ -104,6 +127,7 @@ export default function ReportsScreen() {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [technicians, setTechnicians] = useState<Array<Record<string, string | number>>>([]);
+  const [effectiveness, setEffectiveness] = useState<EffectivenessResponse | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -131,6 +155,10 @@ export default function ReportsScreen() {
         .get<Array<Record<string, string | number>>>(`/api/reports/technicians?${query}`)
         .then(setTechnicians)
         .catch(() => setTechnicians([])),
+      api
+        .get<EffectivenessResponse>(`/api/reports/technician-effectiveness?${query}`)
+        .then(setEffectiveness)
+        .catch(() => setEffectiveness(null)),
     ])
       .catch((caught) => setError((caught as Error).message))
       .finally(() => setLoading(false));
@@ -332,6 +360,72 @@ export default function ReportsScreen() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {effectiveness && effectiveness.rows.length > 0 && (
+        <div className="table-wrap scroll-x" style={{ marginBottom: 20 }}>
+          <h3 style={{ margin: '0 0 8px' }}>Эффективность техников</h3>
+          <div className="muted" style={{ marginBottom: 8, fontSize: 12.5 }}>
+            Считается по парам «подготовил аппарат → следующий выезд закрыл период»: выручка
+            периода засчитывается тому, кто аппарат <strong>подготовил</strong>, а не тому, кто
+            снял деньги. Главный столбец — <strong>индекс</strong>: 1,00 значит «аппараты
+            зарабатывали ровно столько, сколько зарабатывают обычно», 1,20 — на 20 % больше.
+            Каждая пара сравнивается с нормой этого же аппарата, поэтому разная проходимость точек
+            на сравнение не влияет. «Выручка в сутки» приведена для справки — по ней техников
+            сравнивать нельзя, она зависит от маршрута. Меньше {effectiveness.meta.minPairs} пар —
+            оценка не выдаётся.
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Техник</th>
+                <th className="num">Пар</th>
+                <th className="num">Из них в индексе</th>
+                <th className="num" style={{ paddingLeft: 24 }}>Индекс</th>
+                <th className="num">Интервал</th>
+                <th className="num">Стабильность</th>
+                <th className="num">Отдача на игрушки</th>
+                <th className="num">Выручка в сутки</th>
+                <th className="num">Собрано за периоды</th>
+              </tr>
+            </thead>
+            <tbody>
+              {effectiveness.rows.map((row) => (
+                <tr key={row.technicianId}>
+                  <td>{row.technicianName}</td>
+                  <td className="num mono">{row.pairs}</td>
+                  <td className={row.pairsWithIndex < row.pairs ? 'num mono muted' : 'num mono'}>
+                    {row.pairsWithIndex}
+                  </td>
+                  <td className="num mono" style={{ paddingLeft: 24, fontWeight: 700 }}>
+                    {row.index === null ? '—' : row.index.toFixed(2)}
+                  </td>
+                  <td className="num mono muted">
+                    {row.indexCi === null
+                      ? '—'
+                      : `${row.indexCi[0].toFixed(2)} — ${row.indexCi[1].toFixed(2)}`}
+                  </td>
+                  <td className="num mono">
+                    {row.stability === null ? '—' : row.stability.toFixed(2)}
+                  </td>
+                  <td className="num mono">
+                    {row.returnOnToys === null ? '—' : `×${row.returnOnToys.toFixed(1)}`}
+                  </td>
+                  <td className="num">{formatMoney(String(row.revenuePerDay))} ₽</td>
+                  <td className="num">{formatMoney(String(row.totalRevenue))} ₽</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+            Интервал — доверительный, 95 %: если он широкий и накрывает 1,00, данных пока мало,
+            чтобы отличить работу техника от случайности. Стабильность — разброс от выезда к
+            выезду: 0,2 ровно, 0,8 рвано. Отдача на игрушки — сколько рублей принёс каждый рубль
+            вложенных игрушек. «Из них в индексе» — пар, у которых нашлось с чем сравнивать: если у
+            аппарата всего один закрытый период, норму по нему не построить, и такая пара в индекс
+            не входит. Всего пар за период: {effectiveness.meta.totalPairs}.
+          </div>
         </div>
       )}
 

@@ -159,6 +159,28 @@ describe('порог доверия и граничные случаи', () => {
     assert.ok(atThreshold?.index !== null, 'ровно на пороге оценка уже есть');
   });
 
+  it('порог применяется к числу пар, на которых держится сама оценка', () => {
+    // Шесть выездов, но сравнить можно только два: у остальных аппаратов второго периода нет.
+    // Индекс по двум наблюдениям — ровно то, что порог обязан не пропустить, даже если общее
+    // число пар выглядит достаточным.
+    const pairs = withMachineIndex([
+      pair({ machineNumber: 'PAIRED', revenue: 1000, technicianId: 1 }),
+      pair({ machineNumber: 'PAIRED', revenue: 1100, technicianId: 1 }),
+      pair({ machineNumber: 'SOLO-1', revenue: 1000, technicianId: 1 }),
+      pair({ machineNumber: 'SOLO-2', revenue: 1000, technicianId: 1 }),
+      pair({ machineNumber: 'SOLO-3', revenue: 1000, technicianId: 1 }),
+      pair({ machineNumber: 'SOLO-4', revenue: 1000, technicianId: 1 }),
+    ]);
+    const row = aggregatePairs(pairs).rows[0];
+    assert.equal(row.pairs, 6);
+    assert.equal(row.pairsWithIndex, 2);
+    assert.equal(row.enoughData, true, 'фактов на шесть выездов хватает');
+    assert.equal(row.index, null, 'но индекс по двум парам не показывается');
+    assert.equal(row.indexCi, null);
+    assert.equal(row.scaled, null);
+    assert.ok(row.revenuePerDay > 0, 'факты при этом остаются на месте');
+  });
+
   it('визит без вложенных игрушек не роняет расчёт делением на ноль', () => {
     const pairs = withMachineIndex([
       pair({ machineNumber: 'A', revenue: 1000, toyCostAtSetup: 0 }),
