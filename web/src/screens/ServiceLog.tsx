@@ -74,7 +74,8 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
  * и на телефоне, карточки не подошли), но с разным набором колонок, переключаемым CSS-классами
  * (.desktop-only/.mobile-only): полная таблица на 14 колонок на широком экране (DECISION-053,
  * счётчик игр добавлен отдельно после столбца «Адрес») и
- * узкая на 10 — только то, без чего строку не понять с одного взгляда — на телефоне (DECISION-054).
+ * узкая на 11 — только то, без чего строку не понять с одного взгляда, плюс комментарий — на
+ * телефоне (DECISION-054, комментарий возвращён в строку по прямой просьбе владельца позже).
  * Остальные цифры в обоих случаях доступны по тому же тапу на строку, в общей ServiceDetail. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
@@ -283,7 +284,7 @@ export default function ServiceLogScreen() {
       {/* Телефон: та же таблица, не карточки (владелец настоял на этом отдельно) — но только те
           столбцы, без которых нельзя понять строку с одного взгляда: дата/время, номер, адрес,
           дней, счётчик игр (сырое показание, а не «новых игр» — так попросил владелец), выручка,
-          нал и безнал отдельно, техник, фото. Остальное (себестоимость, ROI, игр/день, комментарий,
+          нал и безнал отдельно, техник, фото, комментарий. Остальное (себестоимость, ROI, игр/день,
           удаление) — по тому же тапу на строку, в общей ServiceDetail, а не теряется. */}
       <div className="table-wrap scroll-x table-tall mobile-only">
         <table>
@@ -299,6 +300,7 @@ export default function ServiceLogScreen() {
               <th className="num">Безнал</th>
               <th>Техник</th>
               <th>Фото</th>
+              <th>Комментарий</th>
             </tr>
           </thead>
           <tbody>
@@ -328,10 +330,11 @@ export default function ServiceLogScreen() {
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
                     </td>
+                    <td className="muted wrap">{row.notes || '—'}</td>
                   </tr>
                   {isOpen && (
                     <tr key={`${row.id}-detail`}>
-                      <td colSpan={10} style={{ padding: 0 }}>
+                      <td colSpan={11} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} />
                         <div style={{ margin: '0 12px 12px' }}>
                           <button className="icon-btn danger" onClick={() => remove(row.id)}>✕ Удалить</button>
@@ -343,7 +346,7 @@ export default function ServiceLogScreen() {
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={10} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
