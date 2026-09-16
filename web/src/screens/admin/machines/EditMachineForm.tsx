@@ -10,6 +10,8 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
   const [minDays, setMinDays] = useState(machine.min_service_days?.toString() ?? '');
   const [maxDays, setMaxDays] = useState(machine.max_service_days?.toString() ?? '');
   const [address, setAddress] = useState(machine.address ?? '');
+  const [machineType, setMachineType] = useState(machine.machine_type);
+  const [machineTypes, setMachineTypes] = useState<Array<{ name: string; is_active: boolean }>>([]);
   const [applyFrom, setApplyFrom] = useState('');
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [addTagChoice, setAddTagChoice] = useState('');
@@ -17,6 +19,18 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
   const loadClassifiers = () => api.get<Classifier[]>('/api/classifiers').then(setClassifiers).catch(onError);
   useEffect(() => {
     void loadClassifiers();
+    // Текущий тип аппарата показывается в списке, даже если его потом отключили в справочнике —
+    // иначе выпадающий список у уже установленного аппарата открывался бы без его же значения.
+    api
+      .get<Array<{ name: string; is_active: boolean }>>('/api/machine-types')
+      .then((rows) =>
+        setMachineTypes(
+          rows.some((row) => row.name === machine.machine_type)
+            ? rows
+            : [...rows, { name: machine.machine_type, is_active: false }],
+        ),
+      )
+      .catch(onError);
   }, []);
 
   const addTag = async () => {
@@ -43,6 +57,7 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
     event.preventDefault();
     try {
       await api.patch(`/api/machines/${encodeURIComponent(machine.machine_number)}`, {
+        machineType,
         pricePerGame,
         counterDivisor,
         minServiceDays: minDays === '' ? null : Number(minDays),
@@ -83,6 +98,17 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
         <div>
           <label>Адрес</label>
           <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="улица, дом" />
+        </div>
+        <div>
+          <label>Тип аппарата</label>
+          <select value={machineType} onChange={(event) => setMachineType(event.target.value)}>
+            {machineTypes.map((type) => (
+              <option key={type.name} value={type.name}>
+                {type.name}
+                {!type.is_active ? ' (отключён в справочнике)' : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="grid-2">
           <div>
