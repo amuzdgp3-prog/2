@@ -50,11 +50,21 @@ services:
     ports:
       - "8091:80"
     networks:
+      - web
       - internal
     depends_on:
       - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.site2test.rule=Host(`${TEST_SERVER_PUBLIC_IP}`)"
+      - "traefik.http.routers.site2test.entrypoints=websecure"
+      - "traefik.http.routers.site2test.tls=true"
+      - "traefik.http.services.site2test.loadbalancer.server.port=80"
 
 networks:
+  web:
+    external: true
   internal:
 
 volumes:
