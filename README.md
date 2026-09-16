@@ -22,18 +22,31 @@
 
 ```bash
 # с локальной машины — скопировать код на сервер (SERVER — адрес прод-сервера)
+# docker-compose.yml НЕ синхронизируется — см. предупреждение ниже
 rsync -az --exclude 'node_modules/' --exclude '.git/' --exclude 'dist/' --exclude 'backups/' \
-  --exclude '.import-fedor-images/' --exclude '*.tsbuildinfo' \
+  --exclude '.import-fedor-images/' --exclude '*.tsbuildinfo' --exclude '.env' \
+  --exclude 'docker-compose.yml' --exclude 'docker-compose.override.yml' \
   ./ root@$SERVER:/opt/sites/2/
 
-# на сервере — пересобрать и перезапустить
+# на сервере — пересобрать и перезапустить (обычно нужен только web или api, а не всё сразу)
 ssh root@$SERVER
 cd /opt/sites/2
-docker compose build && docker compose up -d
+docker compose build web   # или api — какой слой менялся
+docker compose up -d web
 docker compose ps                 # состояние
 docker compose logs -f api        # логи API
 docker compose restart api        # перезапуск
 ```
+
+**Важно: `docker-compose.yml` на сервере — не копия этого файла в репозитории, а отдельная,
+осознанно другая версия** (другой Traefik-роутер на `Host(`2.apixspb.ru`)` вместо общего для
+нескольких сайтов, том БД называется `db-data`, без `TEST_SERVER_PUBLIC_IP`/публикации порта —
+см. DECISION-077 и DECISION-078). Локальный `docker-compose.yml` в этом репозитории, наоборот,
+настроен под локальный тестовый стенд (том `test-db-data`, роутер `site2test` на
+`${TEST_SERVER_PUBLIC_IP}`, порт `8091`). Затирать один другим через `rsync ./` **нельзя** — 16 и
+17.09.2026 это уже приводило к тому, что боевой `site2-db` на несколько минут переключался на
+пустой тестовый том. Если `docker-compose.yml` на сервере всё же нужно поменять — делать это
+вручную, глядя на разницу, а не синхронизацией всего каталога.
 
 Внешний доступ на новом сервере — через отдельный Traefik в `/opt/traefik-root/` (не тот общий
 Traefik из `/home/s/Work/docker-compose.yml`, что остался на локальной машине для `site1`/`site3`).
