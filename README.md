@@ -14,22 +14,34 @@
 | `api`       | `site2-api` | Node 22 + Fastify, миграции при старте, порт 3000        |
 | `web`       | `site2-web` | nginx: раздаёт PWA и проксирует `/api` в `api`           |
 
-Внешний доступ — через общий Traefik из `/home/s/Work/docker-compose.yml`
-(`Host(2.apixspb.ru)`, сертификат wildcard `*.apixspb.ru`).
-
 ## Эксплуатация
 
-```bash
-cd /home/s/Work/sites/2
+Прод перенесён 16.09.2026 с локальной машины на отдельный сервер (адрес и доступ — у владельца,
+не в этом репозитории) — см. DECISION-077. Этот каталог (`/home/s/Work/sites/2`) на локальной
+машине остаётся местом разработки; изменения на прод выкатываются вручную:
 
+```bash
+# с локальной машины — скопировать код на сервер (SERVER — адрес прод-сервера)
+rsync -az --exclude 'node_modules/' --exclude '.git/' --exclude 'dist/' --exclude 'backups/' \
+  --exclude '.import-fedor-images/' --exclude '*.tsbuildinfo' \
+  ./ root@$SERVER:/opt/sites/2/
+
+# на сервере — пересобрать и перезапустить
+ssh root@$SERVER
+cd /opt/sites/2
+docker compose build && docker compose up -d
 docker compose ps                 # состояние
 docker compose logs -f api        # логи API
-docker compose build && docker compose up -d   # выкатить изменения
 docker compose restart api        # перезапуск
 ```
 
-Секреты (пароль БД, JWT-ключ, первый администратор) лежат в `.env` рядом с compose-файлом
-и не попадают в образы.
+Внешний доступ на новом сервере — через отдельный Traefik в `/opt/traefik-root/` (не тот общий
+Traefik из `/home/s/Work/docker-compose.yml`, что остался на локальной машине для `site1`/`site3`).
+Сертификат — Let's Encrypt по HTTP-01 только на `2.apixspb.ru` (не wildcard: reg.ru-креды для
+DNS-01 на новый сервер осознанно не переносились, см. DECISION-077).
+
+Секреты (пароль БД, JWT-ключ, первый администратор) лежат в `.env` рядом с compose-файлом и на
+локальной машине, и на сервере — не в git, не попадают в образы.
 
 ### База данных
 
