@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: apixspb
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - test-db-data:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
@@ -47,25 +47,15 @@ services:
       context: ./web
     container_name: site2-web
     restart: unless-stopped
+    ports:
+      - "8091:80"
     networks:
-      - web
       - internal
     depends_on:
       - api
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=web"
-      - "traefik.http.routers.site2.rule=Host(`2.apixspb.ru`)"
-      - "traefik.http.routers.site2.entrypoints=websecure"
-      - "traefik.http.routers.site2.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.site2.tls.domains[0].main=apixspb.ru"
-      - "traefik.http.routers.site2.tls.domains[0].sans=*.apixspb.ru"
-      - "traefik.http.services.site2.loadbalancer.server.port=80"
 
 networks:
-  web:
-    external: true
   internal:
 
 volumes:
-  db-data:
+  test-db-data:
