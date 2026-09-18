@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { formatMoney } from '../../calc';
 import type { Location, TabProps } from './types';
 import { Section } from './shared/Section';
+import { LocationRentCard } from './machines/LocationRentCard';
 
 interface PlacementHistoryRow {
   id: number;
@@ -183,7 +184,12 @@ export function LocationsTab({ onDone, onError }: TabProps) {
           Договор расторгнут. История сохранена, новые обслуживания запрещены.
         </div>
       )}
-      {expanded === location.id && <AddressHistory locationId={location.id} onError={onError} />}
+      {expanded === location.id && (
+        <div className="stack" style={{ marginTop: 12 }}>
+          <LocationRentCard locationId={location.id} onDone={onDone} onError={onError} />
+          <AddressHistory locationId={location.id} onError={onError} />
+        </div>
+      )}
     </div>
   );
 
