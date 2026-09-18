@@ -269,6 +269,18 @@ export interface MonthlyRow {
   expensesTotal: string;
   /** Выручка минус себестоимость игрушек минус расходы на бизнес — то, что реально видит владелец. */
   netProfit: string;
+  /** Безналичная выручка с терминалов за месяц — идёт напрямую на счёт владельца, минуя техника
+   * (в отличие от наличных, которые сначала собирает техник). Один из двух слагаемых reachedOwner. */
+  cashless: string;
+  /** Сумма расходов категории CARD за месяц: наличные, которые уже физически собраны и переданы
+   * владельцу отдельным переводом. Не вычитается из netProfit (остаётся внутри expensesTotal, как
+   * и раньше) — это справочная цифра «сколько из расходов на самом деле ушло владельцу», второе
+   * слагаемое reachedOwner. */
+  paidToOwner: string;
+  /** cashless + paidToOwner — сколько денег за месяц реально дошло до владельца двумя каналами
+   * (безнал напрямую на счёт + наличные переводом), отдельно от netProfit — не замена расчётной
+   * прибыли, а справочная сверочная цифра (владелец подтвердил 18.09.2026). */
+  reachedOwner: string;
 }
 
 /**
@@ -349,9 +361,10 @@ export async function monthlyReport(
   const result = await client.query(
     `SELECT date_trunc('month', s.service_date)::date AS month_start,
             COUNT(*)::int AS services,
-            SUM(s.new_games)  AS new_games,
-            SUM(s.revenue)    AS revenue,
-            SUM(s.toy_cost)   AS toy_cost
+            SUM(s.new_games)        AS new_games,
+            SUM(s.revenue)          AS revenue,
+            SUM(s.toy_cost)         AS toy_cost,
+            SUM(s.cashless_amount)  AS cashless
      FROM services s
      JOIN machine_placements p ON p.id = s.placement_id
      WHERE ${conditions.join(' AND ')}
@@ -372,6 +385,24 @@ export async function monthlyReport(
   );
   const expensesMap = new Map<string, string>(
     expensesByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
+  );
+
+  // «На карту» — не расход бизнеса, а наличные, которые уже физически собраны и переданы
+  // владельцу отдельным переводом (владелец подтвердил: считать «Чистую прибыль» это не должно
+  // менять, эта сумма остаётся внутри expensesTotal выше как обычно). Здесь она нужна только как
+  // один из двух каналов, которыми деньги реально доходят до владельца, — второй канал ниже,
+  // безналичная выручка с терминалов.
+  const paidToOwnerByMonth = await client.query(
+    `SELECT date_trunc('month', expense_date)::date AS month_start, SUM(amount) AS total
+     FROM business_expenses
+     WHERE category = 'CARD'
+       AND expense_date >= date_trunc('month', now()) - ($1::int - 1) * interval '1 month'
+       AND expense_date <= (now() + interval '1 day')::date
+     GROUP BY 1`,
+    [filters.months ?? 6],
+  );
+  const paidToOwnerMap = new Map<string, string>(
+    paidToOwnerByMonth.rows.map((row) => [String(row.month_start), String(row.total ?? '0')]),
   );
 
   // Аренда считается не суммой строк, а пропорционально пересечению каждого периода аренды с этим
@@ -420,6 +451,8 @@ export async function monthlyReport(
     const toyCostNumber = Number(toyCost);
     const monthKey = String(row.month_start);
     const expensesTotal = sumDecimal([expensesMap.get(monthKey) ?? '0', rentMap.get(monthKey) ?? '0'], 2);
+    const cashless = String(row.cashless ?? '0');
+    const paidToOwner = paidToOwnerMap.get(monthKey) ?? '0';
     return {
       monthStart: row.month_start,
       services: row.services,
@@ -430,6 +463,9 @@ export async function monthlyReport(
       roi: toyCostNumber > 0 ? divideDecimal(revenue, toyCost, 2) : null,
       expensesTotal,
       netProfit: sumDecimal([revenue, `-${toyCost}`, `-${expensesTotal}`], 2),
+      cashless,
+      paidToOwner,
+      reachedOwner: sumDecimal([cashless, paidToOwner], 2),
     };
   });
 }

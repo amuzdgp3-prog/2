@@ -12,6 +12,9 @@ interface MonthlyRow {
   roi: string | null;
   expensesTotal: string;
   netProfit: string;
+  cashless: string;
+  paidToOwner: string;
+  reachedOwner: string;
 }
 
 const MONTH_NAMES_FULL = [
@@ -133,6 +136,13 @@ export default function OwnerReportScreen() {
         <div className="mono" style={{ marginTop: 6 }}>
           Чистая прибыль: <strong>{formatMoney(selected.netProfit)} ₽</strong>
           <Delta current={selected.netProfit} previous={previous?.netProfit} />
+        </div>
+        <div className="mono" style={{ marginTop: 6 }}>
+          Дошло до владельца: <strong>{formatMoney(selected.reachedOwner)} ₽</strong>
+          <Delta current={selected.reachedOwner} previous={previous?.reachedOwner} />
+        </div>
+        <div className="muted mono" style={{ marginTop: 2, fontSize: 12.5 }}>
+          Безнал напрямую: {formatMoney(selected.cashless)} ₽ · На карту переводом: {formatMoney(selected.paidToOwner)} ₽
         </div>
         <div className="muted mono" style={{ marginTop: 6 }}>
           Новых игр: {formatGames(selected.newGames)} · Обслуживаний: {selected.services} ·

@@ -115,4 +115,44 @@ describe('monthly report aggregation', () => {
       'filtering by location must exclude MO-3 revenue from another location',
     );
   });
+
+  it('splits how much actually reached the owner (cashless + CARD transfers) without touching netProfit', async () => {
+    await installTestMachine(context, {
+      machineNumber: 'MO-4',
+      pricePerGame: 10,
+      initialGameCounter: 0,
+    });
+    const occurredAt = new Date().toISOString();
+    const posted = await postService(context, context.adminToken, 'MO-4', {
+      gameCounter: 100,
+      prizeCounter: 0,
+      occurredAt,
+    });
+    // cashless_amount обычно проставляется сопоставлением cashless_transactions (см.
+    // rbac_cashless_reports.test.ts) — здесь та часть не тестируется повторно, важна только
+    // агрегация SUM(s.cashless_amount) по месяцу в monthlyReport.
+    const createdService = posted.body.service as { id: number };
+    await pool.query(`UPDATE services SET cashless_amount = '400.00' WHERE id = $1`, [createdService.id]);
+
+    await context.app.inject({
+      method: 'POST',
+      url: '/api/expenses',
+      headers: authHeader(context.adminToken),
+      payload: { category: 'CARD', expenseDate: occurredAt.slice(0, 10), amount: '600.00', comment: 'владельцу' },
+    });
+
+    const monthly = await context.app.inject({
+      method: 'GET',
+      url: '/api/reports/monthly?months=1',
+      headers: authHeader(context.adminToken),
+    });
+    const row = (monthly.json() as Array<Record<string, string | number | null>>)[0];
+
+    assert.equal(row.cashless, '400.00');
+    assert.equal(row.paidToOwner, '600.00');
+    assert.equal(row.reachedOwner, '1000.00');
+    // CARD остаётся внутри expensesTotal/netProfit как обычный расход (владелец подтвердил
+    // 18.09.2026: reachedOwner — справочная цифра рядом, не замена расчёта чистой прибыли).
+    assert.equal(row.expensesTotal, '600.00');
+  });
 });
