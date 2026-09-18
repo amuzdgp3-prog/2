@@ -1,5 +1,5 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
 import { readOutbox } from './db';
 import { syncOutbox } from './sync';
@@ -70,6 +70,21 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
   const location = useLocation();
+  const navigate = useNavigate();
+  // Admin opening the app fresh should land on Журнал, not Аппараты — but only on that first
+  // load. Redirecting on every visit to "/" would also fire when the admin clicks "Аппараты" in
+  // the nav (which links to "/"), bouncing them straight back to Журнал and making that tab
+  // unreachable. Freezing the path the browser actually opened at, and firing at most once,
+  // keeps the nav link working normally after the initial redirect.
+  const [openedAtPath] = useState(() => window.location.pathname);
+  const didRedirectAdminHome = useRef(false);
+  useEffect(() => {
+    if (didRedirectAdminHome.current) return;
+    if (user?.role === 'ADMIN' && openedAtPath === '/') {
+      didRedirectAdminHome.current = true;
+      navigate('/log', { replace: true });
+    }
+  }, [user, openedAtPath, navigate]);
   // The service form has its own bottom action bar (Отмена/Сохранить); showing the global
   // tab bar at the same time made the two fixed bars overlap on top of each other.
   const hideBottomNav = location.pathname.startsWith('/service/');
@@ -148,6 +163,7 @@ export default function App() {
 
   const links = (
     <>
+      {canSeeReports && <NavLink to="/log"><span>☰</span>Журнал</NavLink>}
       <NavLink to="/" end><span>▦</span>Аппараты</NavLink>
       <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>
       <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>
@@ -155,7 +171,6 @@ export default function App() {
       {isTechnician && <NavLink to="/money"><span>₽</span>Деньги</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
       {canSeeReports && <NavLink to="/owner-report"><span>▤</span>Отчёт владельцу</NavLink>}
-      {canSeeReports && <NavLink to="/log"><span>☰</span>Журнал</NavLink>}
       {canSeeReports && <NavLink to="/reports"><span>₽</span>Отчёты</NavLink>}
       {isAdmin && <NavLink to="/admin"><span>⚙</span>Админ</NavLink>}
     </>
