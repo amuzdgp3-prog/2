@@ -101,7 +101,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [time, setTime] = useState(toTimeInput(now));
   const [gameCounter, setGameCounter] = useState('');
   const [prizeCounter, setPrizeCounter] = useState('');
-  const [testGames, setTestGames] = useState('0');
+  const [testGames, setTestGames] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<ToyLine[]>([]);
   const [photo, setPhoto] = useState<File | null>(null);
@@ -508,16 +508,9 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         </div>
       </div>
 
-      {roiTrend.length > 0 && (
-        <>
-          <div className="section-head"><span className="num">3</span><h3>Тренд ROI</h3><span className="line" /></div>
-          <RoiSparkline points={roiTrend} />
-        </>
-      )}
-
       {preview && (
         <>
-          <div className="section-head"><span className="num">4</span><h3>Предварительный расчёт</h3><span className="line" /></div>
+          <div className="section-head"><span className="num">3</span><h3>Предварительный расчёт</h3><span className="line" /></div>
           <div className="preview-card">
             <div className="lbl">◉ РАСЧЁТ ОНЛАЙН</div>
             <div className="grid">
@@ -535,6 +528,13 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           <p className="field-hint" style={{ marginTop: 6 }}>
             Итоговые значения рассчитывает сервер; здесь — предварительный результат.
           </p>
+        </>
+      )}
+
+      {roiTrend.length > 0 && (
+        <>
+          <div className="section-head"><span className="num">4</span><h3>Тренд ROI</h3><span className="line" /></div>
+          <RoiSparkline points={roiTrend} />
         </>
       )}
 
