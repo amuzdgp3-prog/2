@@ -13,10 +13,13 @@ import {
 import { MachineTag } from '../components/ui/MachineTag';
 import { RoiBadge } from '../components/ui/RoiBadge';
 import {
+  clearPhotoDraft,
   enqueueService,
+  getPhotoDraft,
   getQueuedByLocalId,
   readCachedMachines,
   readCachedToys,
+  savePhotoDraft,
   type CachedMachine,
 } from '../db';
 import { refreshCatalog, syncOutbox } from '../sync';
@@ -191,6 +194,24 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     });
   }, [editLocalId]);
 
+  // Восстановление фото, сфотографированного до того, как техник дошёл до «Сохранить»: на iOS
+  // выход в Камеру/Галерею из standalone-PWA может привести к тихой перезагрузке страницы, которая
+  // стирает React-состояние формы и сам выбор файла (см. onChange инпутов ниже, которые пишут сюда
+  // при каждом выборе). Не относится к редактированию уже поставленного в очередь черновика — там
+  // фото уже восстанавливается выше из outbox.
+  useEffect(() => {
+    if (editLocalId) return;
+    void getPhotoDraft(machineNumber).then((draft) => {
+      if (!draft) return;
+      const ageMs = Date.now() - new Date(draft.savedAt).getTime();
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        void clearPhotoDraft(machineNumber);
+        return;
+      }
+      setExistingPhoto(draft.photo);
+    });
+  }, [editLocalId, machineNumber]);
+
   useEffect(() => {
     if (!navigator.onLine) return;
     api
@@ -340,10 +361,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           .filter((line) => line.toyId && Number(line.quantity) > 0)
           .map((line) => ({ toyId: line.toyId, quantity: Number(line.quantity) })),
         photo: chosenPhoto,
-        photoType: photo ? photo.type : 'image/jpeg',
+        photoType: photo ? photo.type : chosenPhoto.type || 'image/jpeg',
         queuedAt: new Date().toISOString(),
         status: 'PENDING',
       });
+      void clearPhotoDraft(machine.machine_number);
 
       onQueued();
       // Queue first, send second: the record survives a dead connection either way.
@@ -607,14 +629,24 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           accept="image/*"
           capture="environment"
           style={{ display: 'none' }}
-          onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
+          onChange={(event) => {
+            markDirty();
+            const file = event.target.files?.[0] ?? null;
+            setPhoto(file);
+            if (file) void savePhotoDraft(machineNumber, file, file.type);
+          }}
         />
         <input
           id="photo-gallery"
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
-          onChange={(event) => { markDirty(); setPhoto(event.target.files?.[0] ?? null); }}
+          onChange={(event) => {
+            markDirty();
+            const file = event.target.files?.[0] ?? null;
+            setPhoto(file);
+            if (file) void savePhotoDraft(machineNumber, file, file.type);
+          }}
         />
       </div>
 
