@@ -61,6 +61,23 @@ interface MonitorSchema extends DBSchema {
   tasks: { key: number; value: CachedTask };
   taskOutbox: { key: number; value: QueuedTaskClose };
   dayCloseOutbox: { key: string; value: QueuedDayClose };
+  photoDrafts: { key: string; value: PhotoDraft };
+}
+
+/**
+ * Фото счётчика, сохранённое сразу при выборе в форме обслуживания — до того, как техник заполнил
+ * остальные поля и нажал «Сохранить». На iOS выход в штатную Камеру/Галерею из standalone-PWA
+ * нередко приводит к тому, что при возврате WKWebView тихо перезагружает страницу под давлением
+ * памяти: React-состояние формы (включая выбранный файл) обнуляется, а `<input type="file">`
+ * никогда не восстанавливает выбор после reload. Без отдельного немедленного сохранения фото такая
+ * перезагрузка выглядела как «сфотографировал, нажал Сохранить — а форма требует добавить фото».
+ * Ключ — номер аппарата: один техник фотографирует один аппарат за раз.
+ */
+export interface PhotoDraft {
+  machineNumber: string;
+  photo: Blob;
+  photoType: string;
+  savedAt: string;
 }
 
 /**
@@ -104,7 +121,7 @@ export interface QueuedTaskClose {
 let database: Promise<IDBPDatabase<MonitorSchema>> | null = null;
 
 function db(): Promise<IDBPDatabase<MonitorSchema>> {
-  database ??= openDB<MonitorSchema>('apixspb-monitor', 3, {
+  database ??= openDB<MonitorSchema>('apixspb-monitor', 4, {
     upgrade(instance, oldVersion) {
       // Версия 1 уже стоит на телефонах техников, поэтому новые хранилища добавляются отдельной
       // веткой, а не пересозданием базы: иначе обновление приложения стёрло бы неотправленные
@@ -121,6 +138,9 @@ function db(): Promise<IDBPDatabase<MonitorSchema>> {
       }
       if (oldVersion < 3) {
         instance.createObjectStore('dayCloseOutbox', { keyPath: 'workDate' });
+      }
+      if (oldVersion < 4) {
+        instance.createObjectStore('photoDrafts', { keyPath: 'machineNumber' });
       }
     },
   });
@@ -159,6 +179,18 @@ export async function enqueueService(service: QueuedService): Promise<void> {
 /** Used to prefill the form when a technician edits a draft that hasn't synced yet. */
 export async function getQueuedByLocalId(localId: string): Promise<QueuedService | undefined> {
   return (await db()).get('outbox', localId);
+}
+
+export async function savePhotoDraft(machineNumber: string, photo: Blob, photoType: string): Promise<void> {
+  await (await db()).put('photoDrafts', { machineNumber, photo, photoType, savedAt: new Date().toISOString() });
+}
+
+export async function getPhotoDraft(machineNumber: string): Promise<PhotoDraft | undefined> {
+  return (await db()).get('photoDrafts', machineNumber);
+}
+
+export async function clearPhotoDraft(machineNumber: string): Promise<void> {
+  await (await db()).delete('photoDrafts', machineNumber);
 }
 
 export async function readOutbox(): Promise<QueuedService[]> {
