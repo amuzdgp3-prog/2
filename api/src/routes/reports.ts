@@ -16,7 +16,7 @@ import { ownerMonthReport } from '../domain/ownerMonthReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
 import { sendTelegramDocument } from '../integrations/telegram.js';
 import { sendReportEmail } from '../integrations/email.js';
-import { badRequest } from '../lib/errors.js';
+import { badRequest, forbidden } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
 function parseFilters(query: Record<string, string | undefined>): ReportFilters {
@@ -279,12 +279,13 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     return { year, month };
   }
 
-  /** Отчёт владельца за месяц — данные страницы «Отчёт»; только ADMIN. */
+  /** Отчёт владельца за месяц — данные страницы «Отчёт». Доступен ADMIN и BOSS, как остальные
+   * отчёты и xlsx; технику закрыт (у него нет вкладки «Отчёт»). */
   app.get<{ Querystring: { year?: string; month?: string } }>(
     '/api/reports/owner-month',
     auth,
     async (request) => {
-      assertAdmin(request.actor);
+      if (request.actor.role === 'TECHNICIAN') throw forbidden('отчёт недоступен технику');
       const { year, month } = parseYearMonth(request.query);
       const client = await pool.connect();
       try {

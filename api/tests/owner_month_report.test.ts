@@ -140,9 +140,9 @@ describe('owner month report', () => {
     ]);
   });
 
-  it('is available to the administrator only', async () => {
-    assert.notEqual((await get(context.technicianToken)).statusCode, 200);
-    assert.notEqual((await get(context.bossToken)).statusCode, 200);
+  it('is closed to a technician but open to the boss, like the other reports', async () => {
+    assert.equal((await get(context.technicianToken)).statusCode, 403);
+    assert.equal((await get(context.bossToken)).statusCode, 200);
   });
 
   it('rejects an invalid month', async () => {
