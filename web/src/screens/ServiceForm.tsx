@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import {
@@ -22,6 +22,7 @@ import {
   savePhotoDraft,
   type CachedMachine,
 } from '../db';
+import { bytesToPhoto, EmptyPhotoError, photoToBytes } from '../photoBytes';
 import { refreshCatalog, syncOutbox } from '../sync';
 import { showToast } from '../toast';
 
@@ -105,7 +106,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [testGames, setTestGames] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<ToyLine[]>([]);
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<Blob | null>(null);
   const [existingPhoto, setExistingPhoto] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -333,6 +334,29 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     return list;
   }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto, attemptedSubmit]);
 
+  /**
+   * Выбор фото из Камеры/Галереи. Файл сразу читается в память и дальше живёт копией оттуда: на iOS
+   * исходный `File` — ссылка на временный файл, который к моменту «Сохранить» может исчезнуть, и
+   * тогда сервер получал запрос без файла («нужен файл фотографии»). Снимок, который не читается,
+   * отклоняется здесь, пока техник ещё у аппарата и может переснять.
+   */
+  const handlePhotoChosen = async (event: ChangeEvent<HTMLInputElement>) => {
+    markDirty();
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+    try {
+      const copy = bytesToPhoto(await photoToBytes(file), file.type);
+      setPhoto(copy);
+      setError(null);
+      await savePhotoDraft(machineNumber, copy, copy.type);
+    } catch (caught) {
+      setPhoto(null);
+      setError(
+        caught instanceof EmptyPhotoError ? caught.message : 'Не удалось прочитать снимок. Сфотографируйте ещё раз.',
+      );
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!machine || (!photo && !existingPhoto)) {
@@ -363,7 +387,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           .filter((line) => line.toyId && Number(line.quantity) > 0)
           .map((line) => ({ toyId: line.toyId, quantity: Number(line.quantity) })),
         photo: chosenPhoto,
-        photoType: photo ? photo.type : chosenPhoto.type || 'image/jpeg',
+        photoType: chosenPhoto.type || 'image/jpeg',
         queuedAt: new Date().toISOString(),
         status: 'PENDING',
       });
@@ -640,24 +664,14 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           accept="image/*"
           capture="environment"
           style={{ display: 'none' }}
-          onChange={(event) => {
-            markDirty();
-            const file = event.target.files?.[0] ?? null;
-            setPhoto(file);
-            if (file) void savePhotoDraft(machineNumber, file, file.type);
-          }}
+          onChange={(event) => void handlePhotoChosen(event)}
         />
         <input
           id="photo-gallery"
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
-          onChange={(event) => {
-            markDirty();
-            const file = event.target.files?.[0] ?? null;
-            setPhoto(file);
-            if (file) void savePhotoDraft(machineNumber, file, file.type);
-          }}
+          onChange={(event) => void handlePhotoChosen(event)}
         />
       </div>
 
