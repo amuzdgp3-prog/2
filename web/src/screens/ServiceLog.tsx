@@ -219,7 +219,7 @@ export default function ServiceLogScreen() {
               <th className="num">Счётчик</th>
               <th className="num">Новых игр</th>
               <th className="num">Выручка</th>
-              <th>Себестоимость</th>
+              <th style={{ textAlign: 'right' }}>Себестоимость</th>
               <th>ROI</th>
               <th>Техник</th>
               <th>Фото</th>
@@ -250,7 +250,7 @@ export default function ServiceLogScreen() {
                       <div className="muted mono" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽</div>
                       <div className="muted mono" style={{ fontSize: 11 }}>безнал {formatMoney(row.cashless_amount)} ₽</div>
                     </td>
-                    <td><CostCell toys={row.toys} total={row.toy_cost} /></td>
+                    <td style={{ textAlign: 'right' }}><CostCell toys={row.toys} total={row.toy_cost} /></td>
                     <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
