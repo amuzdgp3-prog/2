@@ -247,7 +247,7 @@ export default function ServiceLogScreen() {
                     <td className="wrap">№ {row.machine_number} {row.address || row.machine_model || '—'}</td>
                     <td className="num mono">{row.game_counter}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
-                    <td className="num">{formatMoney(row.revenue)} ₽</td>
+                    <td className="num" style={{ fontWeight: 700 }}>{formatMoney(row.revenue)} ₽</td>
                     <td className="num">{formatMoney(row.cash_amount)} ₽</td>
                     <td className="num">{formatMoney(row.cashless_amount)} ₽</td>
                     <td><CostCell toys={row.toys} total={row.toy_cost} /></td>
