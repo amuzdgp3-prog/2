@@ -12,6 +12,7 @@ import {
 } from '../domain/reports.js';
 import { technicianEffectiveness } from '../domain/technicianEffectiveness.js';
 import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
+import { ownerMonthReport } from '../domain/ownerMonthReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
 import { sendTelegramDocument } from '../integrations/telegram.js';
 import { sendReportEmail } from '../integrations/email.js';
@@ -277,6 +278,21 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     }
     return { year, month };
   }
+
+  /** Отчёт владельца за месяц — данные страницы «Отчёт»; только ADMIN. */
+  app.get<{ Querystring: { year?: string; month?: string } }>(
+    '/api/reports/owner-month',
+    auth,
+    async (request) => {
+      const { year, month } = parseYearMonth(request.query);
+      const client = await pool.connect();
+      try {
+        return await ownerMonthReport(client, request.actor, { year, month });
+      } finally {
+        client.release();
+      }
+    },
+  );
 
   /** Тот же ежемесячный xlsx-отчёт (шапка/детализация/расходы), что раньше собирался вручную —
    * теперь генерируется из реальных данных по кнопке. Доступен и ADMIN, и BOSS (как остальные
