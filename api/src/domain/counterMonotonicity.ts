@@ -32,6 +32,13 @@ export async function assertCountersMoveForward(
     prizeCounter: number;
     testGames: number;
     counterDivisor: number;
+    /**
+     * Подтверждение отката счётчика призов. Счётчик призов не участвует в финансовом расчёте —
+     * в отличие от счётчика игр, его откат почти всегда просто ошибка ввода (или сам счётчик на
+     * аппарате сбит физически), а не признак подмены аппарата, поэтому его можно подтвердить и
+     * отправить, а не переписывать цифру заново.
+     */
+    confirmPrizeCounterBack?: boolean;
   },
 ): Promise<void> {
   const previous = await client.query<{
@@ -79,7 +86,7 @@ export async function assertCountersMoveForward(
     );
   }
 
-  if (input.prizeCounter < baseline.prizeCounter) {
+  if (input.prizeCounter < baseline.prizeCounter && !input.confirmPrizeCounterBack) {
     throw badRequest(
       'PRIZE_COUNTER_WENT_BACK',
       `Счётчик призов ${input.prizeCounter} меньше предыдущего показания ${baseline.prizeCounter} `

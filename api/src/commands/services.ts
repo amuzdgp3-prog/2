@@ -21,6 +21,12 @@ export interface ServiceInput {
    */
   confirmCounterJump?: boolean;
   /**
+   * Подтверждение отката счётчика призов. Счётчик призов не влияет на финансовый расчёт, поэтому
+   * его откат — предупреждение, а не запрет: техник может подтвердить то же показание этим флагом
+   * вместо повторного переписывания цифры.
+   */
+  confirmPrizeCounterBack?: boolean;
+  /**
    * Кому засчитать визит (DECISION-055). Только для администратора: он может внести бумажный
    * бланк техника задним числом и указать, чей это визит, — сам техник указать чужой id не может,
    * ниже это форсируется через actor.id независимо от того, что он прислал.
@@ -283,8 +289,9 @@ export async function createService(
     ? Number(machine.rows[0].counter_divisor)
     : 1;
 
-  // Монотонность проверяется всегда: показание меньше предыдущего — это не «подозрительно», а
-  // невозможно, и подтверждать тут нечего.
+  // Откат счётчика игр и превышение тестовых проверяются всегда: это не «подозрительно», а
+  // невозможно, и подтверждать тут нечего — в отличие от отката счётчика призов, который на
+  // финансовый расчёт не влияет и подтверждается флагом confirmPrizeCounterBack.
   await assertCountersMoveForward(client, {
     placementId: placement.id,
     occurredAt: input.occurredAt,
@@ -292,6 +299,7 @@ export async function createService(
     prizeCounter: input.prizeCounter,
     testGames: input.testGames ?? 0,
     counterDivisor: divisor,
+    confirmPrizeCounterBack: input.confirmPrizeCounterBack,
   });
 
   if (!input.confirmCounterJump) {

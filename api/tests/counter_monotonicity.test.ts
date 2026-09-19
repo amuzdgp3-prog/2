@@ -57,6 +57,16 @@ describe('монотонность счётчиков: по одной прич�
     assert.doesNotMatch(String(back.body.message), /целостности/);
   });
 
+  it('счётчик призов назад можно подтвердить и отправить как есть', async () => {
+    const confirmed = await postService(context, context.adminToken, 'MONO-1', {
+      gameCounter: 2600,
+      prizeCounter: 120,
+      occurredAt: '2026-01-20T12:00:00Z',
+      confirmPrizeCounterBack: true,
+    } as never);
+    assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  });
+
   it('тестовых игр больше, чем прирост — своя причина со своими числами', async () => {
     const tooMany = await postService(context, context.adminToken, 'MONO-1', {
       gameCounter: 2050,
