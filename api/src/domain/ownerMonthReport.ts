@@ -1,6 +1,5 @@
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
-import { assertAdmin } from '../lib/scope.js';
 import { queryMachineRows, rentSummary, sumDecimal, type MachineRow } from './reports.js';
 
 /**
@@ -354,15 +353,15 @@ async function loadRent(client: Client, range: MonthRange): Promise<OwnerMonthRe
 }
 
 /**
- * Отчёт владельца за календарный месяц — единый расчёт для страницы «Отчёт» и xlsx. Доступ только
- * администратору: расходы бизнеса не привязаны к аппаратам и не сужаются областью видимости.
+ * Отчёт владельца за календарный месяц — единый расчёт для страницы «Отчёт» и xlsx. Проверку роли
+ * делает вызывающий: расходы бизнеса не привязаны к аппаратам и не сужаются областью видимости,
+ * сужаются только строки аппаратов (scope актора).
  */
 export async function ownerMonthReport(
   client: Client,
   actor: Actor,
   { year, month }: { year: number; month: number },
 ): Promise<OwnerMonthReport> {
-  assertAdmin(actor);
   const range = monthRange(year, month);
 
   const machines = await loadMachineMonths(client, actor, range);

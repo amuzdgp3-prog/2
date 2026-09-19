@@ -284,6 +284,7 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     '/api/reports/owner-month',
     auth,
     async (request) => {
+      assertAdmin(request.actor);
       const { year, month } = parseYearMonth(request.query);
       const client = await pool.connect();
       try {

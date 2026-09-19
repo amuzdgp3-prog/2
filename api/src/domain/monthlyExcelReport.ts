@@ -1,21 +1,12 @@
 import ExcelJS from 'exceljs';
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
-import { expensesSummary, rentSummary } from './reports.js';
-import { queryMachineRows, sumDecimal } from './reports.js';
-import { toyMonthlyTrend } from './toyAnalysis.js';
+import { ownerMonthReport, type OwnerMonthReport } from './ownerMonthReport.js';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
-
-const CATEGORY_LABELS: Record<string, string> = {
-  FUEL: 'Бензин',
-  SALARY: 'Аванс / ЗП',
-  CARD: 'На карту',
-  OTHER: 'Прочие расходы',
-};
 
 const MONEY_FORMAT = '#,##0 "₽"';
 const INT_FORMAT = '#,##0';
@@ -60,272 +51,203 @@ function dataCell(cell: ExcelJS.Cell, value: string | number | Date) {
   cell.border = THIN_BORDER;
 }
 
+/** Курсор записи: номер следующей свободной строки листа. */
+interface Cursor {
+  row: number;
+}
+
+const LAST_COLUMN = 8;
+
+function sectionTitle(ws: ExcelJS.Worksheet, cursor: Cursor, text: string) {
+  cursor.row += 1;
+  ws.mergeCells(cursor.row, 1, cursor.row, LAST_COLUMN);
+  titleCell(ws.getCell(cursor.row, 1), text);
+  cursor.row += 1;
+}
+
+/** Строка «подпись — значение», показатели столбцом, а не растянутые в одну строку. */
+function labelValueRow(
+  ws: ExcelJS.Worksheet,
+  cursor: Cursor,
+  label: string,
+  value: string | number,
+  options: { money?: boolean; bold?: boolean; indent?: boolean; level?: number; hidden?: boolean } = {},
+) {
+  const row = ws.getRow(cursor.row);
+  const labelCellRef = row.getCell(1);
+  labelCellRef.value = options.indent ? `    ${label}` : label;
+  if (options.bold) labelCellRef.font = { bold: true };
+  const valueCell = row.getCell(2);
+  if (options.money === false) {
+    valueCell.value = value;
+    valueCell.numFmt = INT_FORMAT;
+  } else {
+    moneyCell(valueCell, value, options.bold);
+  }
+  if (options.level) row.outlineLevel = options.level;
+  if (options.hidden) row.hidden = true;
+  cursor.row += 1;
+}
+
+function tableHeader(ws: ExcelJS.Worksheet, cursor: Cursor, headers: string[]) {
+  headers.forEach((text, i) => headerCell(ws.getCell(cursor.row, 1 + i), text));
+  cursor.row += 1;
+}
+
+function writeSummary(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'ВЫРУЧКА И ПРИБЫЛЬ');
+  labelValueRow(ws, cursor, 'Общая выручка', report.revenue, { bold: true });
+  labelValueRow(ws, cursor, 'Наличные', report.cash);
+  labelValueRow(ws, cursor, 'Безнал', report.cashless);
+  labelValueRow(ws, cursor, 'Прибыль за вычетом расходов', report.profit, { bold: true });
+}
+
+function writeMachineCounts(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'АППАРАТЫ И ТЕРМИНАЛЫ');
+  labelValueRow(ws, cursor, 'Аппаратов в отчёте', report.machines.total, { money: false });
+  labelValueRow(ws, cursor, 'С терминалом', report.machines.withTerminal, { money: false });
+  labelValueRow(ws, cursor, 'Без терминала', report.machines.withoutTerminal, { money: false });
+}
+
+function writeGroups(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'АППАРАТЫ ПО ТИПАМ И ЦЕНЕ ИГРЫ');
+  tableHeader(ws, cursor, ['Тип', 'Цена игры, ₽', 'Аппаратов', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
+  for (const group of report.groups) {
+    const r = cursor.row;
+    dataCell(ws.getCell(r, 1), group.machineTypeName);
+    dataCell(ws.getCell(r, 2), Number(group.gamePrice));
+    dataCell(ws.getCell(r, 3), group.machines);
+    dataCell(ws.getCell(r, 4), Number(group.games));
+    ws.getCell(r, 4).numFmt = INT_FORMAT;
+    moneyCell(ws.getCell(r, 5), group.cash);
+    moneyCell(ws.getCell(r, 6), group.cashless);
+    moneyCell(ws.getCell(r, 7), group.revenue);
+    cursor.row += 1;
+  }
+  const r = cursor.row;
+  labelCell(ws.getCell(r, 1), 'Итого');
+  ws.getCell(r, 3).value = report.machines.total;
+  ws.getCell(r, 3).font = { bold: true };
+  moneyCell(ws.getCell(r, 5), report.cash, true);
+  moneyCell(ws.getCell(r, 6), report.cashless, true);
+  moneyCell(ws.getCell(r, 7), report.revenue, true);
+  cursor.row += 1;
+}
+
+/** Расходы: список строк приходит из расчёта целиком, новая статья появляется без правок здесь. */
+function writeExpenses(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'РАСХОДЫ');
+  for (const line of report.expenses.lines) {
+    labelValueRow(ws, cursor, line.label, line.amount);
+    // Свёрнутая на странице строка сворачивается и в файле (группировка строк Excel).
+    for (const item of line.items) {
+      labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: line.collapsed });
+    }
+  }
+  labelValueRow(ws, cursor, 'Всего расходов', report.expenses.total, { bold: true });
+}
+
+function writeCashReport(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  const cash = report.cashReport;
+  sectionTitle(ws, cursor, 'ОТЧЁТ ПО НАЛИЧКЕ');
+  labelValueRow(ws, cursor, 'Собрано наличными', cash.collected);
+  labelValueRow(ws, cursor, '− Зарплата, бензин, прочие', cash.spentFromCash);
+  labelValueRow(ws, cursor, '− Переведено на карту', cash.transferredToCard);
+  labelValueRow(ws, cursor, 'Осталось на руках', cash.onHand, { bold: true });
+  labelValueRow(ws, cursor, 'Безнал', cash.cashless);
+  labelValueRow(ws, cursor, 'На карту', cash.transferredToCard);
+  labelValueRow(ws, cursor, 'Дошло до владельца', cash.reachedOwner, { bold: true });
+}
+
+function writeRent(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  const rent = report.rent;
+  sectionTitle(ws, cursor, 'АРЕНДА');
+  labelValueRow(ws, cursor, 'Всего в месяц', rent.total, { bold: true });
+  labelValueRow(ws, cursor, `Работают, точек: ${rent.activeLocationsCount}`, rent.active);
+  labelValueRow(ws, cursor, `Простой, без аппарата, точек: ${rent.idleLocations.length}`, rent.idle);
+  for (const location of rent.idleLocations) {
+    labelValueRow(ws, cursor, location.locationName, location.amount, { indent: true, level: 1 });
+  }
+}
+
+function writeToys(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'ЗАТРАТЫ НА ИГРУШКИ');
+  tableHeader(ws, cursor, ['Вид', 'Цена, ₽', 'Количество, шт', 'Сумма, ₽']);
+  for (const toy of report.toys.rows) {
+    const r = cursor.row;
+    dataCell(ws.getCell(r, 1), toy.toyName);
+    moneyCell(ws.getCell(r, 2), toy.price);
+    dataCell(ws.getCell(r, 3), toy.quantity);
+    moneyCell(ws.getCell(r, 4), toy.amount);
+    cursor.row += 1;
+  }
+  const r = cursor.row;
+  labelCell(ws.getCell(r, 1), 'Итого');
+  ws.getCell(r, 3).value = report.toys.totalQuantity;
+  ws.getCell(r, 3).font = { bold: true };
+  moneyCell(ws.getCell(r, 4), report.toys.totalAmount, true);
+  cursor.row += 1;
+}
+
+function writeMachineRows(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  sectionTitle(ws, cursor, 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ');
+  tableHeader(ws, cursor, ['Аппарат', 'Тип', 'Цена игры, ₽', 'Терминал', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
+  for (const machine of report.machineRows) {
+    const r = cursor.row;
+    dataCell(ws.getCell(r, 1), `${machine.machineNumber}: ${machine.address}`);
+    dataCell(ws.getCell(r, 2), machine.machineTypeName);
+    dataCell(ws.getCell(r, 3), Number(machine.gamePrice));
+    dataCell(ws.getCell(r, 4), machine.hasTerminal ? 'есть' : 'нет');
+    dataCell(ws.getCell(r, 5), Number(machine.games));
+    ws.getCell(r, 5).numFmt = INT_FORMAT;
+    moneyCell(ws.getCell(r, 6), machine.cash);
+    moneyCell(ws.getCell(r, 7), machine.cashless);
+    moneyCell(ws.getCell(r, 8), machine.revenue);
+    cursor.row += 1;
+  }
+  const r = cursor.row;
+  labelCell(ws.getCell(r, 1), 'Итого');
+  moneyCell(ws.getCell(r, 6), report.cash, true);
+  moneyCell(ws.getCell(r, 7), report.cashless, true);
+  moneyCell(ws.getCell(r, 8), report.revenue, true);
+  cursor.row += 1;
+}
+
 /**
- * Собирает тот же ежемесячный xlsx-отчёт, формат которого был вручную согласован с владельцем в
- * рабочей сессии (шапка тремя колонками — Финансы / Расход на игрушки / Прогноз на след. месяц;
- * детализация по аппаратам; раздел «РАСХОДЫ» по категориям) — но теперь из реальных данных БД, а
- * не разовым Python-скриптом. Прогноз игрушек берётся из уже существующего toyMonthlyTrend
- * (DECISION-031), а не пересчитывается заново наивной эвристикой.
+ * Ежемесячный xlsx-отчёт. Повторяет страницу «Отчёт» владельца блок в блок и строится из того же
+ * расчёта `ownerMonthReport`, поэтому цифры в файле и на экране не могут разойтись. Сводка сверху,
+ * детализация по аппаратам в конце.
  */
 export async function buildMonthlyReportWorkbook(
   client: Client,
   actor: Actor,
   { year, month }: { year: number; month: number },
 ): Promise<ExcelJS.Workbook> {
-  const from = `${year}-${String(month).padStart(2, '0')}-01`;
-  const toDate = new Date(Date.UTC(year, month, 0));
-  const to = toDate.toISOString().slice(0, 10);
-
-  const machineRows = await queryMachineRows(client, actor, { from, to, limit: 2000 });
-  const machineNumbers = machineRows.map((row) => row.machineNumber);
-
-  const toyRows = machineNumbers.length
-    ? await client.query(
-        `SELECT s.machine_number, t.id AS toy_id, t.name,
-                SUM(td.quantity)::int AS quantity,
-                SUM(td.quantity * td.unit_cost_snapshot) AS cost
-         FROM toy_distributions td
-         JOIN services s ON s.id = td.service_id
-         JOIN toys t ON t.id = td.toy_id
-         WHERE s.machine_number = ANY($1::text[])
-           AND s.service_date >= $2::date AND s.service_date <= $3::date
-         GROUP BY s.machine_number, t.id, t.name`,
-        [machineNumbers, from, to],
-      )
-    : { rows: [] as Array<Record<string, unknown>> };
-
-  const counterRows = machineNumbers.length
-    ? await client.query(
-        `SELECT DISTINCT ON (s.machine_number) s.machine_number, s.game_counter, s.test_games
-         FROM services s
-         WHERE s.machine_number = ANY($1::text[])
-           AND s.service_date >= $2::date AND s.service_date <= $3::date
-         ORDER BY s.machine_number, s.occurred_at DESC`,
-        [machineNumbers, from, to],
-      )
-    : { rows: [] as Array<Record<string, unknown>> };
-  const currentCounterByMachine = new Map<string, number>(
-    counterRows.rows.map((row) => [String(row.machine_number), Number(row.game_counter)]),
-  );
-
-  const toys = await client.query('SELECT id, name FROM toys ORDER BY id');
-  const toyList = toys.rows.map((row) => ({ id: Number(row.id), name: String(row.name) }));
-
-  const toyQuantityByMachine = new Map<string, Map<number, number>>();
-  const toyCostTotalByToy = new Map<number, { quantity: number; cost: number }>();
-  for (const row of toyRows.rows) {
-    const machineNumber = String(row.machine_number);
-    const toyId = Number(row.toy_id);
-    const quantity = Number(row.quantity);
-    const cost = Number(row.cost);
-    if (!toyQuantityByMachine.has(machineNumber)) toyQuantityByMachine.set(machineNumber, new Map());
-    toyQuantityByMachine.get(machineNumber)!.set(toyId, quantity);
-    const totalEntry = toyCostTotalByToy.get(toyId) ?? { quantity: 0, cost: 0 };
-    totalEntry.quantity += quantity;
-    totalEntry.cost += cost;
-    toyCostTotalByToy.set(toyId, totalEntry);
-  }
-
-  const totalRevenue = sumDecimal(machineRows.map((row) => row.revenue), 2);
-  const totalCash = sumDecimal(machineRows.map((row) => row.cash), 2);
-  const totalCashless = sumDecimal(machineRows.map((row) => row.cashless), 2);
-  const totalNewGames = sumDecimal(machineRows.map((row) => row.newGames), 4);
-  const totalToyCost = sumDecimal(machineRows.map((row) => row.toyCost), 2);
-  const totalToyQuantity = [...toyCostTotalByToy.values()].reduce((sum, t) => sum + t.quantity, 0);
-
-  const forecast = await toyMonthlyTrend(client, actor, 3);
-  const expenses = await expensesSummary(client, { from, to });
-  const rent = await rentSummary(client, { from, to: `${to}T23:59:59Z` });
+  const report = await ownerMonthReport(client, actor, { year, month });
 
   const workbook = new ExcelJS.Workbook();
   const monthName = MONTH_NAMES[month - 1];
   const ws = workbook.addWorksheet(monthName, { properties: { defaultColWidth: 16 } });
-  ws.getColumn('A').width = 42;
-  ws.getColumn('B').width = 18;
-  ws.getColumn('C').width = 18;
-  ws.getColumn('D').width = 18;
-  ws.getColumn('E').width = 18;
-  ws.getColumn('F').width = 18;
-  ws.getColumn('G').width = 18;
+  ws.getColumn(1).width = 44;
+  for (let column = 2; column <= LAST_COLUMN; column += 1) ws.getColumn(column).width = 18;
+  // Кнопка раскрытия группы стоит над сгруппированными строками.
+  ws.properties.outlineProperties = { summaryBelow: false, summaryRight: true };
 
-  ws.mergeCells('A1:I1');
-  titleCell(ws.getCell('A1'), `ОБЩЕЕ ЗА ${monthName.toUpperCase()} ${year}`);
+  ws.mergeCells(1, 1, 1, LAST_COLUMN);
+  titleCell(ws.getCell(1, 1), `ОТЧЁТ ЗА ${monthName.toUpperCase()} ${year}`);
+  labelCell(ws.getCell(2, 1), 'Сформировано:');
+  ws.getCell(2, 2).value = new Date();
+  ws.getCell(2, 2).numFmt = 'dd/mm/yyyy hh:mm';
 
-  labelCell(ws.getCell('A2'), 'Период с:');
-  ws.getCell('B2').value = new Date(from);
-  ws.getCell('B2').numFmt = 'dd/mm/yyyy';
-  labelCell(ws.getCell('A3'), 'по:');
-  ws.getCell('B3').value = new Date(to);
-  ws.getCell('B3').numFmt = 'dd/mm/yyyy';
-  labelCell(ws.getCell('A4'), 'Сформировано:');
-  ws.getCell('B4').value = new Date();
-  ws.getCell('B4').numFmt = 'dd/mm/yyyy hh:mm';
-
-  ws.mergeCells('D5:F5');
-  titleCell(ws.getCell('D5'), 'РАСХОД НА ИГРУШКИ');
-  ws.mergeCells('H5:J5');
-  titleCell(ws.getCell('H5'), 'ПРОГНОЗ НА СЛЕДУЮЩИЙ МЕСЯЦ');
-
-  labelCell(ws.getCell('A6'), 'НОВЫЕ ИГРЫ:');
-  ws.getCell('B6').value = Number(totalNewGames);
-  ws.getCell('B6').numFmt = INT_FORMAT;
-  headerCell(ws.getCell('D6'), 'Тип');
-  headerCell(ws.getCell('E6'), 'Кол-во, шт');
-  headerCell(ws.getCell('F6'), 'Сумма, ₽');
-  headerCell(ws.getCell('H6'), 'Тип');
-  headerCell(ws.getCell('I6'), 'Кол-во, шт');
-
-  labelCell(ws.getCell('A7'), 'ВЫРУЧКА:');
-  moneyCell(ws.getCell('B7'), totalRevenue, true);
-  labelCell(ws.getCell('A8'), 'НАЛ:');
-  moneyCell(ws.getCell('B8'), totalCash);
-  labelCell(ws.getCell('A9'), 'БЕЗНАЛ:');
-  moneyCell(ws.getCell('B9'), totalCashless);
-
-  let toyRow = 7;
-  for (const toy of toyList) {
-    const totals = toyCostTotalByToy.get(toy.id) ?? { quantity: 0, cost: 0 };
-    dataCell(ws.getCell(`D${toyRow}`), toy.name);
-    dataCell(ws.getCell(`E${toyRow}`), totals.quantity);
-    moneyCell(ws.getCell(`F${toyRow}`), totals.cost);
-
-    const forecastRow = forecast.find((f) => f.toyId === toy.id);
-    dataCell(ws.getCell(`H${toyRow}`), toy.name);
-    dataCell(ws.getCell(`I${toyRow}`), forecastRow?.forecastNextMonth.quantity ?? 0);
-    toyRow += 1;
-  }
-  labelCell(ws.getCell(`D${toyRow}`), 'Всего:');
-  ws.getCell(`E${toyRow}`).value = totalToyQuantity;
-  moneyCell(ws.getCell(`F${toyRow}`), totalToyCost, true);
-  const toyBlockEnd = toyRow;
-
-  const detailTitleRow = Math.max(11, toyBlockEnd + 2);
-  labelCell(ws.getCell(`A${detailTitleRow}`), 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ');
-  ws.getRow(detailTitleRow).font = { bold: true, size: 12 };
-
-  const headerRow = detailTitleRow + 1;
-  const startRow = headerRow + 1;
-  const baseHeaders = ['Аппарат', 'Текущий счётчик игр', 'Новые игры за период', 'Выручка, ₽', 'Нал, ₽', 'Безнал, ₽', 'Сумма за игрушки, ₽'];
-  baseHeaders.forEach((text, i) => headerCell(ws.getCell(headerRow, 1 + i), text));
-  toyList.forEach((toy, i) => headerCell(ws.getCell(headerRow, baseHeaders.length + 1 + i), `${toy.name}, шт`));
-  ws.getRow(headerRow).height = 30;
-
-  const sortedMachines = [...machineRows].sort((a, b) => Number(b.revenue) - Number(a.revenue));
-  sortedMachines.forEach((row, i) => {
-    const r = startRow + i;
-    dataCell(ws.getCell(r, 1), `${row.machineNumber}: ${row.locationName}`);
-    dataCell(ws.getCell(r, 2), currentCounterByMachine.get(row.machineNumber) ?? 0);
-    dataCell(ws.getCell(r, 3), Number(row.newGames));
-    ws.getCell(r, 3).numFmt = INT_FORMAT;
-    moneyCell(ws.getCell(r, 4), row.revenue);
-    moneyCell(ws.getCell(r, 5), row.cash);
-    moneyCell(ws.getCell(r, 6), row.cashless);
-    moneyCell(ws.getCell(r, 7), row.toyCost);
-    const quantities = toyQuantityByMachine.get(row.machineNumber);
-    toyList.forEach((toy, ti) => {
-      dataCell(ws.getCell(r, baseHeaders.length + 1 + ti), quantities?.get(toy.id) ?? 0);
-    });
-  });
-  const lastMachineRow = startRow + sortedMachines.length - 1;
-
-  const expTitleRow = lastMachineRow + 3;
-  ws.mergeCells(`A${expTitleRow}:J${expTitleRow}`);
-  titleCell(ws.getCell(`A${expTitleRow}`), 'РАСХОДЫ');
-
-  type CellKind = 'date' | 'text' | 'money';
-  interface ExpenseBlock {
-    title: string;
-    headers: [string, string, string];
-    rows: Array<[
-      { value: ExcelJS.CellValue; kind: CellKind },
-      { value: ExcelJS.CellValue; kind: CellKind },
-      { value: ExcelJS.CellValue; kind: CellKind },
-    ]>;
-    total: string;
-  }
-
-  const blocks: ExpenseBlock[] = expenses.byCategory.map((bucket) => ({
-    title: CATEGORY_LABELS[bucket.category] ?? bucket.category,
-    headers: ['Дата', 'Сумма, ₽', 'Комментарий'],
-    rows: bucket.rows.map((row) => [
-      { value: new Date(row.expenseDate), kind: 'date' },
-      { value: Number(row.amount), kind: 'money' },
-      { value: row.comment, kind: 'text' },
-    ]),
-    total: bucket.total,
-  }));
-  // Аренда — не построчные проводки, а ставка по точкам за период (см. domain/reports.ts
-  // rentSummary), поэтому у неё другая форма строки (Адрес/Ставка/Сумма), но тот же 3-колоночный
-  // блок и тот же механизм укладки, что и у остальных категорий.
-  if (rent.locations.length > 0) {
-    blocks.push({
-      title: 'Аренда',
-      headers: ['Адрес', 'Ставка, ₽/мес', 'Сумма, ₽'],
-      rows: rent.locations.map((loc) => [
-        { value: loc.locationName, kind: 'text' },
-        { value: Number(loc.currentMonthlyAmount), kind: 'money' },
-        { value: Number(loc.proratedCost), kind: 'money' },
-      ]),
-      total: rent.total,
-    });
-  }
-
-  const writeCell = (cell: ExcelJS.Cell, entry: { value: ExcelJS.CellValue; kind: CellKind }) => {
-    if (entry.kind === 'money') {
-      moneyCell(cell, Number(entry.value));
-    } else if (entry.kind === 'date') {
-      dataCell(cell, entry.value as Date);
-      cell.numFmt = 'dd/mm/yyyy';
-    } else {
-      dataCell(cell, entry.value as string);
-    }
-  };
-
-  // До 4 блоков в строке (как раньше); 5-й (обычно «Аренда») переносится на следующую строку
-  // блоков, а не обрезается — общая механика для любого числа категорий.
-  const BLOCK_COLS = ['A', 'D', 'G', 'J'];
-  let groupHeaderRow = expTitleRow + 1;
-  let maxRowsInGroup = 0;
-  let lastGroupColHeaderRow = groupHeaderRow;
-
-  blocks.forEach((block, i) => {
-    const posInGroup = i % BLOCK_COLS.length;
-    if (posInGroup === 0 && i > 0) {
-      groupHeaderRow = groupHeaderRow + maxRowsInGroup + 3;
-      maxRowsInGroup = 0;
-    }
-    const colHeaderRow = groupHeaderRow + 1;
-    const startRow = colHeaderRow + 1;
-    lastGroupColHeaderRow = groupHeaderRow;
-
-    const startCol = BLOCK_COLS[posInGroup];
-    const startColIndex = ws.getColumn(startCol).number;
-    const col2 = ws.getColumn(startColIndex + 1).letter;
-    const col3 = ws.getColumn(startColIndex + 2).letter;
-    const endCol = col3;
-
-    ws.mergeCells(`${startCol}${groupHeaderRow}:${endCol}${groupHeaderRow}`);
-    headerCell(ws.getCell(`${startCol}${groupHeaderRow}`), block.title);
-    headerCell(ws.getCell(`${startCol}${colHeaderRow}`), block.headers[0]);
-    headerCell(ws.getCell(`${col2}${colHeaderRow}`), block.headers[1]);
-    headerCell(ws.getCell(`${col3}${colHeaderRow}`), block.headers[2]);
-
-    block.rows.forEach((row, ri) => {
-      const r = startRow + ri;
-      writeCell(ws.getCell(`${startCol}${r}`), row[0]);
-      writeCell(ws.getCell(`${col2}${r}`), row[1]);
-      writeCell(ws.getCell(`${col3}${r}`), row[2]);
-    });
-    const totalRow = startRow + block.rows.length;
-    labelCell(ws.getCell(`${startCol}${totalRow}`), 'Итого:');
-    moneyCell(ws.getCell(`${col2}${totalRow}`), block.total, true);
-    maxRowsInGroup = Math.max(maxRowsInGroup, block.rows.length + 1);
-  });
-
-  const grandTotal = sumDecimal([expenses.total, rent.total], 2);
-  const grandTotalRow = lastGroupColHeaderRow + 2 + maxRowsInGroup + 1;
-  labelCell(ws.getCell(`A${grandTotalRow}`), 'ВСЕГО РАСХОДОВ:');
-  moneyCell(ws.getCell(`B${grandTotalRow}`), grandTotal, true);
+  const cursor: Cursor = { row: 3 };
+  writeSummary(ws, cursor, report);
+  writeMachineCounts(ws, cursor, report);
+  writeGroups(ws, cursor, report);
+  writeExpenses(ws, cursor, report);
+  writeCashReport(ws, cursor, report);
+  writeRent(ws, cursor, report);
+  writeToys(ws, cursor, report);
+  writeMachineRows(ws, cursor, report);
 
   return workbook;
 }

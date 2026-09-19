@@ -145,13 +145,22 @@ describe('buildMonthlyReportWorkbook — assembles the agreed report format from
       const workbook = await buildMonthlyReportWorkbook(client, SYSTEM_ACTOR, { year: 2026, month: 8 });
       const sheet = workbook.getWorksheet('Август');
       assert.ok(sheet, 'ожидался лист «Август»');
-      assert.equal(sheet!.getCell('A1').value, 'ОБЩЕЕ ЗА АВГУСТ 2026');
-      assert.equal(sheet!.getCell('B7').value, 1000);
+      assert.equal(sheet!.getCell('A1').value, 'ОТЧЁТ ЗА АВГУСТ 2026');
 
       const rows = sheet!.getSheetValues();
       const flat = rows.flat().filter((v) => typeof v === 'string');
-      assert.ok(flat.includes('ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ'));
-      assert.ok(flat.includes('РАСХОДЫ'));
+      // Файл повторяет страницу «Отчёт»: те же блоки в том же порядке.
+      const sections = [
+        'ВЫРУЧКА И ПРИБЫЛЬ', 'АППАРАТЫ И ТЕРМИНАЛЫ', 'АППАРАТЫ ПО ТИПАМ И ЦЕНЕ ИГРЫ', 'РАСХОДЫ',
+        'ОТЧЁТ ПО НАЛИЧКЕ', 'АРЕНДА', 'ЗАТРАТЫ НА ИГРУШКИ', 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ',
+      ];
+      const positions = sections.map((title) => flat.indexOf(title));
+      assert.ok(positions.every((position) => position >= 0), `не хватает блоков: ${positions}`);
+      assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
+      const cells = rows.flat();
+      assert.ok(cells.includes(1000), 'выручка 1000 должна быть в файле');
+      // Прибыль = выручка 1000 − бензин 2400 − игрушки 75.
+      assert.ok(cells.includes(-1475), 'прибыль за вычетом расходов должна быть в файле');
       assert.ok(flat.some((v) => v === 'RPT-1: Точка RPT-1'));
     } finally {
       client.release();
