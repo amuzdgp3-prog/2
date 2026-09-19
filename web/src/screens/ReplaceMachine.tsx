@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../api';
+import { newLocalId } from '../localId';
 
 /**
  * Замена аппарата (10_ТЗ §5): закрывает старый Placement финальным обслуживанием и одной
@@ -37,7 +38,7 @@ export function ReplaceMachineForm({
 
     setBusy(true);
     try {
-      const localId = crypto.randomUUID();
+      const localId = newLocalId();
       const occurredAt = new Date().toISOString();
 
       const form = new FormData();

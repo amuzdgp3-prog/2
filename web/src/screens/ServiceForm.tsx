@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { newLocalId } from '../localId';
 import {
   calcNewGames,
   calcRevenue,
@@ -373,7 +374,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     try {
       const occurredAt = new Date(`${date}T${time}`).toISOString();
       const chosenPhoto = photo ?? (existingPhoto as Blob);
-      const localId = editLocalId ?? crypto.randomUUID();
+      const localId = editLocalId ?? newLocalId();
 
       await enqueueService({
         localId,

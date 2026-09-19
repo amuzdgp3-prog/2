@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
+import { newLocalId } from '../localId';
 import { formatMoney } from '../calc';
 import { queueDayClose, readDayCloseOutbox } from '../db';
 import { syncOutbox } from '../sync';
@@ -80,7 +81,7 @@ export default function MoneyScreen() {
     try {
       let photoObjectKey: string | null = null;
       if (receipt) {
-        const localId = crypto.randomUUID();
+        const localId = newLocalId();
         const form = new FormData();
         form.append('localId', localId);
         form.append('file', receipt, `${localId}.jpg`);
