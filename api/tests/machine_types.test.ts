@@ -152,3 +152,20 @@ describe('справочник типов аппаратов', () => {
     assert.equal(forbidden.statusCode, 403, forbidden.body);
   });
 });
+
+describe('machine types list access', () => {
+  it('BOSS can read the list, TECHNICIAN cannot, BOSS cannot create', async () => {
+    const context = await bootstrap();
+    const get = (token: string) =>
+      context.app.inject({ method: 'GET', url: '/api/machine-types', headers: authHeader(token) });
+    assert.equal((await get(context.bossToken)).statusCode, 200);
+    assert.equal((await get(context.technicianToken)).statusCode, 403);
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/api/machine-types',
+      headers: authHeader(context.bossToken),
+      payload: { name: 'Новый тип' },
+    });
+    assert.equal(created.statusCode, 403);
+  });
+});

@@ -34,7 +34,8 @@ function normalizeName(raw: string): string {
 
 /** Список типов со счётчиком аппаратов — админке он нужен, чтобы объяснить, почему тип не удаляется. */
 export async function listMachineTypes(client: Client, actor: Actor): Promise<MachineTypeRow[]> {
-  assertAdmin(actor);
+  // Руководителю список нужен только для чтения — фильтр «Тип аппарата» в журнале.
+  if (actor.role !== 'BOSS') assertAdmin(actor);
   const result = await client.query<MachineTypeRow>(
     `SELECT t.name, t.is_active, t.created_at,
             (SELECT count(*)::int FROM machines m WHERE m.machine_type = t.name) AS machines_count
