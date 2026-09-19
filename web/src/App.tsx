@@ -85,6 +85,11 @@ export default function App() {
       didRedirectAdminHome.current = true;
       navigate('/log', { replace: true });
     }
+    // Руководитель при первом открытии попадает на Сводку.
+    if (user?.role === 'BOSS' && openedAtPath === '/') {
+      didRedirectAdminHome.current = true;
+      navigate('/dashboard', { replace: true });
+    }
   }, [user, openedAtPath, navigate]);
   // The service form has its own bottom action bar (Отмена/Сохранить); showing the global
   // tab bar at the same time made the two fixed bars overlap on top of each other.
@@ -161,18 +166,19 @@ export default function App() {
   };
 
   const isTechnician = user.role === 'TECHNICIAN';
+  const isBoss = user.role === 'BOSS';
 
   const links = (
     <>
       {canSeeReports && <NavLink to="/log"><span>☰</span>Журнал</NavLink>}
       <NavLink to="/" end><span>▦</span>Аппараты</NavLink>
-      <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>
-      <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>
+      {!isBoss && <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>}
+      {!isBoss && <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>}
       {isTechnician && <NavLink to="/forgotten"><span>⏰</span>Забытые</NavLink>}
       {isTechnician && <NavLink to="/money"><span>₽</span>Деньги</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
-      {canSeeReports && <NavLink to="/owner-report"><span>▤</span>Отчёт владельцу</NavLink>}
-      {canSeeReports && <NavLink to="/reports"><span>₽</span>Отчёты</NavLink>}
+      {canSeeReports && <NavLink to="/owner-report"><span>▤</span>{isBoss ? 'Отчёт' : 'Отчёт владельцу'}</NavLink>}
+      {canSeeReports && !isBoss && <NavLink to="/reports"><span>₽</span>Отчёты</NavLink>}
       {isAdmin && <NavLink to="/admin"><span>⚙</span>Админ</NavLink>}
     </>
   );
@@ -289,14 +295,14 @@ export default function App() {
             element={<ServiceFormScreen onQueued={refreshQueueCount} />}
           />
           <Route path="/history/:machineNumber" element={<HistoryScreen />} />
-          <Route path="/tasks" element={<TasksScreen />} />
-          <Route path="/queue" element={<QueueScreen onChange={refreshQueueCount} />} />
+          <Route path="/tasks" element={isBoss ? <Navigate to="/" /> : <TasksScreen />} />
+          <Route path="/queue" element={isBoss ? <Navigate to="/" /> : <QueueScreen onChange={refreshQueueCount} />} />
           <Route path="/forgotten" element={isTechnician ? <ForgottenScreen /> : <Navigate to="/" />} />
           <Route path="/money" element={isTechnician ? <MoneyScreen /> : <Navigate to="/" />} />
           <Route path="/dashboard" element={canSeeReports ? <DashboardScreen /> : <Navigate to="/" />} />
           <Route path="/owner-report" element={canSeeReports ? <OwnerReportScreen /> : <Navigate to="/" />} />
           <Route path="/log" element={canSeeReports ? <ServiceLogScreen /> : <Navigate to="/" />} />
-          <Route path="/reports" element={canSeeReports ? <ReportsScreen /> : <Navigate to="/" />} />
+          <Route path="/reports" element={canSeeReports && !isBoss ? <ReportsScreen /> : <Navigate to="/" />} />
           <Route
             path="/admin"
             element={

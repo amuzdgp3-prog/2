@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, getToken } from '../api';
+import { useAuth } from '../auth';
 import { daysBetween, formatGames, formatMoney } from '../calc';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
@@ -92,6 +93,8 @@ export default function ServiceLogScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Руководителю журнал показывается урезанным: без «Дней», без раскрытия строки и без удаления.
+  const isBoss = useAuth().user?.role === 'BOSS';
 
   useEffect(() => {
     api.get<StaffOption[]>('/api/staff').then((staff) => setTechnicians(staff.filter((s) => s.role === 'TECHNICIAN'))).catch(() => setTechnicians([]));
@@ -219,7 +222,7 @@ export default function ServiceLogScreen() {
               <th>Адрес</th>
               <th className="num" style={{ paddingLeft: 24 }}>Счётчик</th>
               <th>Техник</th>
-              <th className="num">Дней</th>
+              {!isBoss && <th className="num">Дней</th>}
               <th className="num">Новых игр</th>
               <th className="num">Игр/день</th>
               <th className="num">Выручка</th>
@@ -234,13 +237,13 @@ export default function ServiceLogScreen() {
             {rows.map((row) => {
               const { periodDays, perDay } = serviceMeta(row);
               const { date, time } = splitDateTime(row.occurred_at);
-              const isOpen = expanded === row.id;
+              const isOpen = !isBoss && expanded === row.id;
               return (
                 <>
                   <tr
                     key={row.id}
-                    className="tappable"
-                    onClick={() => setExpanded(isOpen ? null : row.id)}
+                    className={isBoss ? undefined : 'tappable'}
+                    onClick={isBoss ? undefined : () => setExpanded(isOpen ? null : row.id)}
                   >
                     <td className="mono">
                       <div>{date}</div>
@@ -250,10 +253,13 @@ export default function ServiceLogScreen() {
                     <td className="wrap">{row.address || row.machine_model || '—'}</td>
                     <td className="num mono" style={{ paddingLeft: 24 }}>{row.game_counter}</td>
                     <td>{row.technician_name ?? '—'}</td>
-                    <td className="num mono">{periodDays ?? '—'}</td>
+                    {!isBoss && <td className="num mono">{periodDays ?? '—'}</td>}
                     <td className="num">+{formatGames(row.new_games)}</td>
                     <td className="num mono">{perDay === null ? '—' : perDay.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}</td>
-                    <td className="num">{formatMoney(row.revenue)} ₽</td>
+                    <td className="num">
+                      {formatMoney(row.revenue)} ₽
+                      {isBoss && <div className="muted" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽ · безнал {formatMoney(row.cashless_amount)} ₽</div>}
+                    </td>
                     <td className="num">{formatMoney(row.toy_cost)} ₽</td>
                     <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
                     <td onClick={(event) => event.stopPropagation()}>
@@ -261,7 +267,7 @@ export default function ServiceLogScreen() {
                     </td>
                     <td className="muted wrap">{row.notes || '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
-                      <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>
+                      {!isBoss && <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>}
                     </td>
                   </tr>
                   {isOpen && (
@@ -293,11 +299,11 @@ export default function ServiceLogScreen() {
               <th>Дата</th>
               <th className="num">№</th>
               <th>Адрес</th>
-              <th className="num">Дней</th>
+              {!isBoss && <th className="num">Дней</th>}
               <th className="num">Счётчик</th>
               <th className="num">Выручка</th>
-              <th className="num">Нал</th>
-              <th className="num">Безнал</th>
+              {!isBoss && <th className="num">Нал</th>}
+              {!isBoss && <th className="num">Безнал</th>}
               <th>Техник</th>
               <th>Фото</th>
               <th>Комментарий</th>
@@ -307,13 +313,13 @@ export default function ServiceLogScreen() {
             {rows.map((row) => {
               const { periodDays } = serviceMeta(row);
               const { date, time } = splitDateTime(row.occurred_at);
-              const isOpen = expanded === row.id;
+              const isOpen = !isBoss && expanded === row.id;
               return (
                 <>
                   <tr
                     key={row.id}
-                    className="tappable"
-                    onClick={() => setExpanded(isOpen ? null : row.id)}
+                    className={isBoss ? undefined : 'tappable'}
+                    onClick={isBoss ? undefined : () => setExpanded(isOpen ? null : row.id)}
                   >
                     <td className="mono">
                       <div>{date}</div>
@@ -321,11 +327,14 @@ export default function ServiceLogScreen() {
                     </td>
                     <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
                     <td className="wrap">{row.address || row.machine_model || '—'}</td>
-                    <td className="num mono">{periodDays ?? '—'}</td>
+                    {!isBoss && <td className="num mono">{periodDays ?? '—'}</td>}
                     <td className="num mono">{row.game_counter}</td>
-                    <td className="num">{formatMoney(row.revenue)} ₽</td>
-                    <td className="num">{formatMoney(row.cash_amount)} ₽</td>
-                    <td className="num">{formatMoney(row.cashless_amount)} ₽</td>
+                    <td className="num">
+                      {formatMoney(row.revenue)} ₽
+                      {isBoss && <div className="muted" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽ · безнал {formatMoney(row.cashless_amount)} ₽</div>}
+                    </td>
+                    {!isBoss && <td className="num">{formatMoney(row.cash_amount)} ₽</td>}
+                    {!isBoss && <td className="num">{formatMoney(row.cashless_amount)} ₽</td>}
                     <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
