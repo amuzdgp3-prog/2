@@ -82,9 +82,11 @@ export default function BossMachinesScreen() {
             <div className="muted" style={{ marginTop: 4 }}>
               Набор игрушек: {machine.default_toy_set_name ?? 'не назначен'}
             </div>
-            <div className="muted" style={{ marginTop: 4 }}>
-              Норма обслуживания: {machine.min_service_days ?? '—'}–{machine.max_service_days ?? '—'} дн.
-            </div>
+            {(machine.min_service_days !== null || machine.max_service_days !== null) && (
+              <div className="muted" style={{ marginTop: 4 }}>
+                Норма обслуживания: {machine.min_service_days ?? '—'}–{machine.max_service_days ?? '—'} дн.
+              </div>
+            )}
             <div style={{ marginTop: 12 }}>
               <Link to={`/history/${encodeURIComponent(machine.machine_number)}`} style={{ textDecoration: 'none' }}>
                 <button className="btn btn-ghost">История</button>
