@@ -15,6 +15,7 @@ import ReportsScreen from './screens/Reports';
 import ServiceFormScreen from './screens/ServiceForm';
 import ServiceLogScreen from './screens/ServiceLog';
 import TasksScreen from './screens/Tasks';
+import { ToastHost } from './components/ui/ToastHost';
 
 /**
  * Админка грузится отдельным чанком и только когда администратор реально открывает /admin.
@@ -199,6 +200,7 @@ export default function App() {
 
   return (
     <>
+      <ToastHost />
       <aside className="sidebar">
         <div className="brand">Apixspb</div>
         {links}

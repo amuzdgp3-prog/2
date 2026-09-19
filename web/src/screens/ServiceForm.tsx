@@ -23,6 +23,7 @@ import {
   type CachedMachine,
 } from '../db';
 import { refreshCatalog, syncOutbox } from '../sync';
+import { showToast } from '../toast';
 
 interface ToyLine {
   toyId: number;
@@ -348,9 +349,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     try {
       const occurredAt = new Date(`${date}T${time}`).toISOString();
       const chosenPhoto = photo ?? (existingPhoto as Blob);
+      const localId = editLocalId ?? crypto.randomUUID();
 
       await enqueueService({
-        localId: editLocalId ?? crypto.randomUUID(),
+        localId,
         machineNumber: machine.machine_number,
         occurredAt,
         gameCounter: Number(gameCounter),
@@ -369,7 +371,16 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
 
       onQueued();
       // Queue first, send second: the record survives a dead connection either way.
-      if (navigator.onLine) await syncOutbox();
+      if (navigator.onLine) {
+        await syncOutbox();
+        // Черновик ушёл на сервер (пропал из outbox), а не просто остался в очереди офлайн или
+        // был отклонён — только тогда это настоящее подтверждение. Тост переживёт navigate ниже,
+        // потому что ToastHost смонтирован в App, а не в этой форме.
+        const stillQueued = await getQueuedByLocalId(localId);
+        if (!stillQueued) {
+          showToast(`Данные для «${machine.address ?? machine.location_name ?? 'адреса'}» успешно сохранены на сервер`);
+        }
+      }
       onQueued();
       navigate('/queue');
     } catch (caught) {
