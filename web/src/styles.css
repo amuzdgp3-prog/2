@@ -820,3 +820,41 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
 }
 .table-wrap tbody tr:nth-child(even of :not([hidden])) { background: color-mix(in srgb, var(--paper-deep) 45%, transparent); }
 .table-wrap tbody tr:hover { background: var(--paper-deep); }
+
+/* ---------- Страница «Отчёт» владельца (screens/OwnerReport*.tsx) ---------- */
+.or-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; margin-bottom: 12px; }
+.or-head > .card { margin-bottom: 0; }
+.or-revenue { flex: 0 1 384px; max-width: 100%; }
+.or-profit { flex: 1 1 260px; background: var(--good-soft); border-color: var(--good); }
+.or-profit.negative { background: var(--bad-soft); border-color: var(--bad); }
+.or-profit .or-profit-title { color: var(--good); font-size: 13px; }
+.or-profit.negative .or-profit-title { color: var(--bad); }
+.or-figure { font-family: var(--f-mono); font-weight: 500; line-height: 1.1; }
+.or-figure.xl { font-size: 34px; }
+.or-figure.lg { font-size: 30px; }
+.or-split { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 12px; }
+.or-split .or-figure { font-size: 18px; }
+.or-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--paper-deep); margin-top: 14px; }
+.or-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; color: var(--ink-soft); }
+.or-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.or-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.or-stats > .card { margin-bottom: 0; }
+.or-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; align-items: start; margin-bottom: 12px; }
+.or-cols > .card, .or-cols > div > .card { margin-bottom: 12px; }
+.or-title { font-family: var(--f-display); font-weight: 600; font-size: 17px; margin: 0 0 2px; }
+.or-sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 10px; }
+.or-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 14px; }
+.or-line:last-child { border-bottom: none; }
+.or-line .mono { white-space: nowrap; }
+.or-line.child { padding-left: 16px; color: var(--ink-soft); }
+.or-line.strong { font-weight: 600; }
+.or-line.total { border-top: 1px solid var(--ink); border-bottom: none; margin-top: 6px; font-weight: 600; }
+.or-fold { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; background: none; border: none; border-bottom: 1px solid var(--line-soft); border-radius: 0; color: var(--ink); font-size: 14px; text-align: left; }
+.or-fold .or-chevron { display: inline-block; transition: transform .15s; color: var(--ink-soft); margin-right: 8px; }
+.or-fold[aria-expanded="true"] .or-chevron { transform: rotate(90deg); }
+.or-fold-body { background: var(--paper); border-radius: var(--r-md); padding: 2px 12px; margin: 6px 0; }
+.or-idle { color: var(--bad); }
+.or-idle-body { background: var(--bad-soft); border-radius: var(--r-md); padding: 2px 12px; margin-top: 6px; }
+.or-rent-figures { display: flex; flex-wrap: wrap; gap: 24px; justify-content: space-between; align-items: flex-end; }
+.or-total-row td { font-weight: 600; border-top: 1.5px solid var(--ink); }
+.or-more { margin-top: 12px; }

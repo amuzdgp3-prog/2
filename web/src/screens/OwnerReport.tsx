@@ -1,98 +1,76 @@
 import { useEffect, useState } from 'react';
 import { api, getToken } from '../api';
-import { formatGames, formatMoney } from '../calc';
-
-interface MonthlyRow {
-  monthStart: string;
-  services: number;
-  newGames: string;
-  revenue: string;
-  toyCost: string;
-  profit: string;
-  roi: string | null;
-  expensesTotal: string;
-  netProfit: string;
-  cashless: string;
-  paidToOwner: string;
-  reachedOwner: string;
-}
+import type { OwnerMonthReport } from '../ownerMonthReport';
+import {
+  CashReportCard,
+  ExpensesCard,
+  GroupsTable,
+  MachineCounts,
+  MachineRowsTable,
+  RentCard,
+  RevenueAndProfit,
+  ToysTable,
+} from './OwnerReportSections';
 
 const MONTH_NAMES_FULL = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
 ];
 
-function monthLabel(monthStart: string): string {
-  const date = new Date(monthStart);
-  return `${MONTH_NAMES_FULL[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+interface YearMonth {
+  year: number;
+  month: number;
 }
 
-function currentMonthKey(): string {
+/** Месяц по умолчанию — прошлый: текущий ещё не закончен. */
+function previousMonth(): YearMonth {
   const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const index = now.getUTCFullYear() * 12 + now.getUTCMonth() - 1;
+  return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-function monthKey(monthStart: string): string {
-  const date = new Date(monthStart);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+function shiftMonth({ year, month }: YearMonth, delta: number): YearMonth {
+  const index = year * 12 + (month - 1) + delta;
+  return { year: Math.floor(index / 12), month: (index % 12) + 1 };
 }
 
-function Delta({ current, previous }: { current: string; previous?: string }) {
-  if (previous === undefined) return null;
-  const currentValue = Number(current);
-  const previousValue = Number(previous);
-  if (previousValue === 0) return null;
-  const pct = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-  const color = pct >= 0 ? 'var(--good)' : 'var(--bad)';
-  return (
-    <span style={{ color, fontSize: 12, marginLeft: 6 }}>
-      {pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
-    </span>
-  );
+function isCurrentOrLater({ year, month }: YearMonth): boolean {
+  const now = new Date();
+  return year * 12 + month >= now.getUTCFullYear() * 12 + now.getUTCMonth() + 1;
 }
 
 /**
- * Страница владельца — сразу после дашборда: отчёт за прошлый месяц по умолчанию, с возможностью
- * листать по месяцам и таблицей сравнения (только таблица, без графиков — по явному запросу
- * владельца). Данные — тот же единый расчётный слой (`domain/reports.ts` monthlyReport), что и
- * вкладка «Отчёты», просто другое представление.
+ * Страница «Отчёт» — отчёт владельцу за выбранный месяц (по умолчанию прошлый). Все цифры приходят
+ * готовыми из единого расчёта `GET /api/reports/owner-month`; тот же расчёт строит xlsx, поэтому
+ * экран и файл совпадают блок в блок. Здесь только раскладка.
  */
 export default function OwnerReportScreen() {
-  const [rows, setRows] = useState<MonthlyRow[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [period, setPeriod] = useState<YearMonth>(previousMonth);
+  const [report, setReport] = useState<OwnerMonthReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    api.get<MonthlyRow[]>('/api/reports/monthly?months=12')
-      .then((data) => {
-        setRows(data);
-        if (data.length === 0) return;
-        const lastIsCurrentMonth = monthKey(data[data.length - 1].monthStart) === currentMonthKey();
-        const defaultIndex = lastIsCurrentMonth ? data.length - 2 : data.length - 1;
-        setSelectedIndex(Math.max(defaultIndex, 0));
-      })
-      .catch((caught) => setError((caught as Error).message));
-  }, []);
-
-  const selected = selectedIndex !== null ? rows[selectedIndex] : null;
-  const previous = selectedIndex !== null && selectedIndex > 0 ? rows[selectedIndex - 1] : undefined;
+    let cancelled = false;
+    setReport(null);
+    setError(null);
+    api.get<OwnerMonthReport>(`/api/reports/owner-month?year=${period.year}&month=${period.month}`)
+      .then((data) => { if (!cancelled) setReport(data); })
+      .catch((caught) => { if (!cancelled) setError((caught as Error).message); });
+    return () => { cancelled = true; };
+  }, [period]);
 
   const downloadExcel = async () => {
-    if (!selected) return;
-    const date = new Date(selected.monthStart);
-    const year = date.getUTCFullYear();
-    const month = date.getUTCMonth() + 1;
     setDownloading(true);
     try {
-      const response = await fetch(`/api/reports/monthly-excel?year=${year}&month=${month}`, {
+      const response = await fetch(`/api/reports/monthly-excel?year=${period.year}&month=${period.month}`, {
         headers: { authorization: `Bearer ${getToken()}` },
       });
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`;
+      link.download = `Отчет ${period.year}-${String(period.month).padStart(2, '0')}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -100,93 +78,45 @@ export default function OwnerReportScreen() {
     }
   };
 
-  if (error) return <div className="alert error">{error}</div>;
-  if (selectedIndex === null) return <p className="muted">Загрузка…</p>;
-  if (!selected) return <p className="muted">Пока нет данных ни за один месяц</p>;
-
   return (
     <>
-      <div className="card">
-        <div className="row" style={{ alignItems: 'center' }}>
-          <button
-            onClick={() => setSelectedIndex((i) => Math.max((i ?? 0) - 1, 0))}
-            disabled={selectedIndex === 0}
-          >
-            ← Раньше
-          </button>
-          <strong style={{ flex: 1, textAlign: 'center' }}>{monthLabel(selected.monthStart)}</strong>
-          <button
-            onClick={() => setSelectedIndex((i) => Math.min((i ?? 0) + 1, rows.length - 1))}
-            disabled={selectedIndex === rows.length - 1}
-          >
+      <div className="card card-pad" style={{ marginBottom: 12 }}>
+        <div className="row">
+          <button type="button" onClick={() => setPeriod((p) => shiftMonth(p, -1))}>← Раньше</button>
+          <strong style={{ flex: 1, textAlign: 'center', fontFamily: 'var(--f-display)', fontSize: 18 }}>
+            {MONTH_NAMES_FULL[period.month - 1]} {period.year}
+          </strong>
+          <button type="button" onClick={() => setPeriod((p) => shiftMonth(p, 1))} disabled={isCurrentOrLater(period)}>
             Позже →
           </button>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="muted">Выручка</div>
-        <div className="big mono">
-          {formatMoney(selected.revenue)} ₽
-          <Delta current={selected.revenue} previous={previous?.revenue} />
-        </div>
-        <div className="muted mono" style={{ marginTop: 10 }}>
-          Себестоимость игрушек: {formatMoney(selected.toyCost)} ₽ · Расходы бизнеса: {formatMoney(selected.expensesTotal)} ₽
-        </div>
-        <div className="mono" style={{ marginTop: 6 }}>
-          Чистая прибыль: <strong>{formatMoney(selected.netProfit)} ₽</strong>
-          <Delta current={selected.netProfit} previous={previous?.netProfit} />
-        </div>
-        <div className="mono" style={{ marginTop: 6 }}>
-          Дошло до владельца: <strong>{formatMoney(selected.reachedOwner)} ₽</strong>
-          <Delta current={selected.reachedOwner} previous={previous?.reachedOwner} />
-        </div>
-        <div className="muted mono" style={{ marginTop: 2, fontSize: 12.5 }}>
-          Безнал напрямую: {formatMoney(selected.cashless)} ₽ · На карту переводом: {formatMoney(selected.paidToOwner)} ₽
-        </div>
-        <div className="muted mono" style={{ marginTop: 6 }}>
-          Новых игр: {formatGames(selected.newGames)} · Обслуживаний: {selected.services} ·
-          {' '}ROI: {selected.roi ?? '—'}
-        </div>
-        <button className="primary" style={{ marginTop: 12 }} onClick={downloadExcel} disabled={downloading}>
+        <button
+          type="button"
+          className="primary"
+          style={{ marginTop: 10 }}
+          onClick={downloadExcel}
+          disabled={downloading}
+        >
           {downloading ? 'Формирую…' : 'Скачать отчёт (xlsx)'}
         </button>
       </div>
 
-      <div className="card">
-        <div className="muted" style={{ marginBottom: 10 }}>Сравнение по месяцам</div>
-        <div className="table-wrap scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>Месяц</th>
-                <th className="num">Выручка</th>
-                <th className="num">Игрушки</th>
-                <th className="num">Расходы</th>
-                <th className="num">Чистая прибыль</th>
-                <th className="num">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr
-                  key={row.monthStart}
-                  className="tappable"
-                  style={i === selectedIndex ? { fontWeight: 700, background: 'var(--row-highlight, rgba(91,141,239,0.08))' } : undefined}
-                  onClick={() => setSelectedIndex(i)}
-                >
-                  <td>{monthLabel(row.monthStart)}</td>
-                  <td className="num">{formatMoney(row.revenue)} ₽</td>
-                  <td className="num">{formatMoney(row.toyCost)} ₽</td>
-                  <td className="num">{formatMoney(row.expensesTotal)} ₽</td>
-                  <td className="num">{formatMoney(row.netProfit)} ₽</td>
-                  <td className="num">{row.roi ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {error && <div className="alert error">{error}</div>}
+      {!error && !report && <p className="muted">Загрузка…</p>}
+      {report && (
+        <>
+          <RevenueAndProfit report={report} />
+          <MachineCounts report={report} />
+          <GroupsTable report={report} />
+          <div className="or-cols">
+            <ExpensesCard report={report} />
+            <CashReportCard report={report} />
+          </div>
+          <RentCard report={report} />
+          <ToysTable report={report} />
+          <MachineRowsTable report={report} />
+        </>
+      )}
     </>
   );
 }
