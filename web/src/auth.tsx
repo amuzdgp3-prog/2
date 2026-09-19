@@ -29,7 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cached = localStorage.getItem(USER_KEY);
     return cached ? (JSON.parse(cached) as CurrentUser) : null;
   });
-  const [loading, setLoading] = useState(true);
+  // Сначала кэш, потом сеть: если токен и профиль уже есть на телефоне, приложение открывается сразу,
+  // а /auth/me подтверждается в фоне. Ждать ответа сервера на слабой связи незачем — очередь и
+  // справочник и так работают из IndexedDB.
+  const [loading, setLoading] = useState(() => !(getToken() && localStorage.getItem(USER_KEY)));
 
   useEffect(() => {
     if (!getToken()) {

@@ -15,6 +15,11 @@ export class OfflineError extends Error {
   }
 }
 
+// Без таймаута fetch на плохой сети висит минутами: браузер сам сдаётся очень поздно. Считаем
+// сервер недоступным, если он не ответил вовремя; отправка фото получает больше времени.
+const REQUEST_TIMEOUT_MS = 10_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
+
 const TOKEN_KEY = 'apixspb.token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -45,6 +50,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   try {
     response = await fetch(path, {
+      signal: AbortSignal.timeout(init.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
       ...init,
       headers: {
         // A Content-Type: application/json header with a truly empty body (a body-less DELETE,
