@@ -114,9 +114,11 @@ export default function HistoryScreen() {
             </button>
           )}
           <button className="btn btn-ghost" onClick={() => setShowQr(!showQr)}>▥ QR-код</button>
-          <Link to={`/service/${encodeURIComponent(machineNumber)}`}>
-            <button className="btn btn-primary">Новое обслуживание</button>
-          </Link>
+          {user?.role !== 'BOSS' && (
+            <Link to={`/service/${encodeURIComponent(machineNumber)}`}>
+              <button className="btn btn-primary">Новое обслуживание</button>
+            </Link>
+          )}
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'reac
 import { useAuth } from './auth';
 import { readOutbox } from './db';
 import { syncOutbox } from './sync';
+import BossMachinesScreen from './screens/BossMachines';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
 import MoneyScreen from './screens/Money';
@@ -289,7 +290,7 @@ export default function App() {
         )}
 
         <Routes>
-          <Route path="/" element={<MachinesScreen />} />
+          <Route path="/" element={isBoss ? <BossMachinesScreen /> : <MachinesScreen />} />
           <Route
             path="/service/:machineNumber/:localId?"
             element={<ServiceFormScreen onQueued={refreshQueueCount} />}
