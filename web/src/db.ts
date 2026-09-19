@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { bytesToPhoto, photoToBytes } from './photoBytes';
 
 export interface CachedMachine {
   machine_number: string;
@@ -53,15 +54,23 @@ export interface QueuedService {
   errorCode?: string;
 }
 
+/**
+ * Как запись лежит в IndexedDB: фото — байтами (`photoBytes`), а не `Blob`, потому что на iOS
+ * `Blob` из IndexedDB бывает пустым (см. photoBytes.ts). Поле `photo` осталось только у записей,
+ * поставленных в очередь до этого изменения: их читаем как раньше.
+ */
+type StoredService = Omit<QueuedService, 'photo'> & { photo?: Blob; photoBytes?: ArrayBuffer };
+type StoredPhotoDraft = Omit<PhotoDraft, 'photo'> & { photo?: Blob; photoBytes?: ArrayBuffer };
+
 interface MonitorSchema extends DBSchema {
   machines: { key: string; value: CachedMachine };
-  outbox: { key: string; value: QueuedService };
+  outbox: { key: string; value: StoredService };
   toys: { key: number; value: { id: number; name: string; unit_cost: string } };
   meta: { key: string; value: unknown };
   tasks: { key: number; value: CachedTask };
   taskOutbox: { key: number; value: QueuedTaskClose };
   dayCloseOutbox: { key: string; value: QueuedDayClose };
-  photoDrafts: { key: string; value: PhotoDraft };
+  photoDrafts: { key: string; value: StoredPhotoDraft };
 }
 
 /**
@@ -173,20 +182,32 @@ export async function readCachedToys() {
 }
 
 export async function enqueueService(service: QueuedService): Promise<void> {
-  await (await db()).put('outbox', service);
+  const { photo, ...rest } = service;
+  const photoBytes = await photoToBytes(photo);
+  await (await db()).put('outbox', { ...rest, photoBytes });
+}
+
+function fromStoredService(stored: StoredService): QueuedService {
+  const { photoBytes, photo, ...rest } = stored;
+  return { ...rest, photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo as Blob) };
 }
 
 /** Used to prefill the form when a technician edits a draft that hasn't synced yet. */
 export async function getQueuedByLocalId(localId: string): Promise<QueuedService | undefined> {
-  return (await db()).get('outbox', localId);
+  const stored = await (await db()).get('outbox', localId);
+  return stored ? fromStoredService(stored) : undefined;
 }
 
 export async function savePhotoDraft(machineNumber: string, photo: Blob, photoType: string): Promise<void> {
-  await (await db()).put('photoDrafts', { machineNumber, photo, photoType, savedAt: new Date().toISOString() });
+  const photoBytes = await photoToBytes(photo);
+  await (await db()).put('photoDrafts', { machineNumber, photoBytes, photoType, savedAt: new Date().toISOString() });
 }
 
 export async function getPhotoDraft(machineNumber: string): Promise<PhotoDraft | undefined> {
-  return (await db()).get('photoDrafts', machineNumber);
+  const stored = await (await db()).get('photoDrafts', machineNumber);
+  if (!stored) return undefined;
+  const { photoBytes, photo, ...rest } = stored;
+  return { ...rest, photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo as Blob) };
 }
 
 export async function clearPhotoDraft(machineNumber: string): Promise<void> {
@@ -194,7 +215,7 @@ export async function clearPhotoDraft(machineNumber: string): Promise<void> {
 }
 
 export async function readOutbox(): Promise<QueuedService[]> {
-  const items = await (await db()).getAll('outbox');
+  const items = (await (await db()).getAll('outbox')).map(fromStoredService);
   return items.sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
 }
 
