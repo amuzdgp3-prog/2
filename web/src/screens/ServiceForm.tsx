@@ -520,17 +520,6 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           <div className="field-hint">было {previousGameCounter}</div>
         </div>
         <div className="counter-field">
-          <label className="field-label">Тест игры</label>
-          <input
-            type="number"
-            className="mono-input"
-            inputMode="numeric"
-            min={0}
-            value={testGames}
-            onChange={(event) => { markDirty(); setTestGames(event.target.value); }}
-          />
-        </div>
-        <div className="counter-field">
           <label className="field-label">Счётчик призов</label>
           <input
             type="number"
@@ -541,6 +530,17 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             placeholder={String(previousPrizeCounter)}
           />
           <div className="field-hint">было {previousPrizeCounter} — оставьте пустым, если без изменений</div>
+        </div>
+        <div className="counter-field">
+          <label className="field-label">Тест игры</label>
+          <input
+            type="number"
+            className="mono-input"
+            inputMode="numeric"
+            min={0}
+            value={testGames}
+            onChange={(event) => { markDirty(); setTestGames(event.target.value); }}
+          />
         </div>
       </div>
 
