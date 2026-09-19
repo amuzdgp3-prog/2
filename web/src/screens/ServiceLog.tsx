@@ -72,7 +72,7 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
 
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
  * Service. Одна и та же таблица на десктопе и на телефоне (DECISION-082, заменяет раздельные
- * раскладки из DECISION-053/054): дата/время, «№ адрес», счётчик, новых игр, выручка, нал, безнал,
+ * раскладки из DECISION-053/054): дата/время, «№ адрес», счётчик, новых игр, выручка (под ней нал и безнал),
  * себестоимость с разбивкой по игрушкам, ROI, техник, фото, комментарий. Остальные цифры —
  * по тапу на строку, в ServiceDetail. */
 export default function ServiceLogScreen() {
@@ -219,8 +219,6 @@ export default function ServiceLogScreen() {
               <th className="num">Счётчик</th>
               <th className="num">Новых игр</th>
               <th className="num">Выручка</th>
-              <th className="num">Нал</th>
-              <th className="num">Безнал</th>
               <th>Себестоимость</th>
               <th>ROI</th>
               <th>Техник</th>
@@ -247,9 +245,11 @@ export default function ServiceLogScreen() {
                     <td className="wrap">№ {row.machine_number} {row.address || row.machine_model || '—'}</td>
                     <td className="num mono">{row.game_counter}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
-                    <td className="num" style={{ fontWeight: 700 }}>{formatMoney(row.revenue)} ₽</td>
-                    <td className="num">{formatMoney(row.cash_amount)} ₽</td>
-                    <td className="num">{formatMoney(row.cashless_amount)} ₽</td>
+                    <td className="num">
+                      <div style={{ fontWeight: 700 }}>{formatMoney(row.revenue)} ₽</div>
+                      <div className="muted mono" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽</div>
+                      <div className="muted mono" style={{ fontSize: 11 }}>безнал {formatMoney(row.cashless_amount)} ₽</div>
+                    </td>
                     <td><CostCell toys={row.toys} total={row.toy_cost} /></td>
                     <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
                     <td>{row.technician_name ?? '—'}</td>
@@ -263,7 +263,7 @@ export default function ServiceLogScreen() {
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={13} style={{ padding: 0 }}>
+                      <td colSpan={11} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} />
                       </td>
                     </tr>
@@ -272,7 +272,7 @@ export default function ServiceLogScreen() {
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
