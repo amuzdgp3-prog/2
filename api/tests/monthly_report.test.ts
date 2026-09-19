@@ -116,7 +116,7 @@ describe('monthly report aggregation', () => {
     );
   });
 
-  it('splits how much actually reached the owner (cashless + CARD transfers) without touching netProfit', async () => {
+  it('splits how much actually reached the owner (cashless + CARD transfers) and keeps CARD out of expenses and netProfit', async () => {
     await installTestMachine(context, {
       machineNumber: 'MO-4',
       pricePerGame: 10,
@@ -151,8 +151,12 @@ describe('monthly report aggregation', () => {
     assert.equal(row.cashless, '400.00');
     assert.equal(row.paidToOwner, '600.00');
     assert.equal(row.reachedOwner, '1000.00');
-    // CARD остаётся внутри expensesTotal/netProfit как обычный расход (владелец подтвердил
-    // 18.09.2026: reachedOwner — справочная цифра рядом, не замена расчёта чистой прибыли).
-    assert.equal(row.expensesTotal, '600.00');
+    // CARD — не расход: владелец получает эти деньги себе (уточнение 19.09.2026, DECISION-080).
+    assert.equal(row.expensesTotal, '0.00');
+    assert.equal(
+      Number(row.netProfit),
+      Number(row.revenue) - Number(row.toyCost) - Number(row.expensesTotal),
+      'CARD не должен уменьшать чистую прибыль',
+    );
   });
 });
