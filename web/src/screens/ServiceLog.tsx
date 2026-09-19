@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api, getToken } from '../api';
 import { useAuth } from '../auth';
 import { daysBetween, formatGames, formatMoney } from '../calc';
@@ -71,13 +71,10 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
 }
 
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
- * Service. На десктопе и на телефоне — обе раскладки таблицы (владелец явно настоял на таблице
- * и на телефоне, карточки не подошли), но с разным набором колонок, переключаемым CSS-классами
- * (.desktop-only/.mobile-only): полная таблица на 14 колонок на широком экране (DECISION-053,
- * счётчик игр добавлен отдельно после столбца «Адрес») и
- * узкая на 11 — только то, без чего строку не понять с одного взгляда, плюс комментарий — на
- * телефоне (DECISION-054, комментарий возвращён в строку по прямой просьбе владельца позже).
- * Остальные цифры в обоих случаях доступны по тому же тапу на строку, в общей ServiceDetail. */
+ * Service. Одна и та же таблица на десктопе и на телефоне (DECISION-082, заменяет раздельные
+ * раскладки из DECISION-053/054): дата/время, «№ адрес», счётчик, новых игр, выручка, нал, безнал,
+ * себестоимость с разбивкой по игрушкам, ROI, техник, фото, комментарий. Остальные цифры —
+ * по тапу на строку, в ServiceDetail. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -213,21 +210,20 @@ export default function ServiceLogScreen() {
         </div>
       </div>
 
-      <div className="table-wrap scroll-x table-tall desktop-only">
+      <div className="table-wrap scroll-x table-tall">
         <table>
           <thead>
             <tr>
               <th>Дата / время</th>
-              <th className="num">№</th>
               <th>Адрес</th>
-              <th className="num" style={{ paddingLeft: 24 }}>Счётчик</th>
-              <th>Техник</th>
-              {!isBoss && <th className="num">Дней</th>}
+              <th className="num">Счётчик</th>
               <th className="num">Новых игр</th>
-              <th className="num">Игр/день</th>
               <th className="num">Выручка</th>
-              <th className="num">Себест.</th>
+              <th className="num">Нал</th>
+              <th className="num">Безнал</th>
+              <th>Себестоимость</th>
               <th>ROI</th>
+              <th>Техник</th>
               <th>Фото</th>
               <th>Комментарий</th>
               <th />
@@ -235,13 +231,12 @@ export default function ServiceLogScreen() {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const { periodDays, perDay } = serviceMeta(row);
+              const { periodDays } = serviceMeta(row);
               const { date, time } = splitDateTime(row.occurred_at);
               const isOpen = !isBoss && expanded === row.id;
               return (
-                <>
+                <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     className={isBoss ? undefined : 'tappable'}
                     onClick={isBoss ? undefined : () => setExpanded(isOpen ? null : row.id)}
                   >
@@ -249,19 +244,15 @@ export default function ServiceLogScreen() {
                       <div>{date}</div>
                       <div className="muted" style={{ fontSize: 11 }}>{time}</div>
                     </td>
-                    <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
-                    <td className="wrap">{row.address || row.machine_model || '—'}</td>
-                    <td className="num mono" style={{ paddingLeft: 24 }}>{row.game_counter}</td>
-                    <td>{row.technician_name ?? '—'}</td>
-                    {!isBoss && <td className="num mono">{periodDays ?? '—'}</td>}
+                    <td className="wrap">№ {row.machine_number} {row.address || row.machine_model || '—'}</td>
+                    <td className="num mono">{row.game_counter}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
-                    <td className="num mono">{perDay === null ? '—' : perDay.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}</td>
-                    <td className="num">
-                      {formatMoney(row.revenue)} ₽
-                      {isBoss && <div className="muted" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽ · безнал {formatMoney(row.cashless_amount)} ₽</div>}
-                    </td>
-                    <td className="num">{formatMoney(row.toy_cost)} ₽</td>
+                    <td className="num">{formatMoney(row.revenue)} ₽</td>
+                    <td className="num">{formatMoney(row.cash_amount)} ₽</td>
+                    <td className="num">{formatMoney(row.cashless_amount)} ₽</td>
+                    <td><CostCell toys={row.toys} total={row.toy_cost} /></td>
                     <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
+                    <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
                     </td>
@@ -271,91 +262,17 @@ export default function ServiceLogScreen() {
                     </td>
                   </tr>
                   {isOpen && (
-                    <tr key={`${row.id}-detail`}>
-                      <td colSpan={14} style={{ padding: 0 }}>
+                    <tr>
+                      <td colSpan={13} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} />
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Телефон: та же таблица, не карточки (владелец настоял на этом отдельно) — но только те
-          столбцы, без которых нельзя понять строку с одного взгляда: дата/время, номер, адрес,
-          дней, счётчик игр (сырое показание, а не «новых игр» — так попросил владелец), выручка,
-          нал и безнал отдельно, техник, фото, комментарий. Остальное (себестоимость, ROI, игр/день,
-          удаление) — по тому же тапу на строку, в общей ServiceDetail, а не теряется. */}
-      <div className="table-wrap scroll-x table-tall mobile-only">
-        <table>
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th className="num">№</th>
-              <th>Адрес</th>
-              {!isBoss && <th className="num">Дней</th>}
-              <th className="num">Счётчик</th>
-              <th className="num">Выручка</th>
-              {!isBoss && <th className="num">Нал</th>}
-              {!isBoss && <th className="num">Безнал</th>}
-              <th>Техник</th>
-              <th>Фото</th>
-              <th>Комментарий</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const { periodDays } = serviceMeta(row);
-              const { date, time } = splitDateTime(row.occurred_at);
-              const isOpen = !isBoss && expanded === row.id;
-              return (
-                <>
-                  <tr
-                    key={row.id}
-                    className={isBoss ? undefined : 'tappable'}
-                    onClick={isBoss ? undefined : () => setExpanded(isOpen ? null : row.id)}
-                  >
-                    <td className="mono">
-                      <div>{date}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>{time}</div>
-                    </td>
-                    <td className="num mono" style={{ fontWeight: 700 }}>№ {row.machine_number}</td>
-                    <td className="wrap">{row.address || row.machine_model || '—'}</td>
-                    {!isBoss && <td className="num mono">{periodDays ?? '—'}</td>}
-                    <td className="num mono">{row.game_counter}</td>
-                    <td className="num">
-                      {formatMoney(row.revenue)} ₽
-                      {isBoss && <div className="muted" style={{ fontSize: 11 }}>нал {formatMoney(row.cash_amount)} ₽ · безнал {formatMoney(row.cashless_amount)} ₽</div>}
-                    </td>
-                    {!isBoss && <td className="num">{formatMoney(row.cash_amount)} ₽</td>}
-                    {!isBoss && <td className="num">{formatMoney(row.cashless_amount)} ₽</td>}
-                    <td>{row.technician_name ?? '—'}</td>
-                    <td onClick={(event) => event.stopPropagation()}>
-                      <PhotoCell objectKey={row.photo_object_key} />
-                    </td>
-                    <td className="muted wrap">{row.notes || '—'}</td>
-                  </tr>
-                  {isOpen && (
-                    <tr key={`${row.id}-detail`}>
-                      <td colSpan={11} style={{ padding: 0 }}>
-                        <ServiceDetail row={row} periodDays={periodDays} />
-                        <div style={{ margin: '0 12px 12px' }}>
-                          <button className="icon-btn danger" onClick={() => remove(row.id)}>✕ Удалить</button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr><td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
@@ -377,6 +294,21 @@ export default function ServiceLogScreen() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Себестоимость в ячейке журнала: итог и под ним по строке на игрушку — название, штуки, цена
+ * за штуку. Отдельно от ToyList, который показывает сумму по позиции в раскрытой карточке. */
+function CostCell({ toys, total }: { toys: ToyLine[] | null; total: string }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 700 }}>{formatMoney(total)} ₽</div>
+      {(toys ?? []).map((toy) => (
+        <div key={toy.toyId} className="muted mono" style={{ fontSize: 11 }}>
+          {toy.name} · {toy.quantity} шт × {formatMoney(toy.unitCost)} ₽
+        </div>
+      ))}
+    </div>
   );
 }
 
