@@ -861,6 +861,13 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
 
   // -------------------------------------------------------------------- staff
   app.get('/api/staff', auth, async (request) => {
+    // Руководителю нужен только список техников для фильтра журнала — без логинов и админов.
+    if (request.actor.role === 'BOSS') {
+      const technicians = await pool.query(
+        `SELECT id, full_name, role FROM staff WHERE role = 'TECHNICIAN' ORDER BY full_name`,
+      );
+      return technicians.rows;
+    }
     assertAdmin(request.actor);
     const result = await pool.query(
       'SELECT id, login, full_name, role, is_active, is_field_technician FROM staff ORDER BY full_name',
