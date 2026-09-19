@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
-import { computeOverdue, formatMoney } from '../calc';
 import { MachineTag } from '../components/ui/MachineTag';
 import { RoiBadge } from '../components/ui/RoiBadge';
 
@@ -19,8 +18,6 @@ interface BossMachine {
   placement_id: number | null;
   terminal_serial: string | null;
   default_toy_set_name: string | null;
-  last_service_at: string | null;
-  last_revenue: string | null;
   last_revenue_to_cost_ratio: string | null;
 }
 
@@ -62,7 +59,6 @@ export default function BossMachinesScreen() {
       <p className="muted" style={{ marginTop: 0 }}>Показано {filtered.length}</p>
 
       {filtered.map((machine) => {
-        const overdue = computeOverdue(machine);
         const inactive = !machine.placement_id;
         return (
           <div className="card card-pad" key={machine.machine_number} style={inactive ? { opacity: 0.55 } : undefined}>
@@ -88,16 +84,6 @@ export default function BossMachinesScreen() {
             </div>
             <div className="muted" style={{ marginTop: 4 }}>
               Норма обслуживания: {machine.min_service_days ?? '—'}–{machine.max_service_days ?? '—'} дн.
-            </div>
-            <div className="mono" style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 8 }}>
-              {machine.last_service_at
-                ? `посл. обслуживание — ${overdue.daysSinceService} дн. назад, выручка ${formatMoney(machine.last_revenue ?? '0')} ₽`
-                : 'обслуживаний ещё не было'}
-              {overdue.isOverdue && (
-                <span style={{ color: overdue.severity === 'bad' ? 'var(--bad)' : 'var(--warn)' }}>
-                  {' '}· просрочено на {overdue.daysOverdue} дн.
-                </span>
-              )}
             </div>
             <div style={{ marginTop: 12 }}>
               <Link to={`/history/${encodeURIComponent(machine.machine_number)}`} style={{ textDecoration: 'none' }}>
