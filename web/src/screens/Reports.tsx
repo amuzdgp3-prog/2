@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, getToken } from '../api';
 import { useAuth } from '../auth';
 import { formatGames, formatMoney } from '../calc';
+import { formatRoiSplit } from '../roiSplit';
 
 interface MachineRow {
   machineNumber: string;
@@ -353,7 +354,7 @@ export default function ReportsScreen() {
                   <td className="num">{formatMoney(row.toyCost)} ₽</td>
                   <td className="num">{formatMoney(row.profit)} ₽</td>
                   <td className="num" style={{ color: row.roi === null ? undefined : Number(row.roi) >= 3 ? 'var(--good)' : Number(row.roi) >= 2 ? 'var(--warn)' : 'var(--bad)', fontWeight: 700 }}>
-                    {row.roi ?? '—'}
+                    {formatRoiSplit(row.roi) ?? '—'}
                   </td>
                 </tr>
               ))}

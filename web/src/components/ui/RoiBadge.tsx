@@ -1,3 +1,5 @@
+import { formatRoiSplit } from '../../roiSplit';
+
 /**
  * Значок «Отношение выручка/себестоимость» — единственный, наравне со
  * статусом «работает/не работает», носитель цвета good/warn/bad/neutral
@@ -26,7 +28,7 @@ export function RoiBadge({ value }: { value: number | string | null | undefined 
   return (
     <span className={`badge badge-${variant}`}>
       <span className="badge-dot" />
-      ROI {numeric.toFixed(1)}
+      ROI {formatRoiSplit(numeric) ?? numeric.toFixed(1)}
     </span>
   );
 }

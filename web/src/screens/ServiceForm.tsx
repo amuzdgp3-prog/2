@@ -26,6 +26,7 @@ import {
 import { bytesToPhoto, EmptyPhotoError, photoToBytes } from '../photoBytes';
 import { refreshCatalog, syncOutbox } from '../sync';
 import { showToast } from '../toast';
+import { formatRoiSplit } from '../roiSplit';
 
 interface ToyLine {
   toyId: number;
@@ -558,7 +559,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
               </div>
               <div className="cell"><b>{formatMoney(preview.revenue)} ₽</b><span>выручка</span></div>
               <div className="cell"><b>{formatMoney(preview.toyCost)} ₽</b><span>себестоимость</span></div>
-              <div className="cell"><b>{preview.roi ?? 'нет данных'}</b><span>ROI</span></div>
+              <div className="cell"><b>{formatRoiSplit(preview.roi) ?? 'нет данных'}</b><span>ROI</span></div>
             </div>
           </div>
           <p className="field-hint" style={{ marginTop: 6 }}>
