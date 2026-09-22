@@ -11,9 +11,13 @@ export async function createTerminal(
   input: { serial: string; provider: string; label?: string },
 ): Promise<Record<string, unknown>> {
   assertAdmin(actor);
+  // Безнал сопоставляется точным равенством serial = terminal_external_id (cashless.ts), поэтому
+  // невидимый пробел по краям навсегда отрезал бы терминал от его транзакций.
+  const serial = input.serial.trim();
+  if (serial === '') throw badRequest('SERIAL_REQUIRED', 'серийный номер не может быть пустым');
   const inserted = await client.query(
     `INSERT INTO terminals (serial, provider, label) VALUES ($1, $2, $3) RETURNING *`,
-    [input.serial, input.provider, input.label ?? ''],
+    [serial, input.provider, input.label ?? ''],
   );
   await auditInsert(client, actor, 'terminal', inserted.rows[0].id, inserted.rows[0]);
   return inserted.rows[0];
