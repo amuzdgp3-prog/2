@@ -91,7 +91,25 @@ async function runSync(): Promise<SyncResult> {
     }
   }
 
+  await reconcileDraftIssues();
+
   return { sent, rejected, remaining: 0, offline: false };
+}
+
+/**
+ * Сверка списка застрявших черновиков с тем, что реально лежит в очереди.
+ *
+ * Отдельный DELETE при удалении черновика — «лучшее усилие»: техник может удалить его офлайн,
+ * и тогда запрос не уйдёт вовсе, а повторить его потом уже нечем — черновика в базе браузера
+ * нет. Поэтому после каждой полной синхронизации клиент присылает серверу localId всех своих
+ * черновиков, а сервер снимает свои строки по этому технику, которых в списке не оказалось.
+ *
+ * Идёт только в конце успешного прогона: при обрыве связи список был бы неполным лишь потому,
+ * что очередь не дочитана. Ошибка здесь не должна ронять синхронизацию — это уборка.
+ */
+async function reconcileDraftIssues(): Promise<void> {
+  const localIds = (await readOutbox()).map((item) => item.localId);
+  await api.post('/api/draft-issues/reconcile', { localIds }).catch(() => undefined);
 }
 
 async function uploadOne(item: QueuedService): Promise<void> {
