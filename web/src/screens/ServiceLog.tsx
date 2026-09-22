@@ -216,6 +216,8 @@ export default function ServiceLogScreen() {
             <tr>
               <th>Дата / время</th>
               <th>Адрес</th>
+              <th className="num">Дней</th>
+              <th className="num">Игр/день</th>
               <th className="num">Счётчик</th>
               <th className="num">Новых игр</th>
               <th className="num">Выручка</th>
@@ -229,7 +231,7 @@ export default function ServiceLogScreen() {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const { periodDays } = serviceMeta(row);
+              const { periodDays, perDay } = serviceMeta(row);
               const { date, time } = splitDateTime(row.occurred_at);
               const isOpen = !isBoss && expanded === row.id;
               return (
@@ -243,6 +245,10 @@ export default function ServiceLogScreen() {
                       <div className="muted" style={{ fontSize: 11 }}>{time}</div>
                     </td>
                     <td className="wrap">№ {row.machine_number} {row.address || row.machine_model || '—'}</td>
+                    <td className="num mono">{periodDays ?? '—'}</td>
+                    <td className="num mono">
+                      {perDay === null ? '—' : perDay.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}
+                    </td>
                     <td className="num mono">{row.game_counter}</td>
                     <td className="num">+{formatGames(row.new_games)}</td>
                     <td className="num">
@@ -263,7 +269,7 @@ export default function ServiceLogScreen() {
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={11} style={{ padding: 0 }}>
+                      <td colSpan={13} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} />
                       </td>
                     </tr>
@@ -272,7 +278,7 @@ export default function ServiceLogScreen() {
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
