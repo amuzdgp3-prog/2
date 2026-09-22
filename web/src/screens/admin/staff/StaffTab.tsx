@@ -81,7 +81,8 @@ export function StaffTab({ onDone, onError }: TabProps) {
           <strong>Застрявшие черновики техников ({draftIssues.length})</strong>
           <div className="muted" style={{ marginTop: 4 }}>
             Обслуживание не ушло с телефона техника и ждёт его действия. Строка пропадёт сама,
-            когда черновик отправится или будет удалён.
+            когда черновик отправится или будет удалён. Кнопка нужна для другого случая: техник
+            уже не откроет приложение (уволился, сменил телефон), и снять строку некому.
           </div>
           {draftIssues.map((issue) => (
             <div
@@ -101,6 +102,27 @@ export function StaffTab({ onDone, onError }: TabProps) {
                 {new Date(String(issue.updated_at)).toLocaleString('ru-RU')}
               </div>
               <div className="alert error" style={{ marginTop: 6 }}>{issue.error_message}</div>
+              <button
+                className="btn-danger-ghost"
+                style={{ marginTop: 6 }}
+                onClick={async () => {
+                  if (!confirm(
+                    'Убрать строку из списка?\n\n'
+                    + 'Само обслуживание это не удаляет и не сохраняет: черновик как лежал на '
+                    + 'телефоне техника, так и останется там. Убирать стоит только то, чего техник '
+                    + 'уже не починит — иначе строка вернётся при его следующей синхронизации.',
+                  )) return;
+                  try {
+                    await api.delete(`/api/draft-issues/${String(issue.local_id)}`);
+                    onDone('Строка убрана из списка');
+                    loadDraftIssues();
+                  } catch (caught) {
+                    onError(caught);
+                  }
+                }}
+              >
+                Убрать из списка
+              </button>
             </div>
           ))}
         </div>
