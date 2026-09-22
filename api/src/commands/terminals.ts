@@ -24,6 +24,40 @@ export async function createTerminal(
 }
 
 /**
+ * Номер терминала на сайте iVend восьмизначный и начинается с «50» (50264785), но владелец
+ * оперирует короткой формой без этих цифр (264785). Завести короткую форму как новый терминал
+ * система не мешала: UNIQUE сравнивает строки дословно, а дальше такая запись мертва — парсер
+ * опрашивает iVend только по точным серийникам, и транзакции не приходят вовсе (DECISION-084).
+ * Сравнение по последним пяти цифрам ловит и пропущенный префикс, и опечатку в начале номера.
+ */
+const SIMILAR_SUFFIX_LENGTH = 5;
+
+export async function findSimilarTerminals(
+  client: Pick<Client, 'query'>,
+  serial: string,
+): Promise<Record<string, unknown>[]> {
+  const digits = serial.replace(/\D/g, '');
+  if (digits.length < SIMILAR_SUFFIX_LENGTH) return [];
+
+  const result = await client.query(
+    `SELECT t.id, t.serial, t.status,
+            b.machine_number AS bound_machine,
+            b.started_at     AS bound_since,
+            p.address,
+            l.name AS location_name
+     FROM terminals t
+     LEFT JOIN terminal_bindings b ON b.terminal_id = t.id AND b.ended_at IS NULL
+     LEFT JOIN machine_placements p ON p.machine_number = b.machine_number AND p.ended_at IS NULL
+     LEFT JOIN locations l ON l.id = p.location_id
+     WHERE right(regexp_replace(t.serial, '\\D', '', 'g'), $1::int) = right($2, $1::int)
+       AND t.serial <> $3
+     ORDER BY t.serial`,
+    [SIMILAR_SUFFIX_LENGTH, digits, serial.trim()],
+  );
+  return result.rows;
+}
+
+/**
  * terminalBind / terminalReplace (10_ТЗ §6, 14_BASELINE §9): closes the previous interval of this
  * terminal and opens a new one. A terminal is never carried over automatically when a machine is
  * replaced, and a machine can hold at most one active terminal. Because historical cashless

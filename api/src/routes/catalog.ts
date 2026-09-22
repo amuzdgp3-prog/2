@@ -21,7 +21,12 @@ import {
   revokeClassifierScope,
   updateClassifier,
 } from '../commands/classifiers.js';
-import { bindTerminal, createTerminal, unbindTerminal } from '../commands/terminals.js';
+import {
+  bindTerminal,
+  createTerminal,
+  findSimilarTerminals,
+  unbindTerminal,
+} from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
 import { resolveServiceInterval } from '../domain/serviceIntervals.js';
 import { auditDelete, auditInsert, auditUpdate } from '../lib/audit.js';
@@ -1097,6 +1102,14 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
        ORDER BY t.serial`,
     );
     return result.rows;
+  });
+
+  // Подсказка форме заведения терминала: не тот ли это терминал, что уже стоит на другом
+  // аппарате, только записанный в короткой форме. Предупреждение, а не запрет — бывают и правда
+  // разные терминалы с близкими номерами.
+  app.get<{ Querystring: { serial?: string } }>('/api/terminals/similar', auth, async (request) => {
+    const serial = request.query.serial ?? '';
+    return findSimilarTerminals(pool, serial);
   });
 
   app.post<{ Body: { serial: string; provider: string; label?: string } }>(
