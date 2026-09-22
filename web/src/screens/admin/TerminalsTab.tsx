@@ -4,6 +4,14 @@ import { formatMoney } from '../../calc';
 import type { Machine, TabProps } from './types';
 import { Section } from './shared/Section';
 
+interface SimilarTerminal {
+  id: number;
+  serial: string;
+  bound_machine: string | null;
+  address: string | null;
+  location_name: string | null;
+}
+
 /**
  * datetime-local принимает местное время без секунд. Обрезка до минуты всегда даёт момент не
  * позже исходного, поэтому первая непривязанная транзакция остаётся внутри новой привязки.
@@ -18,6 +26,7 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
   const [terminals, setTerminals] = useState<Array<Record<string, string | number | null>>>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [serial, setSerial] = useState('');
+  const [similar, setSimilar] = useState<SimilarTerminal[]>([]);
   const [provider, setProvider] = useState('');
   const [bindTo, setBindTo] = useState<Record<number, string>>({});
   const [bindFrom, setBindFrom] = useState<Record<number, string>>({});
@@ -31,6 +40,31 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
   };
   useEffect(load, []);
 
+  // На iVend номер записан как 50264785, в разговоре тот же терминал зовут 264785. Заведённая
+  // короткая форма не получает транзакций вовсе (парсер опрашивает iVend по точным серийникам),
+  // поэтому про похожий номер спрашиваем до создания, а не чиним последствия потом.
+  useEffect(() => {
+    if (serial.replace(/\D/g, '').length < 5) {
+      setSimilar([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api
+        .get<SimilarTerminal[]>(`/api/terminals/similar?serial=${encodeURIComponent(serial.trim())}`)
+        .then(setSimilar)
+        .catch(() => setSimilar([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [serial]);
+
+  const describeSimilar = (terminal: SimilarTerminal): string =>
+    terminal.bound_machine
+      ? `аппарат № ${terminal.bound_machine}`
+        + (terminal.address ?? terminal.location_name
+          ? `, ${terminal.address ?? terminal.location_name}`
+          : '')
+      : 'на складе';
+
   // Аппарат считается «без терминала», если он активен и ни один терминал на него не привязан.
   // Списанные сюда не попадают: им терминал и не нужен.
   const boundMachines = new Set(
@@ -42,6 +76,15 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
 
   const create = async (event: FormEvent) => {
     event.preventDefault();
+    if (
+      similar.length > 0
+      && !confirm(
+        `Похожий терминал уже заведён: ${similar.map((t) => `${t.serial} (${describeSimilar(t)})`).join(', ')}.\n\n`
+        + 'Если это тот же самый терминал, новую запись заводить не нужно: она не получит ни одной '
+        + 'транзакции, а деньги продолжат идти на прежний аппарат. Переставить терминал можно '
+        + 'кнопкой «Перенести» на его карточке.\n\nВсё равно создать новый терминал?',
+      )
+    ) return;
     try {
       await api.post('/api/terminals', { serial, provider });
       onDone(`Терминал ${serial} добавлен`);
@@ -67,6 +110,21 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
                 <input value={provider} onChange={(event) => setProvider(event.target.value)} required />
               </div>
             </div>
+            {similar.length > 0 && (
+              <div className="alert error">
+                <strong>Похожий терминал уже заведён.</strong>
+                {similar.map((terminal) => (
+                  <div key={terminal.id}>
+                    № {terminal.serial} — {describeSimilar(terminal)}
+                  </div>
+                ))}
+                <div style={{ marginTop: 6 }}>
+                  Номер на iVend начинается с «50», и сопоставление идёт по нему целиком. Если это
+                  тот же терминал, переставьте его кнопкой «Перенести» на его карточке, а новую
+                  запись не заводите — она не получит ни одной транзакции.
+                </div>
+              </div>
+            )}
             <button className="primary" type="submit">Добавить</button>
           </div>
         </Section>
