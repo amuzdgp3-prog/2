@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { authHeader, bootstrap, type TestContext } from './helpers.js';
+import { authHeader, bootstrap, installTestMachine, preparePhoto, type TestContext } from './helpers.js';
 
 /**
  * Видимость застрявших черновиков администратору (DECISION-048). Черновик живёт в браузере
@@ -80,5 +80,56 @@ describe('застрявшие черновики техников', () => {
     });
     assert.equal(resolved.statusCode, 200, resolved.body);
     assert.equal((await list()).length, 0);
+  });
+
+  /**
+   * Уборка не должна зависеть от отдельного запроса с телефона: тот запрос необязателен и может
+   * не дойти (связь оборвалась сразу после сохранения, истёк токен, техник переустановил
+   * приложение). Раньше в этом случае строка висела у администратора вечно, хотя обслуживание
+   * давно лежало в базе.
+   */
+  it('принятое обслуживание снимает жалобу само, без запроса от клиента', async () => {
+    const sentLocalId = '99999999-8888-7777-6666-555555555555';
+    const placed = await installTestMachine(context, { machineNumber: 'DI-2', pricePerGame: 50 });
+    await context.app.inject({
+      method: 'POST',
+      url: '/api/staff/scope',
+      headers: authHeader(context.adminToken),
+      payload: { staffId: context.technicianId, locationId: placed.locationId },
+    });
+
+    const reported = await context.app.inject({
+      method: 'POST',
+      url: '/api/draft-issues',
+      headers: authHeader(context.technicianToken),
+      payload: {
+        localId: sentLocalId,
+        machineNumber: 'DI-2',
+        occurredAt: '2026-03-02T10:00:00Z',
+        errorCode: 'GAME_COUNTER_WENT_BACK',
+        errorMessage: 'Счётчик игр 100 меньше предыдущего 500',
+      },
+    });
+    assert.equal(reported.statusCode, 200, reported.body);
+    assert.equal((await list()).length, 1);
+
+    const photoObjectKey = await preparePhoto(sentLocalId);
+    const stored = await context.app.inject({
+      method: 'POST',
+      url: '/api/services',
+      headers: authHeader(context.technicianToken),
+      payload: {
+        localId: sentLocalId,
+        machineNumber: 'DI-2',
+        photoObjectKey,
+        occurredAt: '2026-03-02T10:00:00Z',
+        gameCounter: 600,
+        prizeCounter: 10,
+        testGames: 0,
+      },
+    });
+    assert.equal(stored.statusCode, 200, stored.body);
+
+    assert.equal((await list()).length, 0, 'жалоба должна уйти вместе с принятым обслуживанием');
   });
 });

@@ -1,4 +1,5 @@
 import type { Client } from '../db/pool.js';
+import { clearDraftIssue } from './draftIssues.js';
 import { assertNoCounterJump } from '../domain/counterAnomaly.js';
 import { assertCountersMoveForward } from '../domain/counterMonotonicity.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
@@ -329,6 +330,12 @@ export async function createService(
     kind: 'REGULAR',
     technicianId: assignedTechnicianId,
   });
+
+  // Обслуживание принято сервером — жалоба на застрявший черновик (DECISION-048) больше не
+  // актуальна, и снимаем её здесь, в той же транзакции, а не отдельным запросом с телефона:
+  // тот запрос необязателен и может не дойти, оставив администратору вечную строку. Повтор
+  // (alreadyExisted) — тот же случай: запись на сервере есть, значит черновик уехал.
+  await clearDraftIssue(client, input.localId);
 
   if (alreadyExisted) {
     return { service: row, idempotentReplay: true };

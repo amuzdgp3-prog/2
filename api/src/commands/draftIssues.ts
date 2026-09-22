@@ -57,13 +57,26 @@ export async function reportDraftIssue(
   );
 }
 
+/**
+ * Снятие жалобы по черновику, без проверки роли и без участия клиента.
+ *
+ * Вынесено отдельно, потому что вызывается из двух разных мест с разными правами: техник сам
+ * докладывает о закрытии через resolveDraftIssue, а createService снимает жалобу изнутри своей
+ * транзакции, когда обслуживание принято. Второй путь важнее: запрос с телефона может и не
+ * дойти (связь оборвалась сразу после сохранения, истёк токен, техник переустановил приложение),
+ * и тогда администратор разбирался бы с проблемой, которой давно нет.
+ */
+export async function clearDraftIssue(client: Client, localId: string): Promise<void> {
+  await client.query('DELETE FROM technician_draft_issues WHERE local_id = $1', [localId]);
+}
+
 /** Черновик уехал или удалён — проблема закрыта, строка списку больше не нужна. */
 export async function resolveDraftIssue(
   client: Client,
   _actor: Actor,
   localId: string,
 ): Promise<void> {
-  await client.query('DELETE FROM technician_draft_issues WHERE local_id = $1', [localId]);
+  await clearDraftIssue(client, localId);
 }
 
 export async function listDraftIssues(client: Client, actor: Actor): Promise<DraftIssueRow[]> {
