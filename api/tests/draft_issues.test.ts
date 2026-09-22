@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { authHeader, bootstrap, installTestMachine, preparePhoto, type TestContext } from './helpers.js';
+import {
+  authHeader,
+  bootstrap,
+  installTestMachine,
+  pool,
+  preparePhoto,
+  type TestContext,
+} from './helpers.js';
 
 /**
  * Видимость застрявших черновиков администратору (DECISION-048). Черновик живёт в браузере
@@ -131,5 +138,29 @@ describe('застрявшие черновики техников', () => {
     assert.equal(stored.statusCode, 200, stored.body);
 
     assert.equal((await list()).length, 0, 'жалоба должна уйти вместе с принятым обслуживанием');
+  });
+
+  /**
+   * Страховка для строк, зависших до этой доработки: обслуживание по ним давно в базе, а строка
+   * осталась. Проверяем, что список их не показывает, даже если они физически есть в таблице.
+   */
+  it('строка, пережившая сохранение обслуживания, в списке не показывается', async () => {
+    const staleLocalId = '12121212-3434-5656-7878-909090909090';
+    await pool.query(
+      `INSERT INTO technician_draft_issues
+         (local_id, technician_id, machine_number, occurred_at, error_code, error_message)
+       VALUES ($1, $2, 'DI-2', '2026-03-02T10:00:00Z', 'GAME_COUNTER_WENT_BACK', 'старая жалоба')`,
+      ['99999999-8888-7777-6666-555555555555', context.technicianId],
+    );
+    await pool.query(
+      `INSERT INTO technician_draft_issues
+         (local_id, technician_id, machine_number, occurred_at, error_code, error_message)
+       VALUES ($1, $2, 'DI-2', '2026-03-03T10:00:00Z', 'GAME_COUNTER_WENT_BACK', 'живая жалоба')`,
+      [staleLocalId, context.technicianId],
+    );
+
+    const rows = await list();
+    assert.equal(rows.length, 1, 'показывается только та, по которой обслуживания ещё нет');
+    assert.equal(rows[0].local_id, staleLocalId);
   });
 });

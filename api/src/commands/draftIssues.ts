@@ -79,6 +79,14 @@ export async function resolveDraftIssue(
   await clearDraftIssue(client, localId);
 }
 
+/**
+ * Оперативный список для администратора.
+ *
+ * NOT EXISTS по services — страховка от строк, зависших до того, как createService начал снимать
+ * жалобу сам: по ним обслуживание в базе уже есть, а значит черновик давно уехал и показывать
+ * его как проблему нельзя. Строки не удаляются здесь намеренно: чтение списка не должно ничего
+ * менять в базе, а мёртвую строку всё равно снимет ближайшая сверка от клиента.
+ */
 export async function listDraftIssues(client: Client, actor: Actor): Promise<DraftIssueRow[]> {
   assertAdmin(actor);
   const result = await client.query<DraftIssueRow>(
@@ -87,6 +95,7 @@ export async function listDraftIssues(client: Client, actor: Actor): Promise<Dra
      LEFT JOIN staff st ON st.id = i.technician_id
      LEFT JOIN machine_placements p
        ON p.machine_number = i.machine_number AND p.ended_at IS NULL
+     WHERE NOT EXISTS (SELECT 1 FROM services s WHERE s.local_id = i.local_id)
      ORDER BY i.updated_at DESC`,
   );
   return result.rows;
