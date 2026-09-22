@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import {
   authHeader,
   bootstrap,
+  createStaff,
   installTestMachine,
   pool,
   preparePhoto,
@@ -162,5 +163,77 @@ describe('застрявшие черновики техников', () => {
     const rows = await list();
     assert.equal(rows.length, 1, 'показывается только та, по которой обслуживания ещё нет');
     assert.equal(rows[0].local_id, staleLocalId);
+  });
+
+  /**
+   * Случай, который не ловят ни createService, ни DELETE с телефона: техник удалил черновик
+   * офлайн или потерял его вместе с данными браузера. Сверка после синхронизации снимает такие
+   * строки, но только у самого техника и только те, что старше защитного окна.
+   */
+  describe('сверка списка черновиков после синхронизации', () => {
+    const keptLocalId = '12121212-3434-5656-7878-909090909090';
+    const goneLocalId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const freshLocalId = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
+
+    const reconcile = (token: string, localIds: string[]) =>
+      context.app.inject({
+        method: 'POST',
+        url: '/api/draft-issues/reconcile',
+        headers: authHeader(token),
+        payload: { localIds },
+      });
+
+    before(async () => {
+      for (const id of [goneLocalId, freshLocalId]) {
+        await pool.query(
+          `INSERT INTO technician_draft_issues
+             (local_id, technician_id, machine_number, occurred_at, error_code, error_message)
+           VALUES ($1, $2, 'DI-2', '2026-03-04T10:00:00Z', 'GAME_COUNTER_WENT_BACK', 'жалоба')`,
+          [id, context.technicianId],
+        );
+      }
+      // Свежей оставляем настоящий updated_at, остальные состариваем за пределы защитного окна.
+      await pool.query(
+        `UPDATE technician_draft_issues SET updated_at = now() - interval '1 hour'
+         WHERE local_id <> $1`,
+        [freshLocalId],
+      );
+    });
+
+    it('снимает строки, черновиков по которым у техника больше нет', async () => {
+      const response = await reconcile(context.technicianToken, [keptLocalId]);
+      assert.equal(response.statusCode, 200, response.body);
+
+      const remaining = (await list()).map((row) => row.local_id);
+      assert.ok(!remaining.includes(goneLocalId), 'исчезнувший черновик должен уйти из списка');
+      assert.ok(remaining.includes(keptLocalId), 'существующий черновик остаётся');
+    });
+
+    it('не трогает жалобу, созданную только что', async () => {
+      const remaining = (await list()).map((row) => row.local_id);
+      assert.ok(
+        remaining.includes(freshLocalId),
+        'свежая строка могла появиться уже после того, как клиент собрал список',
+      );
+    });
+
+    it('сверка одного техника не трогает строки другого', async () => {
+      const otherTechnicianId = await createStaff('tech2', 'TECHNICIAN');
+      const otherLocalId = 'cccccccc-dddd-eeee-ffff-000000000000';
+      await pool.query(
+        `INSERT INTO technician_draft_issues
+           (local_id, technician_id, machine_number, occurred_at, error_code, error_message,
+            updated_at)
+         VALUES ($1, $2, 'DI-3', '2026-03-04T10:00:00Z', 'GAME_COUNTER_WENT_BACK', 'чужая',
+                 now() - interval '1 hour')`,
+        [otherLocalId, otherTechnicianId],
+      );
+
+      await reconcile(context.technicianToken, []);
+
+      const remaining = (await list()).map((row) => row.local_id);
+      assert.ok(remaining.includes(otherLocalId), 'строка другого техника должна остаться');
+      assert.ok(!remaining.includes(keptLocalId), 'своя строка снимается пустым списком');
+    });
   });
 });

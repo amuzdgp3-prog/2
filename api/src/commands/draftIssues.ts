@@ -80,6 +80,36 @@ export async function resolveDraftIssue(
 }
 
 /**
+ * Сверка: клиент присылает localId всех черновиков, которые сейчас лежат у него в очереди, а
+ * сервер снимает свои строки по этому технику, которых в списке нет.
+ *
+ * Нужна для случая, который не ловит ни createService, ни DELETE с телефона: техник удалил
+ * черновик офлайн, почистил данные браузера или переустановил приложение — черновика больше нет
+ * нигде, а жалоба у администратора осталась, и снять её некому. Сверка идёт после каждой
+ * синхронизации и закрывает такие строки сама.
+ *
+ * Удаляются только строки самого техника: сверка с одного телефона не должна трогать чужие.
+ * Свежие строки (моложе GRACE_MINUTES) не трогаются вовсе — это защита от гонки, когда жалоба
+ * создана уже после того, как клиент собрал свой список.
+ */
+const RECONCILE_GRACE_MINUTES = 5;
+
+export async function reconcileDraftIssues(
+  client: Client,
+  actor: Actor,
+  localIds: string[],
+): Promise<{ removed: number }> {
+  const result = await client.query(
+    `DELETE FROM technician_draft_issues
+     WHERE technician_id = $1
+       AND updated_at < now() - ($2 || ' minutes')::interval
+       AND NOT (local_id = ANY ($3::uuid[]))`,
+    [actor.id, RECONCILE_GRACE_MINUTES, localIds],
+  );
+  return { removed: result.rowCount ?? 0 };
+}
+
+/**
  * Оперативный список для администратора.
  *
  * NOT EXISTS по services — страховка от строк, зависших до того, как createService начал снимать

@@ -5,7 +5,12 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
-import { listDraftIssues, reportDraftIssue, resolveDraftIssue } from '../commands/draftIssues.js';
+import {
+  listDraftIssues,
+  reconcileDraftIssues,
+  reportDraftIssue,
+  resolveDraftIssue,
+} from '../commands/draftIssues.js';
 import { closeTask, createTask, listTasks, reopenTask } from '../commands/tasks.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
@@ -355,6 +360,30 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
       await resolveDraftIssue(client, request.actor, request.params.localId);
       return { ok: true };
     }));
+
+  /**
+   * Сверка после синхронизации: тело — localId всех черновиков, которые сейчас есть у техника.
+   * Строки этого техника, которых в списке нет, снимаются: черновик удалён или пропал вместе с
+   * данными браузера, и сообщить об этом отдельным DELETE уже некому.
+   */
+  app.post<{ Body: { localIds: string[] } }>(
+    '/api/draft-issues/reconcile',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['localIds'],
+          properties: {
+            localIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) =>
+        reconcileDraftIssues(client, request.actor, request.body.localIds ?? [])),
+  );
 
   app.get('/api/draft-issues', auth, async (request) =>
     withTransaction((client) => listDraftIssues(client, request.actor)));
