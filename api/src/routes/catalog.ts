@@ -1099,6 +1099,9 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
          WHERE match_status = 'UNMATCHED'
          GROUP BY terminal_external_id
        ) u ON u.terminal_external_id = t.serial
+       -- Списанные не показываем: список терминалов — это склад и что где стоит, а не история.
+       -- Тот же критерий, по которому ivendSync решает, какие серийники спрашивать у iVend.
+       WHERE t.status <> 'RETIRED'
        ORDER BY t.serial`,
     );
     return result.rows;

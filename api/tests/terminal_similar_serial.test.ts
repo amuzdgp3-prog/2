@@ -73,6 +73,22 @@ describe('поиск похожего терминала по последним
     assert.deepEqual(await similar('785'), []);
   });
 
+  it('списанный терминал не показывается в списке', async () => {
+    const listed = async () => {
+      const response = await context.app.inject({
+        method: 'GET',
+        url: '/api/terminals',
+        headers: authHeader(context.adminToken),
+      });
+      return (response.json() as Array<{ serial: string }>).map((row) => row.serial);
+    };
+
+    assert.ok((await listed()).includes('50111111'));
+    await pool.query(`UPDATE terminals SET status = 'RETIRED' WHERE serial = '50111111'`);
+    assert.ok(!(await listed()).includes('50111111'), 'списанный уходит со склада');
+    await pool.query(`UPDATE terminals SET status = 'IN_STOCK' WHERE serial = '50111111'`);
+  });
+
   it('серийный номер сохраняется без пробелов по краям', async () => {
     const created = await context.app.inject({
       method: 'POST',
