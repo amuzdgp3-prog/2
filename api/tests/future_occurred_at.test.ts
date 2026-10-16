@@ -25,8 +25,11 @@ test('a service cannot be created or edited with occurred_at in the future', asy
     prizeCounter: 5,
     occurredAt: future,
   });
-  assert.equal(created.status, 400);
-  assert.equal(created.body.error, 'FUTURE_OCCURRED_AT');
+  // От техника такая запись не сохраняется как обслуживание, а уходит на проверку администратору
+  // (DECISION-086) — с той же причиной.
+  assert.equal(created.status, 202);
+  assert.equal(created.body.status, 'PENDING');
+  assert.equal(created.body.errorCode, 'FUTURE_OCCURRED_AT');
 
   const valid = await postService(context, context.technicianToken, '0900', {
     gameCounter: 100,

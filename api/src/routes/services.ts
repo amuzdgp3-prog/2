@@ -11,6 +11,16 @@ import {
   reportDraftIssue,
   resolveDraftIssue,
 } from '../commands/draftIssues.js';
+import {
+  approveReview,
+  getReview,
+  listMyReviews,
+  listReviews,
+  markReviewSeen,
+  rejectReview,
+  submitTechnicianService,
+  type ApproveInput,
+} from '../commands/serviceReviews.js';
 import { closeTask, createTask, listTasks, reopenTask } from '../commands/tasks.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
@@ -88,8 +98,16 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
   app.post<{ Body: ServiceInput }>(
     '/api/services',
     { ...auth, schema: { body: serviceBodySchema } },
-    async (request) =>
-      withTransaction((client) => createService(client, request.actor, request.body)),
+    async (request, reply) => {
+      if (request.actor.role !== 'TECHNICIAN') {
+        return withTransaction((client) => createService(client, request.actor, request.body));
+      }
+      // Отказ по сути записи у техника уходит на проверку администратору (DECISION-086): 202 —
+      // «принято, но ещё не обслуживание», телефон по нему убирает черновик из очереди.
+      const outcome = await submitTechnicianService(request.actor, request.body);
+      if (outcome.kind === 'stored') return outcome.stored;
+      return reply.code(202).send({ inReview: true, ...outcome.review });
+    },
   );
 
   /**
@@ -332,6 +350,9 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
          AND NOT EXISTS (
            SELECT 1 FROM business_expenses e WHERE e.photo_object_key = po.object_key
          )
+         AND NOT EXISTS (
+           SELECT 1 FROM service_reviews r WHERE r.photo_object_key = po.object_key
+         )
        RETURNING object_key`,
       [config.orphanPhotoTtlHours],
     );
@@ -387,6 +408,64 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
 
   app.get('/api/draft-issues', auth, async (request) =>
     withTransaction((client) => listDraftIssues(client, request.actor)));
+
+  // ------------------------------------- обслуживания на проверке у администратора
+  app.get<{ Querystring: { status?: string } }>('/api/service-reviews', auth, async (request) =>
+    withTransaction((client) => listReviews(client, request.actor, request.query.status)));
+
+  // Объявлен раньше /:localId, чтобы «mine» не принимался за идентификатор.
+  app.get('/api/service-reviews/mine', auth, async (request) =>
+    withTransaction((client) => listMyReviews(client, request.actor)));
+
+  app.get<{ Params: { localId: string } }>('/api/service-reviews/:localId', auth, async (request) => {
+    if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
+    return withTransaction((client) => getReview(client, request.actor, request.params.localId));
+  });
+
+  app.post<{ Params: { localId: string }; Body: ApproveInput }>(
+    '/api/service-reviews/:localId/approve',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            machineNumber: { type: 'string', minLength: 1 },
+            occurredAt: { type: 'string' },
+            gameCounter: { type: 'integer', minimum: 0 },
+            prizeCounter: { type: 'integer', minimum: 0 },
+            testGames: { type: 'integer', minimum: 0 },
+            notes: { type: 'string' },
+            comment: { type: 'string' },
+            confirmCounterJump: { type: 'boolean' },
+            confirmPrizeCounterBack: { type: 'boolean' },
+            toys: serviceBodySchema.properties.toys,
+          },
+        },
+      },
+    },
+    async (request) => {
+      if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
+      return withTransaction((client) =>
+        approveReview(client, request.actor, request.params.localId, request.body ?? {}));
+    },
+  );
+
+  app.post<{ Params: { localId: string }; Body: { comment?: string } }>(
+    '/api/service-reviews/:localId/reject',
+    auth,
+    async (request) => {
+      if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
+      return withTransaction((client) =>
+        rejectReview(client, request.actor, request.params.localId, request.body?.comment));
+    },
+  );
+
+  app.post<{ Params: { localId: string } }>('/api/service-reviews/:localId/seen', auth, async (request) => {
+    if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
+    await withTransaction((client) => markReviewSeen(client, request.actor, request.params.localId));
+    return { ok: true };
+  });
 
   // ------------------------------------------------------ задачи техникам
   app.get<{ Querystring: { status?: string; assignedTo?: string } }>(
