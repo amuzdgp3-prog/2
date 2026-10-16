@@ -198,9 +198,10 @@ function ReviewCard({ review, onSeen }: { review: MyReviewItem; onSeen: () => vo
         {new Date(review.occurredAt).toLocaleString('ru-RU')}
       </div>
       {review.status === 'PENDING' && (
+        // Причину отказа технику намеренно не показываем: она написана как указание «проверьте
+        // цифру», а делать ему как раз ничего не нужно — разбирает администратор.
         <div className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
-          Сервер не принял запись сразу: {review.errorMessage}. Администратор разберёт её сам — ничего
-          делать не нужно.
+          Администратор проверит запись — ничего делать не нужно.
         </div>
       )}
       {review.changes.length > 0 && (
