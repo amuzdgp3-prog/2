@@ -5,6 +5,7 @@ import {
   cacheToys,
   markRejected,
   readDayCloseOutbox,
+  requeueReviewableRejected,
   readOutbox,
   readTaskOutbox,
   removeDayClose,
@@ -17,6 +18,8 @@ import {
 
 export interface SyncResult {
   sent: number;
+  /** localId черновиков, которые сервер передал на проверку администратору (DECISION-086). */
+  inReview: string[];
   rejected: number;
   remaining: number;
   offline: boolean;
@@ -25,8 +28,10 @@ export interface SyncResult {
 /**
  * Sends the offline queue. Every record carries the localId it was created with, so a retry after
  * a lost response is recognised by the server as the same Service instead of a duplicate.
- * A business rejection (400/409) is kept in the queue as REJECTED for the technician to review,
- * while a network failure simply stops the run and leaves the queue intact.
+ * A business rejection of the data itself is handed by the server to an administrator (202,
+ * DECISION-086) and leaves the queue like a sent record. Whatever the server still rejects outright
+ * (400/409 — e.g. a missing photo) is kept as REJECTED, while a network failure simply stops the
+ * run and leaves the queue intact.
  *
  * Callers (App's online/user effect, ServiceForm's save-while-online path, and the Queue screen)
  * can all trigger a sync around the same moment; without sharing one in-flight run, two calls
@@ -44,32 +49,35 @@ export function syncOutbox(): Promise<SyncResult> {
 }
 
 async function runSync(): Promise<SyncResult> {
+  await requeueReviewableRejected();
   const queue = await readOutbox();
   const pending = queue.filter((item) => item.status === 'PENDING');
   let sent = 0;
   let rejected = 0;
+  const inReview: string[] = [];
 
   await syncTaskCloses();
   await syncDayCloses();
 
   for (const item of pending) {
     try {
-      await uploadOne(item);
+      const outcome = await uploadOne(item);
       await removeFromOutbox(item.localId);
+      if (outcome === 'IN_REVIEW') inReview.push(item.localId);
       // Черновик уехал — если по нему висела жалоба у администратора, снимаем её. Ошибка здесь
       // не должна ронять синхронизацию: обслуживание уже сохранено, это лишь уборка списка.
       await api.delete(`/api/draft-issues/${item.localId}`).catch(() => undefined);
       sent += 1;
     } catch (error) {
       if (error instanceof OfflineError) {
-        return { sent, rejected, remaining: pending.length - sent, offline: true };
+        return { sent, inReview, rejected, remaining: pending.length - sent, offline: true };
       }
       if (error instanceof ApiError && error.status === 401) {
         // The session expired mid-run (api.ts already cleared the token and fired
         // auth:expired) — every remaining item would 401 the same way, and it's a session
         // problem, not a business rejection of this item's data. Leave it and the rest of the
         // queue as PENDING so they retry automatically once the technician logs back in.
-        return { sent, rejected, remaining: pending.length - sent - rejected, offline: false };
+        return { sent, inReview, rejected, remaining: pending.length - sent - rejected, offline: false };
       }
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         await markRejected(item.localId, error.message, error.code);
@@ -87,13 +95,13 @@ async function runSync(): Promise<SyncResult> {
         rejected += 1;
         continue;
       }
-      return { sent, rejected, remaining: pending.length - sent - rejected, offline: false };
+      return { sent, inReview, rejected, remaining: pending.length - sent - rejected, offline: false };
     }
   }
 
   await reconcileDraftIssues();
 
-  return { sent, rejected, remaining: 0, offline: false };
+  return { sent, inReview, rejected, remaining: 0, offline: false };
 }
 
 /**
@@ -112,13 +120,14 @@ async function reconcileDraftIssues(): Promise<void> {
   await api.post('/api/draft-issues/reconcile', { localIds }).catch(() => undefined);
 }
 
-async function uploadOne(item: QueuedService): Promise<void> {
+/** 'IN_REVIEW' — сервер не сохранил обслуживание сразу, а передал его администратору. */
+async function uploadOne(item: QueuedService): Promise<'STORED' | 'IN_REVIEW'> {
   const form = new FormData();
   form.append('localId', item.localId);
   form.append('file', item.photo, `${item.localId}.jpg`);
   const uploaded = await api.upload<{ objectKey: string }>('/api/photos', form);
 
-  await api.post('/api/services', {
+  const response = await api.post<{ inReview?: boolean }>('/api/services', {
     localId: item.localId,
     machineNumber: item.machineNumber,
     occurredAt: item.occurredAt,
@@ -128,10 +137,8 @@ async function uploadOne(item: QueuedService): Promise<void> {
     notes: item.notes,
     toys: item.toys,
     photoObjectKey: uploaded.objectKey,
-    // Ставится, только когда техник уже увидел предупреждение о скачке счётчика и подтвердил
-    // показание вручную в черновиках (DECISION-048).
-    ...(item.confirmCounterJump ? { confirmCounterJump: true } : {}),
   });
+  return response?.inReview ? 'IN_REVIEW' : 'STORED';
 }
 
 /** Refreshes the offline catalogue: machines with their counters, divisors and prices, plus toys. */

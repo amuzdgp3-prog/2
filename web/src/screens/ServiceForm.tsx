@@ -398,12 +398,14 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       onQueued();
       // Queue first, send second: the record survives a dead connection either way.
       if (navigator.onLine) {
-        await syncOutbox();
+        const result = await syncOutbox();
         // Черновик ушёл на сервер (пропал из outbox), а не просто остался в очереди офлайн или
         // был отклонён — только тогда это настоящее подтверждение. Тост переживёт navigate ниже,
         // потому что ToastHost смонтирован в App, а не в этой форме.
         const stillQueued = await getQueuedByLocalId(localId);
-        if (!stillQueued) {
+        if (result.inReview.includes(localId)) {
+          showToast('Запись отправлена на проверку администратору — исправлять ничего не нужно');
+        } else if (!stillQueued) {
           showToast(`Данные для «${machine.address ?? machine.location_name ?? 'адреса'}» успешно сохранены на сервер`);
         }
       }

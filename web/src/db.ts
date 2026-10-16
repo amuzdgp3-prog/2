@@ -46,8 +46,9 @@ export interface QueuedService {
   status: 'PENDING' | 'REJECTED';
   error?: string;
   /**
-   * Подтверждение подозрительного скачка счётчика (DECISION-048). Ставится только вручную, когда
-   * техник перепроверил показание и настаивает на нём; тогда сервер перестаёт возражать.
+   * Подтверждение скачка счётчика техником (DECISION-048). Больше не ставится и сервером не
+   * принимается — такие показания подтверждает администратор (DECISION-086); поле осталось только
+   * у записей, сохранённых старой версией приложения.
    */
   confirmCounterJump?: boolean;
   /** Код ошибки сервера — по нему черновик показывает подходящее действие, а не общий текст. */
@@ -235,20 +236,34 @@ export async function markRejected(
 }
 
 /**
- * Повторная постановка отклонённого черновика в очередь с подтверждением скачка счётчика
- * (DECISION-048): техник перепроверил показание и настаивает на нём.
+ * Отказы, которые сервер теперь сам передаёт на проверку администратору (DECISION-086). Зеркало
+ * REVIEWABLE_CODES из api/src/commands/serviceReviews.ts.
  */
-export async function confirmCounterJumpAndRequeue(localId: string): Promise<void> {
+const REVIEWABLE_CODES = new Set([
+  'GAME_COUNTER_WENT_BACK',
+  'PRIZE_COUNTER_WENT_BACK',
+  'TEST_GAMES_EXCEED_GROWTH',
+  'COUNTER_JUMP_SUSPECTED',
+  'NO_ACTIVE_PLACEMENT',
+  'LOCATION_NOT_ACTIVE',
+  'BEFORE_PLACEMENT_START',
+  'AFTER_PLACEMENT_END',
+  'FUTURE_OCCURRED_AT',
+  'UNKNOWN_MACHINE',
+  'SERVICE_INTERVAL_UNRESOLVED',
+]);
+
+/**
+ * Черновики, отклонённые до DECISION-086, лежат у техника со статусом REJECTED и сами никуда не
+ * уйдут. Возвращаем их в очередь: при следующей отправке сервер передаст их администратору.
+ * Новых таких записей не появится — сервер на эти коды больше не отказывает технику.
+ */
+export async function requeueReviewableRejected(): Promise<void> {
   const instance = await db();
-  const item = await instance.get('outbox', localId);
-  if (!item) return;
-  await instance.put('outbox', {
-    ...item,
-    status: 'PENDING',
-    error: undefined,
-    errorCode: undefined,
-    confirmCounterJump: true,
-  });
+  for (const item of await instance.getAll('outbox')) {
+    if (item.status !== 'REJECTED' || !item.errorCode || !REVIEWABLE_CODES.has(item.errorCode)) continue;
+    await instance.put('outbox', { ...item, status: 'PENDING', error: undefined, errorCode: undefined });
+  }
 }
 
 export async function setMeta(key: string, value: unknown): Promise<void> {
