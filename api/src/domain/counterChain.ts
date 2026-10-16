@@ -8,7 +8,7 @@ import { badRequest } from '../lib/errors.js';
  *   growth             = current_game_counter - previous_game_counter
  *   games_from_counter = growth / counter_divisor
  *   new_games          = games_from_counter - test_games
- *   new_prizes         = current_prize_counter - previous_prize_counter
+ *   new_prizes         = max(current_prize_counter - previous_prize_counter, 0)
  *   revenue            = new_games * price_per_game_snapshot
  *
  * The previous counters come from the preceding Service of the same Placement, or from the
@@ -59,7 +59,10 @@ const CHAIN_CTES = `
       r.growth,
       r.counter_divisor,
       r.new_games,
-      (r.prize_counter - r.prev_prize_counter)                 AS new_prizes,
+      -- Откат счётчика призов можно подтвердить (confirmPrizeCounterBack): счётчик призов в
+      -- деньгах не участвует (DECISION-059), и такой визит просто не даёт новых призов, а не
+      -- упирается в CHECK (new_prizes >= 0). Следующий визит считается уже от нового показания.
+      GREATEST(r.prize_counter - r.prev_prize_counter, 0)      AS new_prizes,
       ROUND(r.new_games * r.price_per_game_snapshot, 2)        AS revenue,
       COALESCE((
         SELECT SUM(td.quantity * td.unit_cost_snapshot)

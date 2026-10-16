@@ -61,10 +61,16 @@ describe('монотонность счётчиков: по одной прич�
     const confirmed = await postService(context, context.adminToken, 'MONO-1', {
       gameCounter: 2600,
       prizeCounter: 120,
-      occurredAt: '2026-01-20T12:00:00Z',
+      // Отдельный день: на 20.01 ниже проверяется корректное обслуживание, а аппарат обслуживается
+      // не чаще раза в день (services_one_per_placement_date).
+      occurredAt: '2026-01-25T12:00:00Z',
       confirmPrizeCounterBack: true,
     } as never);
     assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+    // Откат призов не даёт новых призов, но и не ломает денежный расчёт: игры считаются как обычно.
+    const service = (confirmed.body as { service: Record<string, string> }).service;
+    assert.equal(Number(service.new_prizes), 0);
+    assert.equal(Number(service.new_games), 600);
   });
 
   it('тестовых игр больше, чем прирост — своя причина со своими числами', async () => {

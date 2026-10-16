@@ -238,6 +238,24 @@ describe('обслуживания на проверке у администра
     }
   });
 
+  it('администратор сохраняет откат счётчика призов как есть — галочкой', async () => {
+    const localId = randomUUID();
+    const sent = await send(context.technicianToken, localId, {
+      gameCounter: 3000,
+      prizeCounter: 10,
+      occurredAt: '2026-01-26T10:00:00Z',
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    assert.equal(sent.json().errorCode, 'PRIZE_COUNTER_WENT_BACK');
+
+    const approved = await admin('POST', `/api/service-reviews/${localId}/approve`, {
+      confirmPrizeCounterBack: true,
+    });
+    assert.equal(approved.statusCode, 200, approved.body);
+    const service = (await pool.query('SELECT new_prizes FROM services WHERE local_id = $1', [localId])).rows[0];
+    assert.equal(Number(service.new_prizes), 0);
+  });
+
   it('чистка фото не удаляет фото записи на проверке', async () => {
     const localId = randomUUID();
     const sent = await send(context.technicianToken, localId, {
