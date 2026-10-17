@@ -1,8 +1,23 @@
+import { execSync } from 'node:child_process';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// В Docker-сборке на проде .git нет (rsync его не везёт), поэтому главное в версии — время сборки:
+// по нему событие из журнала клиента (DECISION-087) привязывается к выкладке.
+function appVersion(): string {
+  const builtAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  try {
+    return `${builtAt} ${execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()}`;
+  } catch {
+    return builtAt;
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+  },
   plugins: [
     react(),
     VitePWA({
