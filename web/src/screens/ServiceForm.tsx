@@ -24,6 +24,7 @@ import {
   type CachedMachine,
 } from '../db';
 import { bytesToPhoto, EmptyPhotoError, photoToBytes } from '../photoBytes';
+import { beginOperation, endOperation } from '../clientLog';
 import { refreshCatalog, syncOutbox } from '../sync';
 import { showToast } from '../toast';
 import { formatRoiSplit } from '../roiSplit';
@@ -346,12 +347,15 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     markDirty();
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
+    const operation = beginOperation('photo_read', { photoBytes: file.size, photoType: file.type, source: event.target.id });
     try {
       const copy = bytesToPhoto(await photoToBytes(file), file.type);
       setPhoto(copy);
       setError(null);
       await savePhotoDraft(machineNumber, copy, copy.type);
+      endOperation(operation);
     } catch (caught) {
+      endOperation(operation, caught);
       setPhoto(null);
       setError(
         caught instanceof EmptyPhotoError ? caught.message : 'Не удалось прочитать снимок. Сфотографируйте ещё раз.',
@@ -372,6 +376,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
 
     setBusy(true);
     setError(null);
+    const operation = beginOperation('service_submit', { machineNumber: machine.machine_number, photoBytes: (photo ?? existingPhoto)?.size });
     try {
       const occurredAt = new Date(`${date}T${time}`).toISOString();
       const chosenPhoto = photo ?? (existingPhoto as Blob);
@@ -410,8 +415,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         }
       }
       onQueued();
+      endOperation(operation);
       navigate('/queue');
     } catch (caught) {
+      endOperation(operation, caught);
       setError((caught as Error).message);
     } finally {
       setBusy(false);

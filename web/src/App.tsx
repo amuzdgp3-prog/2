@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'reac
 import { useAuth } from './auth';
 import { readOutbox } from './db';
 import { syncOutbox } from './sync';
+import { flushClientEvents } from './clientLog';
 import BossMachinesScreen from './screens/BossMachines';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
@@ -151,6 +152,7 @@ export default function App() {
   useEffect(() => {
     if (!online || !user) return;
     void syncOutbox().then(refreshQueueCount);
+    void flushClientEvents();
   }, [online, user]);
 
   if (loading) return <div className="app"><p className="muted">Загрузка…</p></div>;

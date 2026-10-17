@@ -15,6 +15,7 @@ import {
   type CachedTask,
   type QueuedService,
 } from './db';
+import { beginOperation, endOperation } from './clientLog';
 
 export interface SyncResult {
   sent: number;
@@ -125,7 +126,15 @@ async function uploadOne(item: QueuedService): Promise<'STORED' | 'IN_REVIEW'> {
   const form = new FormData();
   form.append('localId', item.localId);
   form.append('file', item.photo, `${item.localId}.jpg`);
-  const uploaded = await api.upload<{ objectKey: string }>('/api/photos', form);
+  const operation = beginOperation('photo_upload', { machineNumber: item.machineNumber, photoBytes: item.photo.size });
+  let uploaded: { objectKey: string };
+  try {
+    uploaded = await api.upload<{ objectKey: string }>('/api/photos', form);
+    endOperation(operation);
+  } catch (error) {
+    endOperation(operation, error);
+    throw error;
+  }
 
   const response = await api.post<{ inReview?: boolean }>('/api/services', {
     localId: item.localId,
