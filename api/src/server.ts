@@ -12,6 +12,7 @@ import { SYSTEM_ACTOR, type Actor } from './lib/audit.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCashlessRoutes } from './routes/cashless.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
+import { registerClientEventRoutes } from './routes/clientEvents.js';
 import { registerExpenseRoutes } from './routes/expenses.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerServiceRoutes } from './routes/services.js';
@@ -148,6 +149,7 @@ export async function buildServer() {
   await registerCashlessRoutes(app);
   await registerReportRoutes(app);
   await registerExpenseRoutes(app);
+  await registerClientEventRoutes(app);
 
   return app;
 }
