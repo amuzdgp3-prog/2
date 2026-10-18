@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-PROJECT_DIR="/home/s/Work/sites/2"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$PROJECT_DIR/backups"
 KEEP_DAYS=30
 
@@ -37,12 +37,14 @@ log() { echo "$(date -Is) $*" >>"$LOG"; }
 # Оповещение владельцу тем же ботом, что шлёт ежемесячный отчёт. Токен читается из .env и никогда
 # не попадает ни в лог, ни в вывод команды.
 notify() {
+  # BACKUP_NOTIFY=0 выключает оповещение (на проде Telegram недоступен, DECISION-088).
+  [ "${BACKUP_NOTIFY:-1}" = "1" ] || return 0
   local text="$1"
   local token chat
   token="$(grep -E '^TELEGRAM_BOT_TOKEN=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
   chat="$(grep -E '^TELEGRAM_OWNER_CHAT_ID=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
   [ -n "$token" ] && [ -n "$chat" ] || return 0
-  curl -s -o /dev/null -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+  curl -s -m 10 -o /dev/null -X POST "https://api.telegram.org/bot${token}/sendMessage" \
     --data-urlencode "chat_id=${chat}" \
     --data-urlencode "text=${text}" || true
 }
