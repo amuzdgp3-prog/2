@@ -109,6 +109,139 @@ export interface WindowTotals extends PeriodTotals {
   days: number;
 }
 
+/** Округление до сотых — шаги платы вроде 0,2 В копятся в двоичной дроби (12,4 + 0,2 = 12,600…01). */
+export const roundClaw = (value: number): number => Math.round(value * 100) / 100;
+
+/** Коридор нормы: цель ±10 % от самой цели; без цели — прежняя общая вилка 25–40 %. */
+export function payoutBand(target: number | null): PayoutBand {
+  if (target === null || !Number.isFinite(target) || target <= 0) {
+    return { target: null, low: DEFAULT_PAYOUT_LOW, high: DEFAULT_PAYOUT_HIGH };
+  }
+  return {
+    target,
+    low: roundClaw(target * (1 - CLAW_NORM_SHARE)),
+    high: roundClaw(target * (1 + CLAW_NORM_SHARE)),
+  };
+}
+
+/** Доля затрат на игрушки в выручке, %; null — выручки не было. */
+export function payoutPercent(totals: PeriodTotals): number | null {
+  return totals.revenue > 0 ? (100 * totals.toyCost) / totals.revenue : null;
+}
+
+export type PayoutLevel = 'low' | 'ok' | 'high';
+
+/** Где отдача относительно коридора: мало, норма или много. */
+export function payoutLevel(percent: number, band: PayoutBand): PayoutLevel {
+  if (percent < band.low) return 'low';
+  if (percent > band.high) return 'high';
+  return 'ok';
+}
+
+const within = (value: number, min: number | null, max: number | null) =>
+  (min === null || value >= min - 1e-9) && (max === null || value <= max + 1e-9);
+
+/**
+ * Совет по настройкам клешни.
+ *
+ * Отдача ниже коридора — клешню надо держать крепче (прибавить), выше — слабее (убавить). Двигается
+ * один параметр на один шаг платы: Weak, а если он уже у границы — Medium. Совет даётся только
+ * после CLAW_MIN_GAMES игр с последнего изменения: раньше отдача ещё случайна.
+ */
+export function adviseClaw(input: {
+  current: ClawValues;
+  limits: ClawLimits;
+  band: PayoutBand;
+  totals: PeriodTotals;
+}): ClawAdviceResult {
+  const { current, limits, band, totals } = input;
+  const warnings: ClawWarning[] = [];
+  const { strong, medium, weak } = current;
+  if (
+    (strong !== null && medium !== null && strong < medium)
+    || (medium !== null && weak !== null && medium < weak)
+    || (strong !== null && weak !== null && strong < weak)
+  ) {
+    warnings.push('order');
+  }
+
+  if (weak === null) return { advice: { kind: 'no-settings' }, warnings };
+  const games = totals.games;
+  const percent = payoutPercent(totals);
+  if (percent === null) return { advice: { kind: 'no-data', games }, warnings };
+  if (games < CLAW_MIN_GAMES) {
+    return { advice: { kind: 'early', games, minGames: CLAW_MIN_GAMES, payoutPercent: percent }, warnings };
+  }
+
+  const level = payoutLevel(percent, band);
+  if (level === 'ok') return { advice: { kind: 'ok', games, payoutPercent: percent }, warnings };
+
+  const direction: ClawDirection = level === 'low' ? 'raise' : 'lower';
+  const sign = direction === 'raise' ? 1 : -1;
+
+  const nextWeak = roundClaw(weak + sign * limits.weakStep);
+  if (within(nextWeak, limits.weakMin, limits.weakMax)) {
+    return {
+      advice: { kind: 'change', param: 'weak', direction, from: weak, to: nextWeak, games, payoutPercent: percent },
+      warnings,
+    };
+  }
+
+  if (medium !== null) {
+    const nextMedium = roundClaw(medium + sign * limits.mediumStep);
+    if (within(nextMedium, limits.mediumMin, limits.mediumMax)) {
+      return {
+        advice: { kind: 'change', param: 'medium', direction, from: medium, to: nextMedium, games, payoutPercent: percent },
+        warnings,
+      };
+    }
+  }
+  return { advice: { kind: 'limit', direction, games, payoutPercent: percent }, warnings };
+}
+
+const perDay = (value: number, days: number) => (days > 0 ? value / days : null);
+const changePercent = (before: number | null, after: number | null) =>
+  before !== null && after !== null && before > 0 ? ((after - before) / before) * 100 : null;
+
+/**
+ * Итог изменения настроек: окно до против окна после. Поправка на фон — рост игр у остальных
+ * аппаратов того же типа за те же окна вычитается из роста аппарата, чтобы сезон, праздники и
+ * погода не выдавались за эффект настройки.
+ */
+export function clawChangeEffect(input: {
+  before: WindowTotals;
+  after: WindowTotals;
+  typeBefore: WindowTotals | null;
+  typeAfter: WindowTotals | null;
+  complete: boolean;
+}): ClawChangeEffect {
+  const { before, after, typeBefore, typeAfter, complete } = input;
+  const gamesPerDayBefore = perDay(before.games, before.days);
+  const gamesPerDayAfter = perDay(after.games, after.days);
+  const netPerDayBefore = perDay(before.revenue - before.toyCost, before.days);
+  const netPerDayAfter = perDay(after.revenue - after.toyCost, after.days);
+  const paceChangePercent = changePercent(gamesPerDayBefore, gamesPerDayAfter);
+  const typePaceChangePercent = typeBefore && typeAfter
+    ? changePercent(perDay(typeBefore.games, typeBefore.days), perDay(typeAfter.games, typeAfter.days))
+    : null;
+  return {
+    complete,
+    payoutBefore: payoutPercent(before),
+    payoutAfter: payoutPercent(after),
+    gamesPerDayBefore,
+    gamesPerDayAfter,
+    paceChangePercent,
+    typePaceChangePercent,
+    paceAdjustedPercent:
+      paceChangePercent !== null && typePaceChangePercent !== null
+        ? paceChangePercent - typePaceChangePercent
+        : null,
+    netPerDayBefore,
+    netPerDayAfter,
+    netChangePercent: changePercent(netPerDayBefore, netPerDayAfter),
+  };
+}
+
 /** Итог изменения настроек: 14 дней до против 14 дней после, с поправкой на общий фон типа. */
 export interface ClawChangeEffect {
   /** Окно «после» уже прошло целиком. */
