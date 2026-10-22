@@ -3,6 +3,8 @@ import { api, getToken } from '../api';
 import { useAuth } from '../auth';
 import { formatGames, formatMoney } from '../calc';
 import { formatRoiSplit } from '../roiSplit';
+import { ToyCostIndicator } from '../components/ui/ToyCostIndicator';
+import { toyCostStatusFromAmounts } from '../toyCostStatus';
 
 interface MachineRow {
   machineNumber: string;
@@ -547,7 +549,7 @@ export default function ReportsScreen() {
                         <th className="right">Выручка</th>
                         <th className="right">Нал</th>
                         <th className="right">Безнал</th>
-                        <th className="right">Выручка/себест.</th>
+                        <th>Затраты за период</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -565,14 +567,9 @@ export default function ReportsScreen() {
                           <td className="right mono">{formatMoney(machine.revenue)}</td>
                           <td className="right mono">{formatMoney(machine.cash)}</td>
                           <td className="right mono">{formatMoney(machine.cashless)}</td>
-                          <td className="right mono">
-                            {/* Значение приходит с сервера; клиент его не пересчитывает. */}
-                            {machine.lastRevenueToCostRatio === null
-                              ? <span className="muted">нет данных</span>
-                              : Number(machine.lastRevenueToCostRatio).toLocaleString('ru-RU', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                          <td>
+                            {/* Доля затрат за период: сумма себестоимости ÷ выручка, пересчёт только для показа. */}
+                            <ToyCostIndicator status={toyCostStatusFromAmounts(machine.toyCost, machine.revenue)} />
                           </td>
                         </tr>
                       ))}

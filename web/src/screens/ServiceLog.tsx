@@ -4,7 +4,8 @@ import { useAuth } from '../auth';
 import { daysBetween, formatGames, formatMoney } from '../calc';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
-import { RoiBadge } from '../components/ui/RoiBadge';
+import { ToyCostIndicator } from '../components/ui/ToyCostIndicator';
+import { toyCostStatus } from '../toyCostStatus';
 
 interface ToyLine {
   toyId: number;
@@ -222,7 +223,7 @@ export default function ServiceLogScreen() {
               <th className="num">Новых игр</th>
               <th className="num">Выручка</th>
               <th style={{ textAlign: 'right' }}>Себестоимость</th>
-              <th>ROI</th>
+              <th>Затраты</th>
               <th>Техник</th>
               <th>Фото</th>
               <th>Комментарий</th>
@@ -257,7 +258,7 @@ export default function ServiceLogScreen() {
                       <div className="muted mono" style={{ fontSize: 11 }}>безнал {formatMoney(row.cashless_amount)} ₽</div>
                     </td>
                     <td style={{ textAlign: 'right' }}><CostCell toys={row.toys} total={row.toy_cost} /></td>
-                    <td><RoiBadge value={row.revenue_to_cost_ratio} /></td>
+                    <td><ToyCostIndicator status={toyCostStatus(row.revenue_to_cost_ratio)} /></td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
@@ -350,7 +351,7 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
             <div className="cell"><b className="mono">{formatMoney(row.price_per_game_snapshot)} ₽</b><span>цена игры</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cash_amount)} ₽</b><span>нал</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cashless_amount)} ₽</b><span>безнал</span></div>
-            <div className="cell"><RoiBadge value={row.revenue_to_cost_ratio} /><span>ROI</span></div>
+            <div className="cell"><ToyCostIndicator status={toyCostStatus(row.revenue_to_cost_ratio)} /><span style={{ display: 'block', marginTop: 4 }}>затраты на игрушки</span></div>
           </div>
           <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки:</div>
           <ToyList toys={row.toys} />
@@ -376,7 +377,7 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
                 <div className="cell"><b className="mono">{row.prev_game_counter}</b><span>счётчик игр</span></div>
                 <div className="cell"><b className="mono">{formatMoney(row.prev_revenue ?? '0')} ₽</b><span>выручка</span></div>
                 <div className="cell"><b className="mono">{formatMoney(row.prev_toy_cost ?? '0')} ₽</b><span>себест. игрушек</span></div>
-                <div className="cell"><RoiBadge value={row.prev_revenue_to_cost_ratio} /><span>ROI</span></div>
+                <div className="cell"><ToyCostIndicator status={toyCostStatus(row.prev_revenue_to_cost_ratio)} /><span style={{ display: 'block', marginTop: 4 }}>затраты на игрушки</span></div>
                 <div className="cell"><b className="mono">{periodDays ?? '—'} дн.</b><span>прошло с прошлого раза</span></div>
               </div>
               <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки в прошлый раз:</div>
