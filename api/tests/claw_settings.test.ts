@@ -324,6 +324,13 @@ describe('настройки клешни: обслуживание, журна�
     assert.equal((await journal())[0].claw_change?.weak, 16);
   });
 
+  it('журнал отдаёт цель отдачи аппарата для индикатора затрат', async () => {
+    const response = await context.app.inject({
+      method: 'GET', url: '/api/services?machineNumber=SV-1&limit=1', headers: authHeader(context.adminToken),
+    });
+    assert.equal(Number(response.json().rows[0].target_payout_percent), 35);
+  });
+
   it('список аппаратов отдаёт состояние клешни для совета без сети', async () => {
     const response = await context.app.inject({ method: 'GET', url: '/api/machines', headers: authHeader(context.adminToken) });
     const machine = response.json().find((row: { machine_number: string }) => row.machine_number === 'SV-1');

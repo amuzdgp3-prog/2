@@ -58,6 +58,8 @@ export interface MachineRow {
    * отношений. `null` означает «нет данных».
    */
   lastRevenueToCostRatio: string | null;
+  /** Целевая отдача аппарата, % (своя или типа; DECISION-090). null — цели нет, норма 25–40 %. */
+  targetPayoutPercent: number | null;
 }
 
 export interface LocationTotal {
@@ -196,7 +198,10 @@ export async function queryMachineRows(
             SUM(s.toy_cost)                         AS toy_cost,
             COUNT(*) FILTER (WHERE s.is_financial_anomaly)::int AS anomalies,
             (array_agg(s.revenue_to_cost_ratio ORDER BY s.occurred_at DESC, s.id DESC))[1]
-                                                    AS last_revenue_to_cost_ratio
+                                                    AS last_revenue_to_cost_ratio,
+            (SELECT COALESCE(tm.target_payout_percent, tt.target_payout_percent)
+             FROM machines tm JOIN machine_types tt ON tt.name = tm.machine_type
+             WHERE tm.machine_number = s.machine_number) AS target_payout_percent
      FROM services s
      JOIN machine_placements p ON p.id = s.placement_id
      JOIN machines m ON m.machine_number = s.machine_number
@@ -227,6 +232,7 @@ export async function queryMachineRows(
       row.last_revenue_to_cost_ratio === null || row.last_revenue_to_cost_ratio === undefined
         ? null
         : String(row.last_revenue_to_cost_ratio),
+    targetPayoutPercent: row.target_payout_percent === null ? null : Number(row.target_payout_percent),
   }));
 }
 

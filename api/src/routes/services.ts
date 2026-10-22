@@ -238,7 +238,12 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
            WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
          )
          SELECT page.*, usual_pace.usual_games_per_day FROM (
-         SELECT s.*, ${serviceClawChangeSql('s')} AS claw_change, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
+         SELECT s.*, ${serviceClawChangeSql('s')} AS claw_change,
+                -- Цель отдачи аппарата (своя или типа): индикатор затрат считается от неё (DECISION-090).
+                COALESCE(m.target_payout_percent,
+                         (SELECT t.target_payout_percent FROM machine_types t WHERE t.name = m.machine_type))
+                  AS target_payout_percent,
+                l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
                 (SELECT json_agg(json_build_object(
                           'toyId', td.toy_id, 'name', t.name, 'quantity', td.quantity, 'unitCost', td.unit_cost_snapshot
                         ) ORDER BY t.name)
