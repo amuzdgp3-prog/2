@@ -141,3 +141,119 @@ describe('настройки клешни: карточка аппарата', (
     await assert.rejects(pool.query(`DELETE FROM claw_settings WHERE machine_number = 'CL-1'`));
   });
 });
+
+/**
+ * Тип аппарата (DECISION-090): настройки клешни на типе, массовая цель с перезаписью своей цели
+ * аппаратов и «выставить всем» через задачи, которые при закрытии делают значения действующими.
+ */
+describe('настройки клешни: тип аппарата и задачи', () => {
+  let context: TestContext;
+
+  before(async () => {
+    context = await bootstrap();
+    await context.app.inject({
+      method: 'POST',
+      url: '/api/machine-types',
+      headers: authHeader(context.adminToken),
+      payload: { name: 'Большая Хватайка' },
+    });
+    await installTestMachine(context, { machineNumber: 'BH-1', machineType: 'Большая Хватайка', pricePerGame: 10 });
+    await installTestMachine(context, { machineNumber: 'BH-2', machineType: 'Большая Хватайка', pricePerGame: 10 });
+  });
+
+  after(async () => {
+    await context.app.close();
+  });
+
+  const typeUrl = '/api/machine-types/' + encodeURIComponent('Большая Хватайка');
+
+  it('флаг, шаги и границы задаются на типе; неверные границы отклоняются', async () => {
+    const updated = await context.app.inject({
+      method: 'PATCH',
+      url: `${typeUrl}/claw`,
+      headers: authHeader(context.adminToken),
+      payload: { hasClawSettings: true, weakMin: 8, weakMax: 15, weakStep: 0.2 },
+    });
+    assert.equal(updated.statusCode, 200, updated.body);
+    assert.equal(updated.json().has_claw_settings, true);
+
+    const bad = await context.app.inject({
+      method: 'PATCH',
+      url: `${typeUrl}/claw`,
+      headers: authHeader(context.adminToken),
+      payload: { weakMin: 16 },
+    });
+    assert.equal(bad.statusCode, 400, bad.body);
+    assert.equal(bad.json().error, 'CLAW_RANGE_INVALID');
+  });
+
+  it('цель типа назначается всем и перезаписывает свою цель аппарата', async () => {
+    await context.app.inject({
+      method: 'PUT',
+      url: '/api/machines/BH-1/target-payout',
+      headers: authHeader(context.adminToken),
+      payload: { percent: 20 },
+    });
+    const applied = await context.app.inject({
+      method: 'POST',
+      url: `${typeUrl}/apply-target`,
+      headers: authHeader(context.adminToken),
+      payload: { percent: 35 },
+    });
+    assert.equal(applied.statusCode, 200, applied.body);
+    assert.deepEqual(applied.json(), { targetPayoutPercent: 35, machines: 2, overwritten: 1 });
+
+    const card = await context.app.inject({
+      method: 'GET',
+      url: '/api/machines/BH-1/claw',
+      headers: authHeader(context.adminToken),
+    });
+    assert.equal(card.json().machineTarget, null);
+    assert.equal(card.json().band.target, 35);
+  });
+
+  it('«выставить всем» создаёт задачу на каждый аппарат, закрытие делает значение действующим', async () => {
+    const plan = await context.app.inject({
+      method: 'POST',
+      url: `${typeUrl}/claw-plan`,
+      headers: authHeader(context.adminToken),
+      payload: { weak: 12.4 },
+    });
+    assert.equal(plan.statusCode, 200, plan.body);
+    assert.equal(plan.json().created, 2);
+
+    const tasks = await pool.query(
+      `SELECT id, machine_number, details FROM technician_tasks WHERE claw_plan IS NOT NULL ORDER BY machine_number`,
+    );
+    assert.equal(tasks.rowCount, 2);
+    assert.match(tasks.rows[0].details, /Weak 12,4 В/);
+
+    // Пока задача открыта, значение не действующее.
+    let card = await context.app.inject({ method: 'GET', url: '/api/machines/BH-1/claw', headers: authHeader(context.adminToken) });
+    assert.equal(card.json().current, null);
+
+    // Техник выставил чуть иначе — в историю идёт присланное им значение.
+    const closed = await context.app.inject({
+      method: 'POST',
+      url: `/api/tasks/${tasks.rows[0].id}/close`,
+      headers: authHeader(context.adminToken),
+      payload: { claw: { weak: 12.6 } },
+    });
+    assert.equal(closed.statusCode, 200, closed.body);
+    card = await context.app.inject({ method: 'GET', url: '/api/machines/BH-1/claw', headers: authHeader(context.adminToken) });
+    assert.equal(card.json().current.weak, 12.6);
+    assert.equal(card.json().current.source, 'TASK');
+  });
+
+  it('отменённая задача значение не применяет', async () => {
+    const task = await pool.query(`SELECT id FROM technician_tasks WHERE machine_number = 'BH-2' AND claw_plan IS NOT NULL`);
+    await context.app.inject({
+      method: 'POST',
+      url: `/api/tasks/${task.rows[0].id}/close`,
+      headers: authHeader(context.adminToken),
+      payload: { cancel: true },
+    });
+    const card = await context.app.inject({ method: 'GET', url: '/api/machines/BH-2/claw', headers: authHeader(context.adminToken) });
+    assert.equal(card.json().current, null);
+  });
+});

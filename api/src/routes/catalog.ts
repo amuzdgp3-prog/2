@@ -30,6 +30,12 @@ import {
 import { previewMachineChain } from '../domain/counterChain.js';
 import { loadCurrentClaw, machineClawCard } from '../domain/clawStats.js';
 import { recordClawFromCard, setMachineTarget } from '../commands/clawSettings.js';
+import {
+  applyTypeTarget,
+  createClawPlanTasks,
+  updateTypeClawConfig,
+  type TypeClawConfigInput,
+} from '../commands/machineTypeClaw.js';
 import { resolveServiceInterval } from '../domain/serviceIntervals.js';
 import { auditDelete, auditInsert, auditUpdate } from '../lib/audit.js';
 import { hashPassword } from '../lib/password.js';
@@ -1235,6 +1241,75 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
         if (!row) throw badRequest('NOTHING_TO_UPDATE', 'не передано ни одного изменяемого поля');
         return row;
       }));
+
+  // Настройки клешни и цель отдачи типа (DECISION-090).
+  app.patch<{ Params: { name: string }; Body: TypeClawConfigInput }>(
+    '/api/machine-types/:name/claw',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            hasClawSettings: { type: 'boolean' },
+            targetPayoutPercent: { type: ['number', 'null'] },
+            weakStep: { type: 'number' },
+            strongStep: { type: 'number' },
+            mediumStep: { type: 'number' },
+            weakMin: { type: ['number', 'null'] },
+            weakMax: { type: ['number', 'null'] },
+            strongMin: { type: 'number' },
+            strongMax: { type: 'number' },
+            mediumMin: { type: 'number' },
+            mediumMax: { type: 'number' },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) =>
+        updateTypeClawConfig(client, request.actor, decodeURIComponent(request.params.name), request.body)),
+  );
+
+  /** Цель отдачи всем аппаратам типа; своя цель аппаратов перезаписывается. */
+  app.post<{ Params: { name: string }; Body: { percent: number | null } }>(
+    '/api/machine-types/:name/apply-target',
+    {
+      ...auth,
+      schema: {
+        body: { type: 'object', required: ['percent'], properties: { percent: { type: ['number', 'null'] } } },
+      },
+    },
+    async (request) =>
+      withTransaction((client) =>
+        applyTypeTarget(client, request.actor, decodeURIComponent(request.params.name), request.body.percent)),
+  );
+
+  /** «Выставить настройки клешни всем»: по задаче технику на каждый установленный аппарат типа. */
+  app.post<{
+    Params: { name: string };
+    Body: { strong?: number | null; medium?: number | null; weak?: number | null; prizeSet?: number | null; dueDate?: string | null };
+  }>(
+    '/api/machine-types/:name/claw-plan',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            strong: { type: ['number', 'null'] },
+            medium: { type: ['number', 'null'] },
+            weak: { type: ['number', 'null'] },
+            prizeSet: { type: ['integer', 'null'] },
+            dueDate: { type: ['string', 'null'] },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction((client) =>
+        createClawPlanTasks(client, request.actor, decodeURIComponent(request.params.name), request.body)),
+  );
 
   app.delete<{ Params: { name: string } }>('/api/machine-types/:name', auth, async (request) =>
     withTransaction(async (client) => {

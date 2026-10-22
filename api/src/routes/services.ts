@@ -23,6 +23,7 @@ import {
   type ApproveInput,
 } from '../commands/serviceReviews.js';
 import { closeTask, createTask, listTasks, reopenTask } from '../commands/tasks.js';
+import type { ClawInput } from '../commands/clawSettings.js';
 import { createService, deleteService, updateService, type ServiceInput } from '../commands/services.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertAdmin, assertMachineInScope, machineScopePredicate } from '../lib/scope.js';
@@ -497,7 +498,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
   }>('/api/tasks', auth, async (request) =>
     withTransaction((client) => createTask(client, request.actor, request.body)));
 
-  app.post<{ Params: { id: string }; Body: { note?: string; cancel?: boolean } }>(
+  app.post<{ Params: { id: string }; Body: { note?: string; cancel?: boolean; claw?: ClawInput } }>(
     '/api/tasks/:id/close',
     auth,
     async (request) =>

@@ -19,6 +19,9 @@ export interface MachineTypeRow {
   is_active: boolean;
   created_at: Date;
   machines_count: number;
+  /** Настройки клешни и цель отдачи типа (DECISION-090, commands/machineTypeClaw.ts). */
+  has_claw_settings?: boolean;
+  target_payout_percent?: string | null;
 }
 
 const NAME_MAX = 60;
@@ -37,7 +40,7 @@ export async function listMachineTypes(client: Client, actor: Actor): Promise<Ma
   // Руководителю список нужен только для чтения — фильтр «Тип аппарата» в журнале.
   if (actor.role !== 'BOSS') assertAdmin(actor);
   const result = await client.query<MachineTypeRow>(
-    `SELECT t.name, t.is_active, t.created_at,
+    `SELECT t.*,
             (SELECT count(*)::int FROM machines m WHERE m.machine_type = t.name) AS machines_count
      FROM machine_types t
      ORDER BY t.is_active DESC, t.name`,

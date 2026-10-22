@@ -138,6 +138,32 @@ export async function recordClawFromCard(
   });
 }
 
+/**
+ * Закрытие задачи «выставить настройки клешни»: значения из задачи (или фактически выставленные,
+ * если техник их прислал) становятся действующими. Если тип с тех пор лишился меню Claw Set,
+ * закрытие задачи не ломается — записывать просто некуда.
+ */
+export async function applyTaskClawPlan(
+  client: Client,
+  actor: Actor,
+  input: { taskId: number; machineNumber: string; plan: ClawInput; actual?: ClawInput },
+): Promise<ClawSettingRow | null> {
+  const values = { ...input.plan, ...(input.actual ?? {}) };
+  await lockMachines(client, [input.machineNumber]);
+  try {
+    return await recordClawSettings(client, actor, {
+      machineNumber: input.machineNumber,
+      values,
+      source: 'TASK',
+      effectiveAt: new Date(),
+      taskId: input.taskId,
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === 'CLAW_SETTINGS_DISABLED') return null;
+    throw error;
+  }
+}
+
 const validTarget = (value: number | null) => {
   if (value === null) return null;
   if (!Number.isFinite(value) || value <= 0 || value >= 100) {

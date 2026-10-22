@@ -2,6 +2,7 @@ import type { Client } from '../db/pool.js';
 import { auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { assertAdmin, listScopedMachineNumbers } from '../lib/scope.js';
+import { applyTaskClawPlan, type ClawInput } from './clawSettings.js';
 
 /**
  * Задачи техникам (DECISION-050, 018_technician_tasks.sql).
@@ -120,7 +121,7 @@ export async function closeTask(
   client: Client,
   actor: Actor,
   taskId: number,
-  input: { note?: string; cancel?: boolean },
+  input: { note?: string; cancel?: boolean; claw?: ClawInput },
 ): Promise<Record<string, unknown>> {
   const before = await client.query(
     'SELECT * FROM technician_tasks WHERE id = $1 FOR UPDATE',
@@ -151,6 +152,16 @@ export async function closeTask(
   await auditUpdate(client, actor, 'technician_task', taskId, before.rows[0], after.rows[0], {
     reason: input.cancel ? 'cancelled' : 'done',
   });
+  // Задача «выставить настройки клешни» (DECISION-090): выполнение — это подтверждение техника,
+  // что на аппарате стоят эти значения. Присланное техником важнее плана: он мог выставить иначе.
+  if (!input.cancel && before.rows[0].claw_plan && before.rows[0].machine_number) {
+    await applyTaskClawPlan(client, actor, {
+      taskId,
+      machineNumber: before.rows[0].machine_number,
+      plan: before.rows[0].claw_plan,
+      actual: input.claw,
+    });
+  }
   return after.rows[0];
 }
 
