@@ -257,3 +257,79 @@ describe('настройки клешни: тип аппарата и задач
     assert.equal(card.json().current, null);
   });
 });
+
+/**
+ * Клешня вместе с обслуживанием (DECISION-090): изменение пишется в историю со ссылкой на
+ * обслуживание и видно в журнале; без изменения в журнале ничего нет; список аппаратов отдаёт
+ * телефону состояние для совета без сети.
+ */
+describe('настройки клешни: обслуживание, журнал и список аппаратов', () => {
+  let context: TestContext;
+
+  before(async () => {
+    context = await bootstrap();
+    await context.app.inject({
+      method: 'POST', url: '/api/machine-types', headers: authHeader(context.adminToken), payload: { name: 'МиникХ' },
+    });
+    await pool.query(
+      `UPDATE machine_types SET has_claw_settings = TRUE, target_payout_percent = 35, claw_weak_max = 15 WHERE name = 'МиникХ'`,
+    );
+    await installTestMachine(context, { machineNumber: 'SV-1', machineType: 'МиникХ', pricePerGame: 10 });
+  });
+
+  after(async () => {
+    await context.app.close();
+  });
+
+  const journal = async () => {
+    const response = await context.app.inject({
+      method: 'GET', url: '/api/services?machineNumber=SV-1', headers: authHeader(context.adminToken),
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json().rows as Array<{ occurred_at: string; claw_change: null | Record<string, unknown> }>;
+  };
+
+  it('первые показания приходят с обслуживанием и видны в журнале', async () => {
+    const saved = await postService(context, context.adminToken, 'SV-1', {
+      gameCounter: 100, prizeCounter: 0, occurredAt: '2026-02-01T10:00:00Z', claw: { weak: 12.4, strong: 40 },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const rows = await journal();
+    assert.equal(rows[0].claw_change?.weak, 12.4);
+    assert.equal(rows[0].claw_change?.previous, null);
+  });
+
+  it('те же значения с обслуживанием — в журнале изменения нет', async () => {
+    await postService(context, context.adminToken, 'SV-1', {
+      gameCounter: 200, prizeCounter: 0, occurredAt: '2026-02-05T10:00:00Z', claw: { weak: 12.4 },
+    });
+    assert.equal((await journal())[0].claw_change, null);
+  });
+
+  it('изменение показывает прежнее значение и совет в момент изменения', async () => {
+    await postService(context, context.adminToken, 'SV-1', {
+      gameCounter: 300, prizeCounter: 0, occurredAt: '2026-02-09T10:00:00Z', claw: { weak: 12.6 },
+    });
+    const change = (await journal())[0].claw_change as { weak: number; previous: { weak: number }; advice: { advice: { kind: string } } };
+    assert.equal(change.weak, 12.6);
+    assert.equal(change.previous.weak, 12.4);
+    assert.ok(change.advice.advice.kind);
+  });
+
+  it('изменение с обслуживанием не упирается в границы типа', async () => {
+    const saved = await postService(context, context.adminToken, 'SV-1', {
+      gameCounter: 400, prizeCounter: 0, occurredAt: '2026-02-12T10:00:00Z', claw: { weak: 16 },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal((await journal())[0].claw_change?.weak, 16);
+  });
+
+  it('список аппаратов отдаёт состояние клешни для совета без сети', async () => {
+    const response = await context.app.inject({ method: 'GET', url: '/api/machines', headers: authHeader(context.adminToken) });
+    const machine = response.json().find((row: { machine_number: string }) => row.machine_number === 'SV-1');
+    assert.equal(machine.claw_state.current.weak, 16);
+    assert.equal(machine.claw_state.band.target, 35);
+    assert.equal(machine.claw_state.limits.weakStep, 0.2);
+    assert.equal(machine.claw_strong, undefined, 'служебные колонки claw_* не должны торчать в строке');
+  });
+});

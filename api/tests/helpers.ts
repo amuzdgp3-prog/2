@@ -90,6 +90,8 @@ export interface ServiceOptions {
   testGames?: number;
   occurredAt: string;
   toys?: Array<{ toyId: number; quantity: number }>;
+  /** Настройки клешни, поменянные на аппарате (DECISION-090). */
+  claw?: { strong?: number | null; medium?: number | null; weak?: number | null; prizeSet?: number | null };
 }
 
 export async function postService(

@@ -318,6 +318,8 @@ export async function approveReview(
     testGames: edits.testGames ?? sent.testGames ?? 0,
     toys: edits.toys ?? sent.toys ?? [],
     notes: edits.notes ?? sent.notes,
+    // Изменение клешни техника сохраняется вместе с обслуживанием и после проверки (DECISION-090).
+    claw: sent.claw,
     confirmCounterJump: edits.confirmCounterJump,
     confirmPrizeCounterBack: edits.confirmPrizeCounterBack,
   };

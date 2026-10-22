@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { usualPaceLateralSql } from '../domain/usualPace.js';
+import { serviceClawChangeSql } from '../domain/clawStats.js';
 import { pool, withTransaction } from '../db/pool.js';
 import {
   listDraftIssues,
@@ -52,6 +53,17 @@ const serviceBodySchema = {
         type: 'object',
         required: ['toyId', 'quantity'],
         properties: { toyId: { type: 'integer' }, quantity: { type: 'integer', minimum: 1 } },
+      },
+    },
+    // Настройки клешни, если техник их поменял (DECISION-090). Без этого описания Fastify молча
+    // выбросил бы поле из тела запроса.
+    claw: {
+      type: 'object',
+      properties: {
+        strong: { type: ['number', 'null'] },
+        medium: { type: ['number', 'null'] },
+        weak: { type: ['number', 'null'] },
+        prizeSet: { type: ['integer', 'null'] },
       },
     },
   },
@@ -226,7 +238,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
            WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
          )
          SELECT page.*, usual_pace.usual_games_per_day FROM (
-         SELECT s.*, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
+         SELECT s.*, ${serviceClawChangeSql('s')} AS claw_change, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
                 (SELECT json_agg(json_build_object(
                           'toyId', td.toy_id, 'name', t.name, 'quantity', td.quantity, 'unitCost', td.unit_cost_snapshot
                         ) ORDER BY t.name)

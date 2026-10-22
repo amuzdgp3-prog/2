@@ -62,6 +62,12 @@ export async function recordClawSettings(
     localId?: string | null;
     enteredBy?: number | null;
     note?: string;
+    /**
+     * Не проверять границы типа. Только для изменения, пришедшего с обслуживанием: оно описывает
+     * то, что физически стоит на аппарате, а отказ из-за поменявшихся границ уронил бы офлайн-
+     * обслуживание с деньгами. Форма и так не даёт выйти за границы.
+     */
+    skipBounds?: boolean;
   },
 ): Promise<ClawSettingRow | null> {
   if (input.localId) {
@@ -86,7 +92,11 @@ export async function recordClawSettings(
   };
   const changed = FIELDS.some((field) => (current?.[field] ?? null) !== next[field]);
   if (!changed) return null;
-  validate(config, next);
+  if (input.skipBounds) {
+    validate({ ...config, limits: { ...config.limits, weakMin: null, weakMax: null, strongMin: 0, strongMax: 1000, mediumMin: 0, mediumMax: 1000 } }, next);
+  } else {
+    validate(config, next);
+  }
 
   // Совет, который система давала в момент изменения, — по нему журнал отличает «по совету» от
   // «против совета». Для записи из обслуживания сюда входит и само это обслуживание.
@@ -160,6 +170,33 @@ export async function applyTaskClawPlan(
     });
   } catch (error) {
     if ((error as { code?: string }).code === 'CLAW_SETTINGS_DISABLED') return null;
+    throw error;
+  }
+}
+
+/**
+ * Изменение клешни, пришедшее вместе с обслуживанием. Никогда не роняет само обслуживание: у
+ * типа без меню Claw Set блок молча пропускается, границы не проверяются (см. skipBounds).
+ */
+export async function recordClawFromService(
+  client: Client,
+  actor: Actor,
+  input: { machineNumber: string; serviceId: number; occurredAt: string; technicianId: number | null; claw: ClawInput },
+): Promise<void> {
+  const hasValues = (['strong', 'medium', 'weak', 'prizeSet'] as const).some((key) => input.claw[key] !== undefined);
+  if (!hasValues) return;
+  try {
+    await recordClawSettings(client, actor, {
+      machineNumber: input.machineNumber,
+      values: input.claw,
+      source: 'SERVICE',
+      effectiveAt: input.occurredAt,
+      serviceId: input.serviceId,
+      enteredBy: input.technicianId ?? actor.id,
+      skipBounds: true,
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === 'CLAW_SETTINGS_DISABLED') return;
     throw error;
   }
 }

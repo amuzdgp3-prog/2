@@ -1,5 +1,6 @@
 import type { Client } from '../db/pool.js';
 import { clearDraftIssue } from './draftIssues.js';
+import { recordClawFromService, type ClawInput } from './clawSettings.js';
 import { assertNoCounterJump } from '../domain/counterAnomaly.js';
 import { assertCountersMoveForward } from '../domain/counterMonotonicity.js';
 import { recalcMachineChain } from '../domain/counterChain.js';
@@ -41,6 +42,11 @@ export interface ServiceInput {
   toys?: ToyLine[];
   photoObjectKey: string;
   notes?: string;
+  /**
+   * Настройки клешни, если техник поменял их на аппарате (DECISION-090). Запись в историю
+   * появляется, только если значения отличаются от действующих.
+   */
+  claw?: ClawInput;
 }
 
 interface ActivePlacement {
@@ -344,6 +350,16 @@ export async function createService(
   const serviceId = row.id as number;
   await writeToyLines(client, actor, serviceId, input.toys ?? []);
   await recalcMachineChain(client, input.machineNumber, actor, 'service_created');
+  // После пересчёта цепочки: совет в момент изменения учитывает выручку этого обслуживания.
+  if (input.claw) {
+    await recordClawFromService(client, actor, {
+      machineNumber: input.machineNumber,
+      serviceId,
+      occurredAt: input.occurredAt,
+      technicianId: assignedTechnicianId,
+      claw: input.claw,
+    });
+  }
 
   const stored = await reloadService(client, serviceId);
   await auditInsert(client, actor, 'service', serviceId, stored);

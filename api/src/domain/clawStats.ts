@@ -241,6 +241,89 @@ export async function machineClawState(client: Client, machineNumber: string): P
   };
 }
 
+/**
+ * Колонки для списка аппаратов телефона (`alias` — алиас таблицы machines): тип с настройками
+ * клешни, действующая настройка и итоги с её момента. Одним запросом на весь список, а не
+ * machineClawState на каждый аппарат: список грузится при каждом обновлении каталога.
+ */
+export function clawStateColumnsSql(alias: string): { columns: string; joins: string } {
+  return {
+    columns: `claw_type.has_claw_settings AS claw_enabled,
+              COALESCE(${alias}.target_payout_percent, claw_type.target_payout_percent) AS claw_target,
+              claw_type.claw_weak_step, claw_type.claw_strong_step, claw_type.claw_medium_step,
+              claw_type.claw_weak_min, claw_type.claw_weak_max, claw_type.claw_strong_min,
+              claw_type.claw_strong_max, claw_type.claw_medium_min, claw_type.claw_medium_max,
+              claw_now.strong AS claw_strong, claw_now.medium AS claw_medium, claw_now.weak AS claw_weak,
+              claw_now.prize_set AS claw_prize_set, claw_now.effective_at AS claw_changed_at,
+              claw_since.games AS claw_since_games, claw_since.revenue AS claw_since_revenue,
+              claw_since.toy_cost AS claw_since_toy_cost`,
+    joins: `JOIN machine_types claw_type ON claw_type.name = ${alias}.machine_type
+       LEFT JOIN LATERAL (
+         SELECT c.strong, c.medium, c.weak, c.prize_set, c.effective_at FROM claw_settings c
+         WHERE c.machine_number = ${alias}.machine_number
+         ORDER BY c.effective_at DESC, c.id DESC LIMIT 1
+       ) claw_now ON claw_type.has_claw_settings
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(sum(s.new_games), 0) AS games, COALESCE(sum(s.revenue), 0) AS revenue,
+                COALESCE(sum(${TOY_COST_SQL}), 0) AS toy_cost
+         FROM services s
+         WHERE s.machine_number = ${alias}.machine_number
+           AND (claw_now.effective_at IS NULL OR s.occurred_at > claw_now.effective_at)
+       ) claw_since ON claw_type.has_claw_settings`,
+  };
+}
+
+/** Собирает ClawState из колонок clawStateColumnsSql и убирает их из строки списка. */
+export function takeClawState(row: Record<string, unknown>): ClawState | null {
+  const state: ClawState | null = row.claw_enabled
+    ? {
+        current: {
+          strong: num(row.claw_strong),
+          medium: num(row.claw_medium),
+          weak: num(row.claw_weak),
+          prizeSet: num(row.claw_prize_set),
+        },
+        changedAt: row.claw_changed_at ? (row.claw_changed_at as Date).toISOString() : null,
+        limits: {
+          weakStep: Number(row.claw_weak_step),
+          strongStep: Number(row.claw_strong_step),
+          mediumStep: Number(row.claw_medium_step),
+          weakMin: num(row.claw_weak_min),
+          weakMax: num(row.claw_weak_max),
+          strongMin: Number(row.claw_strong_min),
+          strongMax: Number(row.claw_strong_max),
+          mediumMin: Number(row.claw_medium_min),
+          mediumMax: Number(row.claw_medium_max),
+        },
+        band: payoutBand(num(row.claw_target)),
+        since: {
+          games: Number(row.claw_since_games ?? 0),
+          revenue: Number(row.claw_since_revenue ?? 0),
+          toyCost: Number(row.claw_since_toy_cost ?? 0),
+        },
+      }
+    : null;
+  for (const key of Object.keys(row)) if (key.startsWith('claw_')) delete row[key];
+  return state;
+}
+
+/**
+ * Изменение настроек, пришедшее с обслуживанием, — для журнала (`alias` — строка services):
+ * новые значения, прежние и совет в момент изменения. NULL — с этим обслуживанием не меняли.
+ */
+export function serviceClawChangeSql(alias: string): string {
+  return `(SELECT json_build_object(
+             'strong', c.strong, 'medium', c.medium, 'weak', c.weak, 'prizeSet', c.prize_set,
+             'advice', c.advice,
+             'previous', (SELECT json_build_object('strong', pr.strong, 'medium', pr.medium,
+                                                   'weak', pr.weak, 'prizeSet', pr.prize_set)
+                          FROM claw_settings pr
+                          WHERE pr.machine_number = c.machine_number
+                            AND (pr.effective_at, pr.id) < (c.effective_at, c.id)
+                          ORDER BY pr.effective_at DESC, pr.id DESC LIMIT 1))
+           FROM claw_settings c WHERE c.service_id = ${alias}.id)`;
+}
+
 /** Совет на момент `at` по итогам с последнего изменения до этого момента включительно. */
 export async function adviceAt(
   client: Client,

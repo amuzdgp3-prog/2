@@ -28,7 +28,7 @@ import {
   unbindTerminal,
 } from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
-import { loadCurrentClaw, machineClawCard } from '../domain/clawStats.js';
+import { clawStateColumnsSql, loadCurrentClaw, machineClawCard, takeClawState } from '../domain/clawStats.js';
 import { recordClawFromCard, setMachineTarget } from '../commands/clawSettings.js';
 import {
   applyTypeTarget,
@@ -366,6 +366,8 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
    */
   app.get('/api/machines', auth, async (request) => {
     const scope = machineScopePredicate(request.actor, 'm.machine_number', 1);
+    // Настройки клешни и итоги с последнего изменения — чтобы совет показывался у аппарата без сети.
+    const clawState = clawStateColumnsSql('m');
     const result = await pool.query(
       `SELECT m.machine_number, m.machine_type, m.model, m.price_per_game, m.counter_divisor,
               m.status, m.min_service_days, m.max_service_days,
@@ -383,8 +385,10 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
               ts.id AS default_toy_set_id, ts.name AS default_toy_set_name,
               default_set_items.items AS default_toy_set_items,
               term.id AS terminal_id, term.serial AS terminal_serial,
-              binding.started_at AS terminal_bound_since
+              binding.started_at AS terminal_bound_since,
+              ${clawState.columns}
        FROM machines m
+       ${clawState.joins}
        LEFT JOIN toy_sets ts ON ts.id = m.default_toy_set_id
        LEFT JOIN LATERAL (
          SELECT jsonb_object_agg(tsi.toy_id, tsi.quantity) AS items
@@ -419,7 +423,11 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
        ORDER BY m.machine_number`,
       scope.params,
     );
-    return result.rows;
+    return result.rows.map((row) => {
+      // takeClawState убирает служебные колонки claw_* из строки, поэтому вызывается до копирования.
+      const clawState = takeClawState(row);
+      return { ...row, claw_state: clawState };
+    });
   });
 
   /**
