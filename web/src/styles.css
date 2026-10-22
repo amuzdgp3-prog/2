@@ -892,3 +892,44 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
 .tci-verdict p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--ink); white-space: normal; }
 .tci-verdict .tci-ico { background: var(--surface); }
 @media (max-width: 560px) { .tci-verdict { flex-direction: column; align-items: flex-start; gap: 8px; } }
+
+/* ============================================================
+   Клешня в форме обслуживания (DECISION-090). Свёрнутый блок:
+   строка с Weak и советом; цвета состояния — от индикатора
+   затрат (.tci-low/.tci-ok/.tci-high задают --tci-fg/--tci-bg).
+   ============================================================ */
+.claw { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg); overflow: hidden; }
+.claw-toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; background: transparent; border: 0; padding: 12px; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.claw-toggle:hover { background: var(--paper); }
+.claw-toggle[aria-expanded="true"] { border-bottom: 1px solid var(--line-soft); }
+.claw-toggle-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.claw-toggle-main b { display: block; font-size: 15px; }
+.claw-toggle-main small { display: block; font-size: 12px; color: var(--ink-soft); }
+.claw-toggle-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.claw-arrow { color: var(--ink-faint); }
+.claw-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tci-fg); flex-shrink: 0; }
+.claw-chg { font-size: 11px; font-weight: 600; color: var(--brass-deep); background: var(--brass-soft); padding: 1px 8px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+.claw-advice { padding: 10px 12px; background: var(--tci-bg); border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.claw-advice p { margin: 0; }
+.claw-advice-head { font-weight: 600; color: var(--tci-fg); }
+.claw-body { padding: 12px; display: grid; gap: 8px; }
+.claw-was { font-size: 13px; color: var(--ink-soft); }
+.claw-stepper { display: grid; grid-template-columns: 64px 1fr 64px; gap: 8px; }
+.claw-stepper button { border: 1px solid var(--line); background: var(--paper); border-radius: var(--r-md); font-family: var(--f-mono); font-weight: 600; font-size: 15px; min-height: 52px; cursor: pointer; }
+.claw-stepper input { text-align: center; font-family: var(--f-mono); font-size: 26px; font-weight: 600; border: 2px solid var(--line); border-radius: var(--r-md); background: #fff; width: 100%; padding: 4px; }
+.claw-stepper.changed input { border-color: var(--brass); background: #FFFCF4; }
+.claw-stepper.need input { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+.claw-stepper.match input { border-color: var(--good); background: var(--good-soft); color: var(--good); }
+.claw-unit { font-family: var(--f-mono); font-size: 12px; color: var(--ink-faint); text-align: center; }
+.claw-revert { justify-self: end; }
+.claw-others-toggle { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; background: transparent; border: 0; border-top: 1px solid var(--line-soft); padding: 10px 12px; text-align: left; font: inherit; font-size: 13px; color: var(--ink-soft); cursor: pointer; }
+.claw-others { padding: 4px 12px 12px; display: grid; gap: 10px; }
+.claw-mini { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.claw-mini-name { font-size: 13px; }
+.claw-mini-name small { display: block; color: var(--ink-faint); font-size: 11px; }
+.claw-mini-ctl { display: grid; grid-template-columns: 38px 76px 38px; gap: 4px; }
+.claw-mini-ctl button { border: 1px solid var(--line); background: var(--paper); border-radius: var(--r-md); font-family: var(--f-mono); min-height: 36px; cursor: pointer; }
+.claw-mini-ctl input { text-align: center; font-family: var(--f-mono); font-weight: 600; border: 1px solid var(--line); border-radius: var(--r-md); background: #fff; width: 100%; }
+.claw-mini.changed .claw-mini-ctl input { border-color: var(--brass); background: #FFFCF4; }
+.claw-mini.need .claw-mini-ctl input { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
+.claw-mini.match .claw-mini-ctl input { border-color: var(--good); background: var(--good-soft); color: var(--good); }

@@ -146,6 +146,7 @@ async function uploadOne(item: QueuedService): Promise<'STORED' | 'IN_REVIEW'> {
     notes: item.notes,
     toys: item.toys,
     photoObjectKey: uploaded.objectKey,
+    ...(item.claw ? { claw: item.claw } : {}),
   });
   return response?.inReview ? 'IN_REVIEW' : 'STORED';
 }

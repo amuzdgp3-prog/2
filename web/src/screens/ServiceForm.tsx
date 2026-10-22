@@ -28,6 +28,8 @@ import { beginOperation, endOperation } from '../clientLog';
 import { refreshCatalog, syncOutbox } from '../sync';
 import { showToast } from '../toast';
 import { formatRoiSplit } from '../roiSplit';
+import { ClawSection, changedClaw, weakOutOfBounds } from '../components/ClawSection';
+import type { ClawValues } from '../clawAdvice';
 
 interface ToyLine {
   toyId: number;
@@ -116,6 +118,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   // Показывать предупреждение о недостающем фото только после попытки сохранить без него — до
   // этого оно просто мешало техническому, ещё не дошедшему до фото по форме сверху вниз.
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  // Настройки клешни (DECISION-090): заранее — то, что стоит на аппарате; меняются, только если
+  // техник поменял их на плате. null — у типа нет меню Claw Set или каталог ещё не загружен.
+  const [claw, setClaw] = useState<ClawValues | null>(null);
+  const [draftClaw, setDraftClaw] = useState<Partial<ClawValues> | null>(null);
 
   // Guards the background catalogue refresh below: once the technician has typed or picked
   // anything, an in-flight network refresh landing afterwards must not silently overwrite it
@@ -196,6 +202,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       setNotes(draft.notes);
       setLines(draft.toys.map((line) => ({ toyId: line.toyId, quantity: String(line.quantity) })));
       setExistingPhoto(draft.photo);
+      if (draft.claw) setDraftClaw(draft.claw);
     });
   }, [editLocalId]);
 
@@ -258,6 +265,16 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       cancelled = true;
     };
   }, [machineNumber, date, time]);
+
+  // Значения клешни заполняются один раз, когда известен аппарат: обновление каталога в фоне не
+  // должно сбрасывать то, что техник уже поменял. Черновик из очереди кладёт свои изменения поверх.
+  useEffect(() => {
+    if (!machine?.claw_state || claw) return;
+    setClaw({ ...machine.claw_state.current, ...(draftClaw ?? {}) });
+  }, [machine, claw, draftClaw]);
+  useEffect(() => {
+    if (draftClaw && machine?.claw_state) setClaw({ ...machine.claw_state.current, ...draftClaw });
+  }, [draftClaw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const previousGameCounter = dateContext?.previous.game_counter ?? machine?.previous_game_counter ?? 0;
   const previousPrizeCounter = dateContext?.previous.prize_counter ?? machine?.previous_prize_counter ?? 0;
@@ -373,6 +390,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       setError('Дата и время не могут быть в будущем.');
       return;
     }
+    if (machine.claw_state && claw && weakOutOfBounds(machine.claw_state, claw.weak)) {
+      setError('Weak за границами типа — исправьте значение в разделе «Клешня».');
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -397,6 +418,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         photoType: chosenPhoto.type || 'image/jpeg',
         queuedAt: new Date().toISOString(),
         status: 'PENDING',
+        claw: machine.claw_state && claw ? changedClaw(machine.claw_state, claw) : undefined,
       });
       void clearPhotoDraft(machine.machine_number);
 
@@ -647,7 +669,28 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         )}
       </div>
 
-      <div className="section-head"><span className="num">6</span><h3>Фото</h3><span className="line" /></div>
+      {machine.claw_state && claw && (
+        <>
+          <div className="section-head"><span className="num">6</span><h3>Клешня · п.3 Weak Catch</h3><span className="line" /></div>
+          <ClawSection
+            state={machine.claw_state}
+            values={claw}
+            added={
+              preview
+                ? {
+                    games: Math.max(Number(preview.newGames), 0),
+                    revenue: Math.max(Number(preview.revenue), 0),
+                    // Затраты периода — игрушки, доложенные в прошлый раз (как в ROI, DECISION-012).
+                    toyCost: Number(machine.last_toy_cost ?? 0),
+                  }
+                : null
+            }
+            onChange={(next) => { markDirty(); setClaw(next); }}
+          />
+        </>
+      )}
+
+      <div className="section-head"><span className="num">{machine.claw_state ? 7 : 6}</span><h3>Фото</h3><span className="line" /></div>
       <div style={{ maxWidth: 220 }}>
         {(photo || existingPhoto) && (
           <div
@@ -686,7 +729,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         />
       </div>
 
-      <div className="section-head"><span className="num">7</span><h3>Комментарий</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">{machine.claw_state ? 8 : 7}</span><h3>Комментарий</h3><span className="line" /></div>
       <textarea
         rows={3}
         placeholder="Необязательно — что заметили на точке"

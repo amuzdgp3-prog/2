@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { bytesToPhoto, photoToBytes } from './photoBytes';
+import type { ClawInput, ClawState } from './clawAdvice';
 
 export interface CachedMachine {
   machine_number: string;
@@ -29,6 +30,11 @@ export interface CachedMachine {
   max_service_days: number | null;
   terminal_id: number | null;
   terminal_serial: string | null;
+  /**
+   * Настройки клешни и итоги с последнего изменения (DECISION-090) — для совета у аппарата без
+   * сети. null — у типа нет меню Claw Set; undefined — каталог скачан старой версией сервера.
+   */
+  claw_state?: ClawState | null;
 }
 
 export interface QueuedService {
@@ -53,6 +59,8 @@ export interface QueuedService {
   confirmCounterJump?: boolean;
   /** Код ошибки сервера — по нему черновик показывает подходящее действие, а не общий текст. */
   errorCode?: string;
+  /** Настройки клешни, если техник поменял их на аппарате (DECISION-090); только изменённые поля. */
+  claw?: ClawInput;
 }
 
 /**
