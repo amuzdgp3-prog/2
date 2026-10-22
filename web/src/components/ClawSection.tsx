@@ -62,7 +62,7 @@ function summary(advice: ReturnType<typeof clawAdvice>): string {
     case 'early':
       return `Рано судить · ${Math.round(advice.games)} из ${advice.minGames} игр`;
     case 'no-data':
-      return 'Нет выручки с изменения';
+      return 'Рано судить · с изменения ещё не было игр';
     case 'ok':
       return `Норма ${percent(advice.payoutPercent)} · не менять`;
     case 'change':
@@ -95,8 +95,8 @@ function AdviceBox({ advice, state }: { advice: ReturnType<typeof clawAdvice>; s
       body = `После изменения ${since} сыграно ${Math.round(advice.games)} из ${advice.minGames} игр.`;
       break;
     case 'no-data':
-      head = 'Нет выручки с изменения';
-      body = 'Отдачу пока не посчитать.';
+      head = 'Рано судить · не менять';
+      body = 'С изменения ещё не было игр.';
       break;
     case 'ok':
       head = 'Норма · не менять';

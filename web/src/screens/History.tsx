@@ -9,6 +9,8 @@ import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
 import { machineQrValue, QrCode } from '../components/ui/QrCode';
 import { RoiBadge } from '../components/ui/RoiBadge';
 import { ReplaceMachineForm } from './ReplaceMachine';
+import { MachineClawPanel } from '../components/claw/MachineClawPanel';
+import { readCachedMachines } from '../db';
 
 interface ServiceRow {
   id: number;
@@ -53,7 +55,7 @@ interface InitialToyRow {
   unit_cost_snapshot: string;
 }
 
-type Tab = 'history' | 'toys' | 'routes' | 'technicians';
+type Tab = 'history' | 'claw' | 'toys' | 'routes' | 'technicians';
 
 /** Карточка аппарата (docs/design/mockups/06_admin_machine_card.html): статистика + вкладки. */
 export default function HistoryScreen() {
@@ -67,6 +69,17 @@ export default function HistoryScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [openPhoto, setOpenPhoto] = useState<number | null>(null);
+  // Вкладка «Клешня и отдача» — только у типов с меню Claw Set (DECISION-090): это знает каталог.
+  const [hasClaw, setHasClaw] = useState(false);
+  const [band, setBand] = useState<{ low: number; high: number } | undefined>(undefined);
+  useEffect(() => {
+    void readCachedMachines().then((machines) => {
+      const machine = machines.find((item) => item.machine_number === machineNumber);
+      setHasClaw(Boolean(machine?.claw_state));
+      // Значок ROI меряет норму той же целью аппарата, что и вкладка «Клешня и отдача».
+      setBand(machine?.claw_state?.band.target != null ? machine.claw_state.band : undefined);
+    });
+  }, [machineNumber]);
 
   const load = () =>
     api
@@ -157,7 +170,7 @@ export default function HistoryScreen() {
           </div>
           <div className="kpi">
             <div className="lbl">Средний ROI</div>
-            <div className="val"><RoiBadge value={stats.averageRoi} /></div>
+            <div className="val"><RoiBadge value={stats.averageRoi} band={band} /></div>
           </div>
           <div className="kpi">
             <div className="lbl">Обслуживаний</div>
@@ -168,6 +181,9 @@ export default function HistoryScreen() {
 
       <div className="mc-tabs">
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>История</button>
+        {hasClaw && (
+          <button className={tab === 'claw' ? 'active' : ''} onClick={() => setTab('claw')}>Клешня и отдача</button>
+        )}
         <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
         <button className={tab === 'routes' ? 'active' : ''} onClick={() => setTab('routes')}>Маршруты</button>
         <button className={tab === 'technicians' ? 'active' : ''} onClick={() => setTab('technicians')}>Техники</button>
@@ -270,6 +286,13 @@ export default function HistoryScreen() {
         </>
       )}
 
+      {tab === 'claw' && (
+        <MachineClawPanel
+          machineNumber={machineNumber}
+          canEditTarget={user?.role === 'ADMIN'}
+          canEditValues={user?.role === 'ADMIN' || user?.role === 'TECHNICIAN'}
+        />
+      )}
       {tab === 'toys' && <ToysTab machineNumber={machineNumber} />}
       {tab === 'routes' && <RoutesTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
       {tab === 'technicians' && <TechniciansTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}

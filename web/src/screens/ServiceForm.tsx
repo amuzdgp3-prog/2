@@ -507,7 +507,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
               <span>игрушки</span>
             </div>
             <div className="cell">
-              <RoiBadge value={machine.last_revenue_to_cost_ratio} />
+              <RoiBadge
+                value={machine.last_revenue_to_cost_ratio}
+                band={machine.claw_state?.band.target != null ? machine.claw_state.band : undefined}
+              />
             </div>
           </div>
           {machine.last_toy_quantities && Object.keys(machine.last_toy_quantities).length > 0 && (

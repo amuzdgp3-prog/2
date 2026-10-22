@@ -207,7 +207,7 @@ export function adviceText(advice: ClawAdvice): string {
     case 'no-settings':
       return 'значения ещё не вносились';
     case 'no-data':
-      return 'нет выручки с изменения';
+      return 'рано судить: с изменения ещё не было игр';
     case 'early':
       return `рано судить: ${Math.round(advice.games)} из ${advice.minGames} игр`;
     case 'ok':

@@ -194,7 +194,10 @@ export default function MachinesScreen() {
                 <div className="card card-pad" key={machine.machine_number} style={inactive ? { opacity: 0.55 } : undefined}>
                   <div className="row">
                     <MachineTag number={machine.machine_number} />
-                    <RoiBadge value={machine.last_revenue_to_cost_ratio} />
+                    <RoiBadge
+                      value={machine.last_revenue_to_cost_ratio}
+                      band={machine.claw_state?.band.target != null ? machine.claw_state.band : undefined}
+                    />
                   </div>
                   <div style={{ marginTop: 8, fontWeight: 600, fontSize: 14 }}>
                     {machine.address || machine.model || machine.machine_type}

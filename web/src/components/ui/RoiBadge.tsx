@@ -1,4 +1,4 @@
-import { toyCostStatus } from '../../toyCostStatus';
+import { toyCostStatus, type ToyCostBand } from '../../toyCostStatus';
 
 /**
  * Значок «Отношение выручка/себестоимость» — единственный, наравне со
@@ -12,7 +12,11 @@ import { toyCostStatus } from '../../toyCostStatus';
  * в DECISIONS.md): сервер уже возвращает null, когда базы для расчёта нет
  * или она равна нулю, — компонент не пересчитывает ROI сам, только красит.
  */
-export function RoiBadge({ value }: { value: number | string | null | undefined }) {
+export function RoiBadge({ value, band }: {
+  value: number | string | null | undefined;
+  /** Коридор нормы аппарата с целью отдачи (DECISION-090); без него — общая вилка. */
+  band?: ToyCostBand;
+}) {
   const numeric = value === null || value === undefined || value === '' ? null : Number(value);
 
   if (numeric === null || !Number.isFinite(numeric)) {
@@ -24,7 +28,7 @@ export function RoiBadge({ value }: { value: number | string | null | undefined 
     );
   }
 
-  const status = toyCostStatus(numeric);
+  const status = toyCostStatus(numeric, band);
   if (!status) {
     return (
       <span className="badge badge-neutral">
