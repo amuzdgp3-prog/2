@@ -23,7 +23,26 @@ export function toyCostStatus(ratio: number | string | null | undefined): ToyCos
   if (ratio === null || ratio === undefined || ratio === '') return null;
   const value = Number(ratio);
   if (!Number.isFinite(value) || value <= 0) return null;
-  const percent = Math.round(100 / value);
+  return statusFromPercent(Math.round(100 / value));
+}
+
+/**
+ * Доля затрат за период по суммам (затраты ÷ выручка), для отчёта. Нулевые затраты при выручке —
+ * это, скорее всего, не внесённая выдача игрушек, а не «аппарат ничего не отдаёт», поэтому
+ * как и ROI с нулевой базой даёт «нет данных» (null).
+ */
+export function toyCostStatusFromAmounts(
+  toyCost: number | string | null | undefined,
+  revenue: number | string | null | undefined,
+): ToyCostStatus | null {
+  if (toyCost === null || toyCost === undefined || revenue === null || revenue === undefined) return null;
+  const cost = Number(toyCost);
+  const income = Number(revenue);
+  if (!Number.isFinite(cost) || !Number.isFinite(income) || cost <= 0 || income <= 0) return null;
+  return statusFromPercent(Math.round((100 * cost) / income));
+}
+
+function statusFromPercent(percent: number): ToyCostStatus {
   if (percent < TOY_COST_LOW_BELOW) {
     return { percent, level: 'low', label: 'отдаёт мало', hint: 'Настроить аппарат на большую отдачу' };
   }

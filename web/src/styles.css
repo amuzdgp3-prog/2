@@ -858,3 +858,20 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
 .or-rent-figures { display: flex; flex-wrap: wrap; gap: 24px; justify-content: space-between; align-items: flex-end; }
 .or-total-row td { font-weight: 600; border-top: 1.5px solid var(--ink); }
 .or-more { margin-top: 12px; }
+
+/* ---------- Индикатор затрат на игрушки (стрелка · число · слово) ----------
+   Цвета — те же good/warn/bad, что у ROI: норма — good, «отдаёт мало» — warn, «отдаёт много» — bad. */
+.tci { display: inline-flex; align-items: center; gap: 8px; text-align: left; white-space: nowrap; }
+.tci-ico {
+  flex: none; width: 28px; height: 28px; border-radius: 7px;
+  display: grid; place-items: center;
+  background: var(--tci-bg); color: var(--tci-fg);
+}
+.tci-ico svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.tci-txt b { display: block; font-family: var(--f-mono); font-size: 15px; font-weight: 600; line-height: 1.15; color: var(--ink); }
+.tci-txt small { display: block; font-size: 11px; line-height: 1.15; color: var(--tci-fg); }
+.tci-ok   { --tci-fg: var(--good); --tci-bg: var(--good-soft); }
+.tci-low  { --tci-fg: var(--warn); --tci-bg: var(--warn-soft); }
+.tci-high { --tci-fg: var(--bad);  --tci-bg: var(--bad-soft); }
+.tci-none { --tci-fg: var(--neutral-badge); --tci-bg: var(--paper-deep); }
+.tci-none .tci-txt b { color: var(--neutral-badge); font-weight: 500; }
