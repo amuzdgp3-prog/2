@@ -28,6 +28,8 @@ import {
   unbindTerminal,
 } from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
+import { loadCurrentClaw, machineClawCard } from '../domain/clawStats.js';
+import { recordClawFromCard, setMachineTarget } from '../commands/clawSettings.js';
 import { resolveServiceInterval } from '../domain/serviceIntervals.js';
 import { auditDelete, auditInsert, auditUpdate } from '../lib/audit.js';
 import { hashPassword } from '../lib/password.js';
@@ -518,6 +520,68 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
         client.release();
       }
     },
+  );
+
+  // ------------------------------------------- настройки клешни и отдача (DECISION-090)
+  /** Карточка «Клешня и отдача»: значения, цель, отдача с изменения, совет, история, периоды. */
+  app.get<{ Params: { machineNumber: string } }>(
+    '/api/machines/:machineNumber/claw',
+    auth,
+    async (request) => {
+      const client = await pool.connect();
+      try {
+        await assertMachineInScope(client, request.actor, request.params.machineNumber);
+        const card = await machineClawCard(client, request.params.machineNumber);
+        if (!card) throw notFound('аппарат не существует');
+        return card;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  /** «Изменили на аппарате»: новые значения меню Claw Set. Повтор с тем же localId не дублирует. */
+  app.post<{
+    Params: { machineNumber: string };
+    Body: { localId?: string; strong?: number | null; medium?: number | null; weak?: number | null; prizeSet?: number | null; note?: string };
+  }>(
+    '/api/machines/:machineNumber/claw-settings',
+    {
+      ...auth,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            localId: { type: 'string', format: 'uuid' },
+            strong: { type: ['number', 'null'] },
+            medium: { type: ['number', 'null'] },
+            weak: { type: ['number', 'null'] },
+            prizeSet: { type: ['integer', 'null'] },
+            note: { type: 'string' },
+          },
+        },
+      },
+    },
+    async (request) =>
+      withTransaction(async (client) => {
+        const saved = await recordClawFromCard(client, request.actor, request.params.machineNumber, request.body);
+        return { changed: saved !== null, current: saved ?? (await loadCurrentClaw(client, request.params.machineNumber)) };
+      }),
+  );
+
+  /** Своя цель отдачи аппарата, %; null — как у типа. */
+  app.put<{ Params: { machineNumber: string }; Body: { percent: number | null } }>(
+    '/api/machines/:machineNumber/target-payout',
+    {
+      ...auth,
+      schema: {
+        body: { type: 'object', required: ['percent'], properties: { percent: { type: ['number', 'null'] } } },
+      },
+    },
+    async (request) =>
+      withTransaction((client) =>
+        setMachineTarget(client, request.actor, request.params.machineNumber, request.body.percent),
+      ),
   );
 
   app.post<{ Body: Parameters<typeof installMachine>[2] }>(
