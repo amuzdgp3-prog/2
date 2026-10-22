@@ -97,7 +97,12 @@ async function typeMonthTotals(
   ]));
 }
 
-const days = (range: Range) => (new Date(range.end).getTime() - new Date(range.start).getTime()) / 86_400_000;
+/**
+ * Дней в периоде для «в сутки». Текущий месяц ещё не кончился — делим на прошедшие дни, а не на
+ * все дни месяца: иначе середина месяца выглядела бы заметно хуже прошлого целого месяца.
+ */
+const days = (range: Range, now: Date = new Date()) =>
+  (Math.min(new Date(range.end).getTime(), now.getTime()) - new Date(range.start).getTime()) / 86_400_000;
 
 export async function ownerMonthPayout(client: Client, actor: Actor, range: Range): Promise<OwnerMonthPayout> {
   const now = new Date();
