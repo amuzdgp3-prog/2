@@ -1,11 +1,12 @@
-import { formatRoiSplit } from '../../roiSplit';
+import { toyCostStatus } from '../../toyCostStatus';
 
 /**
  * Значок «Отношение выручка/себестоимость» — единственный, наравне со
  * статусом «работает/не работает», носитель цвета good/warn/bad/neutral
  * в дизайн-системе (docs/design/mockups/00_design_system.html, §«Цвет —
  * только сигнал»). Пороги и подпись «нет данных» — по README макетов:
- * ≥3.0 good, 2.0–2.9 warn, <2.0 bad, отсутствие значения — neutral.
+ * Теперь значок показывает долю затрат на игрушки и статус из toyCostStatus.ts
+ * (норма good, «отдаёт мало» warn, «отдаёт много» bad, отсутствие значения — neutral).
  *
  * Соответствует серверной метрике revenue_to_cost_ratio (см. DECISION-012
  * в DECISIONS.md): сервер уже возвращает null, когда базы для расчёта нет
@@ -23,12 +24,24 @@ export function RoiBadge({ value }: { value: number | string | null | undefined 
     );
   }
 
-  const variant = numeric >= 3.0 ? 'good' : numeric >= 2.0 ? 'warn' : 'bad';
+  const status = toyCostStatus(numeric);
+  if (!status) {
+    return (
+      <span className="badge badge-neutral">
+        <span className="badge-dot" />
+        нет данных
+      </span>
+    );
+  }
+
+  // Норма — good; отклонение в любую сторону — сигнал технику: «много» (теряем деньги) — bad,
+  // «мало» (люди перестанут играть) — warn.
+  const variant = status.level === 'ok' ? 'good' : status.level === 'high' ? 'bad' : 'warn';
 
   return (
-    <span className={`badge badge-${variant}`}>
+    <span className={`badge badge-${variant}`} title={`Затраты на игрушки ${status.percent} % выручки. ${status.hint}`}>
       <span className="badge-dot" />
-      ROI {formatRoiSplit(numeric) ?? numeric.toFixed(1)}
+      {status.percent}% · {status.label}
     </span>
   );
 }
