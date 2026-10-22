@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../api';
 import type { TabProps } from './types';
 import { Section } from './shared/Section';
+import { TypeClawPanel, type MachineTypeClawRow } from '../../components/claw/TypeClawPanel';
 
-interface MachineTypeRow {
+interface MachineTypeRow extends MachineTypeClawRow {
   name: string;
   is_active: boolean;
   machines_count: number;
@@ -23,6 +24,8 @@ export function MachineTypesTab({ onDone, onError }: TabProps) {
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameTo, setRenameTo] = useState('');
+  // Открытая панель «Клешня и отдача» (DECISION-090).
+  const [clawOpen, setClawOpen] = useState<string | null>(null);
 
   const load = () => {
     api.get<MachineTypeRow[]>('/api/machine-types').then(setTypes).catch(onError);
@@ -97,12 +100,16 @@ export function MachineTypesTab({ onDone, onError }: TabProps) {
               <strong>{row.name}</strong>
               <div className="muted">
                 аппаратов: {row.machines_count}
+                {row.has_claw_settings && ` · Claw Set${row.target_payout_percent ? ` · цель ${Number(row.target_payout_percent)} %` : ''}`}
                 {!row.is_active && ' · отключён, не предлагается при установке'}
               </div>
             </div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               <button onClick={() => { setRenaming(renaming === row.name ? null : row.name); setRenameTo(row.name); }}>
                 {renaming === row.name ? 'Закрыть' : 'Переименовать'}
+              </button>
+              <button onClick={() => setClawOpen(clawOpen === row.name ? null : row.name)}>
+                {clawOpen === row.name ? 'Закрыть' : 'Клешня и отдача'}
               </button>
               <button onClick={() => setActive(row.name, !row.is_active)}>
                 {row.is_active ? 'Отключить' : 'Включить'}
@@ -112,6 +119,14 @@ export function MachineTypesTab({ onDone, onError }: TabProps) {
               )}
             </div>
           </div>
+
+          {clawOpen === row.name && (
+            <TypeClawPanel
+              row={row}
+              onDone={(message) => { onDone(message); load(); }}
+              onError={onError}
+            />
+          )}
 
           {renaming === row.name && (
             <div className="row" style={{ gap: 6, marginTop: 10, flexWrap: 'wrap' }}>

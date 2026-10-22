@@ -3,6 +3,14 @@ import { api } from '../api';
 import { MachineTag } from '../components/ui/MachineTag';
 import { queueTaskClose, readTasks, type CachedTask } from '../db';
 import { syncOutbox } from '../sync';
+import type { ClawInput } from '../clawAdvice';
+
+const CLAW_FIELDS: Array<[keyof ClawInput, string]> = [
+  ['strong', 'Strong'],
+  ['medium', 'Medium'],
+  ['weak', 'Weak'],
+  ['prizeSet', 'Prize Set'],
+];
 
 /**
  * Задачи техника (DECISION-050). Экран читает ЛОКАЛЬНЫЙ кэш, а не сеть: техник открывает список,
@@ -17,6 +25,9 @@ export default function TasksScreen() {
   const [note, setNote] = useState<Record<number, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Фактически выставленные значения для задач «выставить настройки клешни» (DECISION-090):
+  // заранее — значения из задачи, техник правит, если выставил иначе.
+  const [claw, setClaw] = useState<Record<number, Record<string, string>>>({});
 
   const load = async () => setTasks(await readTasks());
   useEffect(() => {
@@ -39,7 +50,17 @@ export default function TasksScreen() {
   };
 
   const complete = async (task: CachedTask) => {
-    await queueTaskClose(task.id, note[task.id] ?? '');
+    let actual: ClawInput | undefined;
+    if (task.claw_plan) {
+      actual = {};
+      for (const [key] of CLAW_FIELDS) {
+        if (task.claw_plan[key] == null) continue;
+        const text = claw[task.id]?.[key] ?? String(task.claw_plan[key]).replace('.', ',');
+        const value = Number(text.replace(',', '.'));
+        if (text.trim() !== '' && Number.isFinite(value)) actual[key] = value;
+      }
+    }
+    await queueTaskClose(task.id, note[task.id] ?? '', actual);
     setNote({ ...note, [task.id]: '' });
     await load();
     setNotice('Отмечено. Уйдёт на сервер при первой связи.');
@@ -77,6 +98,25 @@ export default function TasksScreen() {
           {task.due_date && (
             <div className="muted mono" style={{ marginTop: 6, fontSize: 11.5 }}>
               до {new Date(task.due_date).toLocaleDateString('ru-RU')}
+            </div>
+          )}
+          {task.claw_plan && (
+            <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+              <span className="muted" style={{ fontSize: 12.5 }}>Выставил:</span>
+              {CLAW_FIELDS.filter(([key]) => task.claw_plan?.[key] != null).map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  {label}
+                  <input
+                    className="mono"
+                    inputMode="decimal"
+                    style={{ width: 80 }}
+                    value={claw[task.id]?.[key] ?? String(task.claw_plan?.[key]).replace('.', ',')}
+                    onChange={(event) =>
+                      setClaw({ ...claw, [task.id]: { ...(claw[task.id] ?? {}), [key]: event.target.value } })
+                    }
+                  />
+                </label>
+              ))}
             </div>
           )}
           <input

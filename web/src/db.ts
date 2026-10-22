@@ -123,6 +123,8 @@ export interface CachedTask {
   assigned_to: number | null;
   assigned_name: string | null;
   due_date: string | null;
+  /** Задача «выставить настройки клешни» (DECISION-090): какие значения выставить. */
+  claw_plan?: ClawInput | null;
 }
 
 /**
@@ -134,6 +136,8 @@ export interface QueuedTaskClose {
   taskId: number;
   note: string;
   closedAt: string;
+  /** Фактически выставленные значения клешни для задачи с claw_plan (DECISION-090). */
+  claw?: ClawInput;
 }
 
 let database: Promise<IDBPDatabase<MonitorSchema>> | null = null;
@@ -298,9 +302,9 @@ export async function readTasks(): Promise<CachedTask[]> {
  * Ставит закрытие задачи в очередь и сразу помечает задачу выполненной в локальном кэше, чтобы
  * техник видел результат немедленно, а не после возвращения связи.
  */
-export async function queueTaskClose(taskId: number, note: string): Promise<void> {
+export async function queueTaskClose(taskId: number, note: string, claw?: ClawInput): Promise<void> {
   const instance = await db();
-  await instance.put('taskOutbox', { taskId, note, closedAt: new Date().toISOString() });
+  await instance.put('taskOutbox', { taskId, note, closedAt: new Date().toISOString(), ...(claw ? { claw } : {}) });
   const task = await instance.get('tasks', taskId);
   if (task) await instance.put('tasks', { ...task, status: 'DONE' });
 }

@@ -197,7 +197,7 @@ async function syncDayCloses(): Promise<void> {
 async function syncTaskCloses(): Promise<void> {
   for (const item of await readTaskOutbox()) {
     try {
-      await api.post(`/api/tasks/${item.taskId}/close`, { note: item.note });
+      await api.post(`/api/tasks/${item.taskId}/close`, { note: item.note, ...(item.claw ? { claw: item.claw } : {}) });
       await removeTaskClose(item.taskId);
     } catch (error) {
       if (error instanceof OfflineError) return;

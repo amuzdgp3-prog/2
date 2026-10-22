@@ -1009,3 +1009,19 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
   .claw-hist li { grid-template-columns: 60px minmax(0, 1fr); }
   .claw-hist .res { grid-column: 2; }
 }
+
+/* Клешня и отдача на карточке типа (DECISION-090). */
+.type-claw { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; display: grid; gap: 16px; }
+.type-claw-cfg { display: grid; gap: 14px; }
+.type-claw-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: start; }
+.type-claw-row .lbl, .lbl-small { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; padding-top: 6px; }
+.type-claw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.type-claw-field { display: grid; gap: 3px; font-size: 12px; color: var(--ink-soft); }
+.type-claw-field input { width: 100%; }
+.type-claw-confirm { background: var(--warn-soft); border-radius: var(--r-md); padding: 10px 12px; display: grid; gap: 8px; font-size: 13px; }
+.type-claw-plan { background: var(--paper); border-radius: var(--r-md); padding: 12px; }
+.type-claw-analytics { display: grid; gap: 10px; }
+.claw-chart.type { min-width: 420px; max-width: 640px; }
+.claw-chart .dot { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+.claw-chart .whisk { stroke: var(--ink-faint); stroke-width: 1.5; }
+@media (max-width: 560px) { .type-claw-row { grid-template-columns: minmax(0, 1fr); } }
