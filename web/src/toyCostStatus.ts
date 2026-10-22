@@ -28,8 +28,7 @@ export function toyCostStatus(ratio: number | string | null | undefined): ToyCos
 
 /**
  * Доля затрат за период по суммам (затраты ÷ выручка), для отчёта. Нулевые затраты при выручке —
- * это, скорее всего, не внесённая выдача игрушек, а не «аппарат ничего не отдаёт», поэтому
- * как и ROI с нулевой базой даёт «нет данных» (null).
+ * «0 % · отдаёт мало»: игры шли, а докладывать было нечего. Нет выручки — «нет данных» (null).
  */
 export function toyCostStatusFromAmounts(
   toyCost: number | string | null | undefined,
@@ -38,7 +37,11 @@ export function toyCostStatusFromAmounts(
   if (toyCost === null || toyCost === undefined || revenue === null || revenue === undefined) return null;
   const cost = Number(toyCost);
   const income = Number(revenue);
-  if (!Number.isFinite(cost) || !Number.isFinite(income) || cost <= 0 || income <= 0) return null;
+  if (!Number.isFinite(cost) || !Number.isFinite(income) || cost < 0 || income <= 0) return null;
+  if (cost === 0) {
+    // Выручка есть, а игрушек за период не докладывали — призы почти не выпадали.
+    return { percent: 0, level: 'low', label: 'отдаёт мало', hint: 'За период игрушки не докладывали. Настроить аппарат на большую отдачу' };
+  }
   return statusFromPercent(Math.round((100 * cost) / income));
 }
 

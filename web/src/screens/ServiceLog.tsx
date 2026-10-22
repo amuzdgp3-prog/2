@@ -5,7 +5,7 @@ import { daysBetween, formatGames, formatMoney } from '../calc';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
 import { ToyCostIndicator } from '../components/ui/ToyCostIndicator';
-import { toyCostStatus } from '../toyCostStatus';
+import { serviceToyCost, type ServiceToyCost } from '../serviceToyCost';
 
 interface ToyLine {
   toyId: number;
@@ -44,6 +44,8 @@ interface ServiceLogRow {
   prev_cash_amount: string | null;
   prev_cashless_amount: string | null;
   prev_toys: ToyLine[] | null;
+  /** Обычный темп аппарата до этого обслуживания — медиана игр в сутки; null, если истории нет. */
+  usual_games_per_day: string | null;
 }
 
 interface StaffOption {
@@ -65,16 +67,23 @@ function splitDateTime(iso: string): { date: string; time: string } {
 
 /** Дней с прошлого обслуживания и темп — общий расчёт для табличной и карточной раскладки одной
  * и той же строки, чтобы они не разошлись при будущей правке только одной из двух вёрсток. */
-function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: number | null } {
+function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: number | null; toyCost: ServiceToyCost } {
   const periodDays = daysBetween(row.prev_occurred_at, row.occurred_at);
   const perDay = periodDays && periodDays > 0 ? Number(row.new_games) / periodDays : null;
-  return { periodDays, perDay };
+  const toyCost = serviceToyCost({
+    ratio: row.revenue_to_cost_ratio,
+    hasPrevious: row.prev_occurred_at !== null,
+    prevToyCost: row.prev_toy_cost,
+    gamesPerDay: perDay,
+    usualGamesPerDay: row.usual_games_per_day,
+  });
+  return { periodDays, perDay, toyCost };
 }
 
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
  * Service. Одна и та же таблица на десктопе и на телефоне (DECISION-082, заменяет раздельные
  * раскладки из DECISION-053/054): дата/время, «№ адрес», счётчик, новых игр, выручка (под ней нал и безнал),
- * себестоимость с разбивкой по игрушкам, ROI, техник, фото, комментарий. Остальные цифры —
+ * себестоимость с разбивкой по игрушкам, затраты (доля и статус отдачи), техник, фото, комментарий. Остальные цифры —
  * по тапу на строку, в ServiceDetail. */
 export default function ServiceLogScreen() {
   const [rows, setRows] = useState<ServiceLogRow[]>([]);
@@ -232,7 +241,7 @@ export default function ServiceLogScreen() {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const { periodDays, perDay } = serviceMeta(row);
+              const { periodDays, perDay, toyCost } = serviceMeta(row);
               const { date, time } = splitDateTime(row.occurred_at);
               const isOpen = !isBoss && expanded === row.id;
               return (
@@ -258,7 +267,7 @@ export default function ServiceLogScreen() {
                       <div className="muted mono" style={{ fontSize: 11 }}>безнал {formatMoney(row.cashless_amount)} ₽</div>
                     </td>
                     <td style={{ textAlign: 'right' }}><CostCell toys={row.toys} total={row.toy_cost} /></td>
-                    <td><ToyCostIndicator status={toyCostStatus(row.revenue_to_cost_ratio)} /></td>
+                    <td><ToyCostIndicator status={toyCost.view} /></td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
@@ -271,7 +280,7 @@ export default function ServiceLogScreen() {
                   {isOpen && (
                     <tr>
                       <td colSpan={13} style={{ padding: 0 }}>
-                        <ServiceDetail row={row} periodDays={periodDays} />
+                        <ServiceDetail row={row} periodDays={periodDays} toyCost={toyCost} />
                       </td>
                     </tr>
                   )}
@@ -337,10 +346,14 @@ function ToyList({ toys }: { toys: ToyLine[] | null }) {
 /** Полная карточка обслуживания при раскрытии строки — себестоимость и разбивка по игрушкам (в
  * штуках и в рублях), плюс что было на прошлом обслуживании этой же цепочки и как текущее к нему
  * относится (Δ по дням и по счётчику). Общая и для табличной, и для карточной раскладки. */
-function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: number | null }) {
+function ServiceDetail({ row, periodDays, toyCost }: { row: ServiceLogRow; periodDays: number | null; toyCost: ServiceToyCost }) {
   const hasPrev = row.prev_occurred_at !== null;
   return (
     <div className="readonly-prev" style={{ margin: '10px 0 0' }}>
+      <div className={`tci-verdict tci-${toyCost.view.level}`}>
+        <ToyCostIndicator status={toyCost.view} />
+        <p>{toyCost.explanation}</p>
+      </div>
       <div className="grid-2" style={{ gap: 16 }}>
         <div>
           <div className="lbl">ЭТО ОБСЛУЖИВАНИЕ</div>
@@ -351,7 +364,6 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
             <div className="cell"><b className="mono">{formatMoney(row.price_per_game_snapshot)} ₽</b><span>цена игры</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cash_amount)} ₽</b><span>нал</span></div>
             <div className="cell"><b className="mono">{formatMoney(row.cashless_amount)} ₽</b><span>безнал</span></div>
-            <div className="cell"><ToyCostIndicator status={toyCostStatus(row.revenue_to_cost_ratio)} /><span style={{ display: 'block', marginTop: 4 }}>затраты на игрушки</span></div>
           </div>
           <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки:</div>
           <ToyList toys={row.toys} />
@@ -377,7 +389,6 @@ function ServiceDetail({ row, periodDays }: { row: ServiceLogRow; periodDays: nu
                 <div className="cell"><b className="mono">{row.prev_game_counter}</b><span>счётчик игр</span></div>
                 <div className="cell"><b className="mono">{formatMoney(row.prev_revenue ?? '0')} ₽</b><span>выручка</span></div>
                 <div className="cell"><b className="mono">{formatMoney(row.prev_toy_cost ?? '0')} ₽</b><span>себест. игрушек</span></div>
-                <div className="cell"><ToyCostIndicator status={toyCostStatus(row.prev_revenue_to_cost_ratio)} /><span style={{ display: 'block', marginTop: 4 }}>затраты на игрушки</span></div>
                 <div className="cell"><b className="mono">{periodDays ?? '—'} дн.</b><span>прошло с прошлого раза</span></div>
               </div>
               <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>Игрушки в прошлый раз:</div>

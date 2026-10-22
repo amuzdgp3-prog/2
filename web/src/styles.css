@@ -875,3 +875,20 @@ td.num, th.num { text-align: right; font-family: var(--f-mono); }
 .tci-high { --tci-fg: var(--bad);  --tci-bg: var(--bad-soft); }
 .tci-none { --tci-fg: var(--neutral-badge); --tci-bg: var(--paper-deep); }
 .tci-none .tci-txt b { color: var(--neutral-badge); font-weight: 500; }
+.tci-idle { --tci-fg: var(--neutral-badge); --tci-bg: var(--paper-deep); }
+.tci-idle .tci-txt b { color: var(--neutral-badge); font-weight: 500; }
+
+/* Вывод по отдаче в раскрытой строке журнала: индикатор и одна фраза «что произошло и что делать». */
+.tci-verdict {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 12px; margin-bottom: 14px;
+  border-radius: var(--r-md);
+  background: var(--tci-bg);
+  /* Раскрытая строка живёт внутри прокручиваемой вбок таблицы: без этого на телефоне фраза уезжала
+     за край экрана. Блок держится у левого края видимой области и не шире экрана. */
+  position: sticky; left: 12px;
+  max-width: calc(100vw - 60px);
+}
+.tci-verdict p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--ink); white-space: normal; }
+.tci-verdict .tci-ico { background: var(--surface); }
+@media (max-width: 560px) { .tci-verdict { flex-direction: column; align-items: flex-start; gap: 8px; } }
