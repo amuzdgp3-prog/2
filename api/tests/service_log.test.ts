@@ -54,6 +54,26 @@ describe('service log filters and pagination', () => {
     assert.equal(page2.json().total, 4);
   });
 
+  it('returns the machine usual pace before each service, null when there is no history', async () => {
+    const response = await context.app.inject({
+      method: 'GET',
+      url: '/api/services?search=LOG-1',
+      headers: authHeader(context.adminToken),
+    });
+    const rows = response.json().rows as Array<{ occurred_at: string; usual_games_per_day: string | null }>;
+    assert.equal(rows.length, 3);
+    // Порядок страницы сохраняется: сначала новые.
+    assert.deepEqual(
+      rows.map((row) => new Date(row.occurred_at).toISOString().slice(0, 10)),
+      ['2026-05-03', '2026-05-02', '2026-05-01'],
+    );
+    // У первого обслуживания истории нет.
+    assert.equal(rows[2].usual_games_per_day, null);
+    // Второе: история из одного обслуживания; третье: медиана, включая 100 игр за сутки 1→2 мая.
+    assert.ok(Number(rows[1].usual_games_per_day) > 0);
+    assert.ok(Number(rows[0].usual_games_per_day) > 0);
+  });
+
   it('filters by location, including the subtree', async () => {
     const child = await context.app.inject({
       method: 'POST',

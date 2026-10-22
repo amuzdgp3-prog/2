@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
+import { usualPaceLateralSql } from '../domain/usualPace.js';
 import { pool, withTransaction } from '../db/pool.js';
 import {
   listDraftIssues,
@@ -223,6 +224,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
            FROM services s
            WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
          )
+         SELECT page.*, usual_pace.usual_games_per_day FROM (
          SELECT s.*, l.name AS location_name, p.address, m.model AS machine_model, st.full_name AS technician_name,
                 (SELECT json_agg(json_build_object(
                           'toyId', td.toy_id, 'name', t.name, 'quantity', td.quantity, 'unitCost', td.unit_cost_snapshot
@@ -239,7 +241,11 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
          LEFT JOIN staff st ON st.id = s.technician_id
          WHERE ${where}
          ORDER BY s.occurred_at DESC, s.id DESC
-         LIMIT ${limit} OFFSET ${offset}`,
+         LIMIT ${limit} OFFSET ${offset}
+         ) page
+         -- Обычный темп аппарата считается только для строк этой страницы, а не для всей выборки.
+         ${usualPaceLateralSql('page')}
+         ORDER BY page.occurred_at DESC, page.id DESC`,
         params,
       ),
       pool.query(
