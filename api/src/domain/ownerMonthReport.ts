@@ -1,6 +1,7 @@
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { queryMachineRows, rentSummary, sumDecimal, type MachineRow } from './reports.js';
+import { ownerMonthPayout, type OwnerMonthPayout } from './ownerMonthPayout.js';
 
 /**
  * Контракт отчёта владельца за календарный месяц (страница «Отчёт» и ежемесячный xlsx строятся из
@@ -121,6 +122,8 @@ export interface OwnerMonthReport {
   rent: OwnerMonthRent;
   toys: { rows: OwnerMonthToyRow[]; totalQuantity: number; totalAmount: string };
   machineRows: OwnerMonthMachineRow[];
+  /** Отдача и настройки клешни (DECISION-090, ownerMonthPayout.ts). */
+  payout: OwnerMonthPayout;
 }
 
 /** Границы календарного месяца: даты для service_date/expense_date и моменты для периодов. */
@@ -368,6 +371,7 @@ export async function ownerMonthReport(
   const toys = await loadToys(client, range);
   const { lines: expenseLines, cardTotal } = await loadExpenseLines(client, range);
   const rent = await loadRent(client, range);
+  const payout = await ownerMonthPayout(client, actor, range);
 
   const revenue = sumDecimal(machines.map((machine) => machine.revenue), 2);
   const cash = sumDecimal(machines.map((machine) => machine.cash), 2);
@@ -416,5 +420,6 @@ export async function ownerMonthReport(
       cashless: machine.cashless,
       revenue: machine.revenue,
     })),
+    payout,
   };
 }

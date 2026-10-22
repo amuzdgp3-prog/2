@@ -454,3 +454,119 @@ export async function machineClawCard(client: Client, machineNumber: string): Pr
     periods,
   };
 }
+
+export interface PayoutPaceBin {
+  label: string;
+  from: number;
+  to: number | null;
+  periods: number;
+  /** Темп игр в следующем периоде, % от обычного темпа этого же аппарата. */
+  nextPacePercent: number | null;
+  /** Стандартная ошибка среднего, процентные пункты. */
+  standardError: number | null;
+}
+
+export interface TypeClawAnalytics {
+  machineType: string;
+  periods: number;
+  firstServiceAt: Date | null;
+  bins: PayoutPaceBin[];
+  effects: Array<{
+    direction: 'raise' | 'lower';
+    count: number;
+    complete: number;
+    paceAdjustedPercent: number | null;
+    netChangePercent: number | null;
+  }>;
+}
+
+const PACE_BINS: Array<[number, number | null]> = [[0, 10], [10, 20], [20, 30], [30, 40], [40, 50], [50, null]];
+
+/**
+ * «Больше выигрывают — больше играют?» по типу аппарата. Отдачу периода сравниваем с темпом игр в
+ * СЛЕДУЮЩЕМ периоде: в одном и том же периоде слабая неделя сама поднимает процент отдачи (выручка
+ * в знаменателе), и связь получилась бы ложной. Темп — относительно обычного темпа того же аппарата
+ * (медиана), чтобы не сравнивать бойкие точки с тихими.
+ */
+export async function typeClawAnalytics(client: Client, machineType: string): Promise<TypeClawAnalytics> {
+  const result = await client.query(
+    `WITH s AS (
+       SELECT s.placement_id, s.machine_number, s.occurred_at, s.new_games, s.revenue,
+              ${TOY_COST_SQL} AS toy_cost,
+              EXTRACT(EPOCH FROM s.occurred_at - LAG(s.occurred_at) OVER w) / 86400 AS days
+       FROM services s JOIN machines m ON m.machine_number = s.machine_number
+       WHERE m.machine_type = $1
+       WINDOW w AS (PARTITION BY s.placement_id ORDER BY s.occurred_at, s.id)
+     ),
+     p AS (SELECT *, new_games / days AS pace FROM s WHERE days >= 1 AND days <= 21 AND revenue > 0),
+     med AS (SELECT machine_number, percentile_cont(0.5) WITHIN GROUP (ORDER BY pace) AS mp
+             FROM p GROUP BY 1 HAVING count(*) >= 6),
+     q AS (SELECT 100 * toy_cost / revenue AS payout,
+                  100 * LEAD(pace) OVER (PARTITION BY placement_id ORDER BY occurred_at) / mp AS next_pace
+           FROM p JOIN med USING (machine_number) WHERE mp > 0)
+     SELECT width_bucket(LEAST(payout, 999), ARRAY[10, 20, 30, 40, 50]::numeric[]) AS bin,
+            count(next_pace)::int AS periods, avg(next_pace) AS next_pace,
+            stddev(next_pace) / sqrt(NULLIF(count(next_pace), 0)) AS se
+     FROM q WHERE next_pace IS NOT NULL
+     GROUP BY 1 ORDER BY 1`,
+    [machineType],
+  );
+  const byBin = new Map(result.rows.map((row) => [Number(row.bin), row]));
+  const bins: PayoutPaceBin[] = PACE_BINS.map(([from, to], index) => {
+    const row = byBin.get(index);
+    return {
+      label: to === null ? `${from}+` : `${from}–${to}`,
+      from,
+      to,
+      periods: row ? Number(row.periods) : 0,
+      nextPacePercent: row ? Number(row.next_pace) : null,
+      standardError: row && row.se !== null ? Number(row.se) : null,
+    };
+  });
+
+  const first = await client.query(
+    `SELECT min(s.occurred_at) AS first FROM services s JOIN machines m ON m.machine_number = s.machine_number
+     WHERE m.machine_type = $1`,
+    [machineType],
+  );
+
+  const changes = await client.query(
+    `SELECT c.machine_number, c.effective_at, c.weak,
+            (SELECT pr.weak FROM claw_settings pr
+             WHERE pr.machine_number = c.machine_number AND (pr.effective_at, pr.id) < (c.effective_at, c.id)
+             ORDER BY pr.effective_at DESC, pr.id DESC LIMIT 1) AS previous_weak
+     FROM claw_settings c JOIN machines m ON m.machine_number = c.machine_number
+     WHERE m.machine_type = $1
+     ORDER BY c.effective_at`,
+    [machineType],
+  );
+  const sums = {
+    raise: { count: 0, complete: 0, pace: [] as number[], net: [] as number[] },
+    lower: { count: 0, complete: 0, pace: [] as number[], net: [] as number[] },
+  };
+  for (const row of changes.rows) {
+    if (row.previous_weak === null || row.weak === null || Number(row.previous_weak) === Number(row.weak)) continue;
+    const bucket = sums[Number(row.weak) > Number(row.previous_weak) ? 'raise' : 'lower'];
+    bucket.count += 1;
+    const effect = await changeEffect(client, row.machine_number, machineType, row.effective_at);
+    if (!effect.complete) continue;
+    bucket.complete += 1;
+    if (effect.paceAdjustedPercent !== null) bucket.pace.push(effect.paceAdjustedPercent);
+    if (effect.netChangePercent !== null) bucket.net.push(effect.netChangePercent);
+  }
+  const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null);
+
+  return {
+    machineType,
+    periods: bins.reduce((total, bin) => total + bin.periods, 0),
+    firstServiceAt: first.rows[0]?.first ?? null,
+    bins,
+    effects: (['raise', 'lower'] as const).map((direction) => ({
+      direction,
+      count: sums[direction].count,
+      complete: sums[direction].complete,
+      paceAdjustedPercent: mean(sums[direction].pace),
+      netChangePercent: mean(sums[direction].net),
+    })),
+  };
+}

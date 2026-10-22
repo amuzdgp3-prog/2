@@ -333,3 +333,67 @@ describe('настройки клешни: обслуживание, журна�
     assert.equal(machine.claw_strong, undefined, 'служебные колонки claw_* не должны торчать в строке');
   });
 });
+
+/**
+ * Раздел отчёта владельца «Отдача и настройки клешни» и аналитика типа (DECISION-090): страница и
+ * xlsx строятся одним расчётом, изменения Weak сверяются с советом в момент изменения.
+ */
+describe('настройки клешни: отчёт владельца и аналитика типа', () => {
+  let context: TestContext;
+  let toyId: number;
+
+  before(async () => {
+    context = await bootstrap();
+    await context.app.inject({
+      method: 'POST', url: '/api/machine-types', headers: authHeader(context.adminToken), payload: { name: 'МиникХ' },
+    });
+    await pool.query(`UPDATE machine_types SET has_claw_settings = TRUE, target_payout_percent = 35 WHERE name = 'МиникХ'`);
+    toyId = await createToy(context, 'Зайка', 50);
+    await installTestMachine(context, {
+      machineNumber: 'OR-1', machineType: 'МиникХ', pricePerGame: 10, initialToys: [{ toyId, quantity: 10 }],
+    });
+    // Первые показания, затем 400 игр при затратах 500 ₽ (12,5 %) — совет «прибавить», и техник
+    // прибавляет: изменение «по совету».
+    await postService(context, context.adminToken, 'OR-1', {
+      gameCounter: 10, prizeCounter: 0, occurredAt: '2026-03-01T10:00:00Z', claw: { weak: 12 }, toys: [{ toyId, quantity: 10 }],
+    });
+    await postService(context, context.adminToken, 'OR-1', {
+      gameCounter: 410, prizeCounter: 0, occurredAt: '2026-03-10T10:00:00Z', claw: { weak: 12.2 }, toys: [{ toyId, quantity: 10 }],
+    });
+  });
+
+  after(async () => {
+    await context.app.close();
+  });
+
+  it('раздел отчёта: тип, изменения по совету, эффект', async () => {
+    const response = await context.app.inject({
+      method: 'GET', url: '/api/reports/owner-month?year=2026&month=3', headers: authHeader(context.adminToken),
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const payout = response.json().payout;
+    assert.equal(payout.types.length, 1);
+    assert.equal(payout.types[0].machineTypeName, 'МиникХ');
+    assert.equal(payout.types[0].target, 35);
+    assert.equal(payout.changes.total, 1);
+    assert.equal(payout.changes.follow, 1);
+    assert.equal(payout.changes.effects.find((e: { direction: string }) => e.direction === 'raise').count, 1);
+  });
+
+  it('xlsx строится вместе с новым разделом', async () => {
+    const response = await context.app.inject({
+      method: 'GET', url: '/api/reports/monthly-excel?year=2026&month=3', headers: authHeader(context.adminToken),
+    });
+    assert.equal(response.statusCode, 200, response.body.slice(0, 200));
+  });
+
+  it('аналитика типа отвечает и для руководителя, но не для техника', async () => {
+    const url = '/api/machine-types/' + encodeURIComponent('МиникХ') + '/claw-analytics';
+    const boss = await context.app.inject({ method: 'GET', url, headers: authHeader(context.bossToken) });
+    assert.equal(boss.statusCode, 200, boss.body);
+    assert.equal(boss.json().bins.length, 6);
+    assert.equal(boss.json().effects.find((e: { direction: string }) => e.direction === 'raise').count, 1);
+    const tech = await context.app.inject({ method: 'GET', url, headers: authHeader(context.technicianToken) });
+    assert.equal(tech.statusCode, 403);
+  });
+});

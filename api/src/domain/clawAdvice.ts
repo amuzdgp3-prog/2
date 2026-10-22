@@ -199,6 +199,49 @@ export function adviseClaw(input: {
   return { advice: { kind: 'limit', direction, games, payoutPercent: percent }, warnings };
 }
 
+const volts = (value: number) => String(Math.round(value * 100) / 100).replace('.', ',');
+
+/** Короткая формулировка совета для технику и отчёта: «прибавить Weak до 12,6 В». */
+export function adviceText(advice: ClawAdvice): string {
+  switch (advice.kind) {
+    case 'no-settings':
+      return 'значения ещё не вносились';
+    case 'no-data':
+      return 'нет выручки с изменения';
+    case 'early':
+      return `рано судить: ${Math.round(advice.games)} из ${advice.minGames} игр`;
+    case 'ok':
+      return 'норма, не менять';
+    case 'change': {
+      const verb = advice.direction === 'raise'
+        ? advice.param === 'weak' ? 'прибавить' : 'поднять'
+        : advice.param === 'weak' ? 'убавить' : 'опустить';
+      return `${verb} ${advice.param === 'weak' ? 'Weak' : 'Medium'} до ${volts(advice.to)} В`;
+    }
+    case 'limit':
+      return 'Weak и Medium у границы — проверить клешню, игрушки и Prize Set';
+  }
+}
+
+export type ClawVerdict = 'follow' | 'free' | 'against';
+
+/**
+ * Как изменение Weak соотносится с советом в момент изменения: «по совету» — в ту же сторону, что
+ * советовали; «против совета» — в обратную; «без совета» — совета менять Weak не было. null —
+ * Weak не менялся (меняли другие пункты) или это первые показания.
+ */
+export function clawVerdict(
+  previousWeak: number | null,
+  newWeak: number | null,
+  advice: ClawAdviceResult | null,
+): ClawVerdict | null {
+  if (previousWeak === null || newWeak === null || previousWeak === newWeak) return null;
+  const moved: ClawDirection = newWeak > previousWeak ? 'raise' : 'lower';
+  const shown = advice?.advice;
+  if (!shown || shown.kind !== 'change' || shown.param !== 'weak') return 'free';
+  return shown.direction === moved ? 'follow' : 'against';
+}
+
 const perDay = (value: number, days: number) => (days > 0 ? value / days : null);
 const changePercent = (before: number | null, after: number | null) =>
   before !== null && after !== null && before > 0 ? ((after - before) / before) * 100 : null;

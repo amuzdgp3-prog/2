@@ -28,7 +28,13 @@ import {
   unbindTerminal,
 } from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
-import { clawStateColumnsSql, loadCurrentClaw, machineClawCard, takeClawState } from '../domain/clawStats.js';
+import {
+  clawStateColumnsSql,
+  loadCurrentClaw,
+  machineClawCard,
+  takeClawState,
+  typeClawAnalytics,
+} from '../domain/clawStats.js';
 import { recordClawFromCard, setMachineTarget } from '../commands/clawSettings.js';
 import {
   applyTypeTarget,
@@ -1278,6 +1284,17 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       withTransaction((client) =>
         updateTypeClawConfig(client, request.actor, decodeURIComponent(request.params.name), request.body)),
   );
+
+  /** Аналитика типа: отдача против темпа игр в следующем периоде и эффект изменений Weak. */
+  app.get<{ Params: { name: string } }>('/api/machine-types/:name/claw-analytics', auth, async (request) => {
+    if (request.actor.role !== 'BOSS') assertAdmin(request.actor);
+    const client = await pool.connect();
+    try {
+      return await typeClawAnalytics(client, decodeURIComponent(request.params.name));
+    } finally {
+      client.release();
+    }
+  });
 
   /** Цель отдачи всем аппаратам типа; своя цель аппаратов перезаписывается. */
   app.post<{ Params: { name: string }; Body: { percent: number | null } }>(

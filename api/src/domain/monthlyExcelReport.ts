@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { ownerMonthReport, type OwnerMonthReport } from './ownerMonthReport.js';
+import { adviceText } from './clawAdvice.js';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -189,6 +190,71 @@ function writeToys(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthRepo
   cursor.row += 1;
 }
 
+const PERCENT_FORMAT = '0.0"%"';
+
+function percentCell(cell: ExcelJS.Cell, value: number | null) {
+  cell.value = value === null ? '—' : Math.round(value * 10) / 10;
+  if (value !== null) cell.numFmt = PERCENT_FORMAT;
+  cell.border = THIN_BORDER;
+}
+
+/** Отдача и настройки клешни (DECISION-090) — тот же раздел, что на странице отчёта. */
+function writePayout(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
+  const payout = report.payout;
+  if (payout.types.length === 0) return;
+  sectionTitle(ws, cursor, 'ОТДАЧА И НАСТРОЙКИ КЛЕШНИ');
+  tableHeader(ws, cursor, [
+    'Тип', 'Цель, %', 'Норма, %', 'Отдача за месяц, %', 'Прошлый месяц, %',
+    'Мало / норма / много / рано', 'После игрушек, ₽/сут на аппарат', 'Прошлый месяц, ₽/сут',
+  ]);
+  for (const type of payout.types) {
+    const r = cursor.row;
+    dataCell(ws.getCell(r, 1), type.machineTypeName);
+    percentCell(ws.getCell(r, 2), type.target);
+    dataCell(ws.getCell(r, 3), `${String(type.low).replace('.', ',')}–${String(type.high).replace('.', ',')}`);
+    percentCell(ws.getCell(r, 4), type.payoutPercent);
+    percentCell(ws.getCell(r, 5), type.payoutPercentPrev);
+    dataCell(ws.getCell(r, 6), `${type.lowCount} / ${type.okCount} / ${type.highCount} / ${type.earlyCount}`);
+    moneyCell(ws.getCell(r, 7), type.netPerDay ?? 0);
+    moneyCell(ws.getCell(r, 8), type.netPerDayPrev ?? 0);
+    cursor.row += 1;
+  }
+
+  cursor.row += 1;
+  labelValueRow(ws, cursor, 'Изменений Weak за месяц', payout.changes.total, { money: false, bold: true });
+  labelValueRow(ws, cursor, 'По совету', payout.changes.follow, { money: false });
+  labelValueRow(ws, cursor, 'Без совета', payout.changes.free, { money: false });
+  labelValueRow(ws, cursor, 'Против совета', payout.changes.against, { money: false });
+  labelValueRow(ws, cursor, 'Совет висит, настройку не меняли — аппаратов', payout.changes.pendingAdvice, { money: false });
+
+  cursor.row += 1;
+  tableHeader(ws, cursor, ['Шаг', 'Изменений', 'Прошло 14 дней', 'Игр в сутки, п.п. к фону типа', 'После игрушек, %']);
+  for (const effect of payout.changes.effects) {
+    const r = cursor.row;
+    dataCell(ws.getCell(r, 1), effect.direction === 'raise' ? 'Weak прибавили' : 'Weak убавили');
+    dataCell(ws.getCell(r, 2), effect.count);
+    dataCell(ws.getCell(r, 3), effect.complete);
+    percentCell(ws.getCell(r, 4), effect.paceAdjustedPercent);
+    percentCell(ws.getCell(r, 5), effect.netChangePercent);
+    cursor.row += 1;
+  }
+
+  if (payout.attention.length) {
+    cursor.row += 1;
+    tableHeader(ws, cursor, ['Требуют внимания', 'Тип', 'Отдача, %', 'Цель, %', 'Игр с изменения', 'Совет']);
+    for (const item of payout.attention) {
+      const r = cursor.row;
+      dataCell(ws.getCell(r, 1), `${item.machineNumber}: ${item.address}`);
+      dataCell(ws.getCell(r, 2), item.machineTypeName);
+      percentCell(ws.getCell(r, 3), item.payoutPercent);
+      percentCell(ws.getCell(r, 4), item.target);
+      dataCell(ws.getCell(r, 5), Math.round(item.games));
+      dataCell(ws.getCell(r, 6), adviceText(item.advice));
+      cursor.row += 1;
+    }
+  }
+}
+
 function writeMachineRows(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ');
   tableHeader(ws, cursor, ['Аппарат', 'Тип', 'Цена игры, ₽', 'Терминал', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
@@ -247,6 +313,7 @@ export async function buildMonthlyReportWorkbook(
   writeCashReport(ws, cursor, report);
   writeRent(ws, cursor, report);
   writeToys(ws, cursor, report);
+  writePayout(ws, cursor, report);
   writeMachineRows(ws, cursor, report);
 
   return workbook;
