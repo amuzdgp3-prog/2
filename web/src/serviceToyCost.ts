@@ -1,4 +1,4 @@
-import { toyCostStatus, TOY_COST_HIGH_ABOVE, TOY_COST_LOW_BELOW, type ToyCostStatus } from './toyCostStatus';
+import { toyCostStatus, TOY_COST_HIGH_ABOVE, TOY_COST_LOW_BELOW, type ToyCostBand, type ToyCostStatus } from './toyCostStatus';
 
 /**
  * Что показать в колонке «Затраты» журнала для одного обслуживания. Помимо обычной доли затрат
@@ -29,19 +29,22 @@ export interface ServiceToyCostInput {
   prevToyCost: string | null;
   gamesPerDay: number | null;
   usualGamesPerDay: string | number | null;
+  /** Коридор нормы аппарата с целью отдачи (DECISION-090); без него — общая вилка. */
+  band?: ToyCostBand;
 }
 
-const NORM = `норма ${TOY_COST_LOW_BELOW}–${TOY_COST_HIGH_ABOVE} %`;
+const normText = (band?: ToyCostBand) =>
+  `норма ${String(band?.low ?? TOY_COST_LOW_BELOW).replace('.', ',')}–${String(band?.high ?? TOY_COST_HIGH_ABOVE).replace('.', ',')} %`;
 const pace = (value: number) => Math.round(value).toLocaleString('ru-RU');
 
 export function serviceToyCost(input: ServiceToyCostInput): ServiceToyCost {
-  const status = toyCostStatus(input.ratio);
+  const status = toyCostStatus(input.ratio, input.band);
   if (status) {
     const action =
       status.level === 'ok' ? 'Аппарат в целевой вилке.' : `${status.hint}.`;
     return {
       view: status,
-      explanation: `Игрушки прошлой загрузки — ${status.percent} % от выручки этого периода (${NORM}). ${action}`,
+      explanation: `Игрушки прошлой загрузки — ${status.percent} % от выручки этого периода (${normText(input.band)}). ${action}`,
     };
   }
 

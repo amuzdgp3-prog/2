@@ -6,6 +6,7 @@ import { PageSizeSelect } from '../components/ui/PageSizeSelect';
 import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
 import { ToyCostIndicator } from '../components/ui/ToyCostIndicator';
 import { serviceToyCost, type ServiceToyCost } from '../serviceToyCost';
+import { adviceText, clawVerdict, formatVolts, payoutBand, type ClawAdviceResult, type ClawVerdict } from '../clawAdvice';
 
 interface ToyLine {
   toyId: number;
@@ -46,6 +47,22 @@ interface ServiceLogRow {
   prev_toys: ToyLine[] | null;
   /** Обычный темп аппарата до этого обслуживания — медиана игр в сутки; null, если истории нет. */
   usual_games_per_day: string | null;
+  /** Цель отдачи аппарата, % (DECISION-090); null — общая норма. */
+  target_payout_percent?: string | null;
+  /** Настройки клешни, поменянные с этим обслуживанием; null — не меняли. */
+  claw_change?: ClawChange | null;
+}
+
+interface ClawValuesRow {
+  strong: number | null;
+  medium: number | null;
+  weak: number | null;
+  prizeSet: number | null;
+}
+
+interface ClawChange extends ClawValuesRow {
+  previous: ClawValuesRow | null;
+  advice: ClawAdviceResult | null;
 }
 
 interface StaffOption {
@@ -76,8 +93,70 @@ function serviceMeta(row: ServiceLogRow): { periodDays: number | null; perDay: n
     prevToyCost: row.prev_toy_cost,
     gamesPerDay: perDay,
     usualGamesPerDay: row.usual_games_per_day,
+    band: row.target_payout_percent ? payoutBand(Number(row.target_payout_percent)) : undefined,
   });
   return { periodDays, perDay, toyCost };
+}
+
+const VERDICT: Record<ClawVerdict, { label: string; className: string }> = {
+  follow: { label: 'по совету', className: 'claw-verdict follow' },
+  free: { label: 'без совета', className: 'claw-verdict free' },
+  against: { label: 'против совета', className: 'claw-verdict against' },
+};
+
+const GEAR = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
+  </svg>
+);
+
+/** Значок в строке журнала — только у обслуживаний, где меняли настройки клешни (DECISION-090). */
+function ClawChangeCell({ change }: { change: ClawChange | null | undefined }) {
+  if (!change) return null;
+  const before = change.previous;
+  const text = !before
+    ? `${formatVolts(change.weak)}`
+    : before.weak !== change.weak
+      ? `${formatVolts(before.weak)}→${formatVolts(change.weak)}`
+      : 'настройки';
+  return <span className="claw-gear" title={!before ? 'Первые показания' : undefined}>{GEAR}{text}</span>;
+}
+
+/** Строки для раскрытого обслуживания: что поменяли и как это соотносится с советом. */
+function ClawChangeDetail({ change }: { change: ClawChange }) {
+  const before = change.previous;
+  const verdict = clawVerdict(before?.weak ?? null, change.weak, change.advice);
+  const lines: Array<{ key: string; label: string; from: string; to: string }> = [];
+  const fields: Array<[keyof ClawValuesRow, string, boolean]> = [
+    ['weak', 'Клешня п.3 (Weak)', true],
+    ['strong', 'Strong (п.1)', true],
+    ['medium', 'Medium (п.2)', true],
+    ['prizeSet', 'Prize Set', false],
+  ];
+  for (const [key, label, volts] of fields) {
+    const from = before?.[key] ?? null;
+    const to = change[key];
+    if (before && from === to) continue;
+    if (!before && to === null) continue;
+    const show = (value: number | null) => (value === null ? '—' : volts ? `${formatVolts(value)} В` : String(value));
+    lines.push({ key, label, from: show(from), to: show(to) });
+  }
+  return (
+    <div className="claw-detail">
+      {!before && <div className="muted" style={{ fontSize: 12 }}>Первые показания настроек клешни:</div>}
+      {lines.map((line) => (
+        <div key={line.key}>
+          <b>{line.label}:</b>{' '}
+          <span className="mono">{before ? `${line.from} → ${line.to}` : line.to}</span>
+          {line.key === 'weak' && verdict && <span className={VERDICT[verdict].className}>{VERDICT[verdict].label}</span>}
+          {line.key === 'weak' && verdict && change.advice && (
+            <span className="muted" style={{ fontSize: 12 }}> · совет был: {adviceText(change.advice.advice)}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** Журнал обслуживаний (docs/design/mockups/07_admin_service_log.html): фильтруемый список всех
@@ -233,6 +312,7 @@ export default function ServiceLogScreen() {
               <th className="num">Выручка</th>
               <th style={{ textAlign: 'right' }}>Себестоимость</th>
               <th>Затраты</th>
+              <th>Клешня</th>
               <th>Техник</th>
               <th>Фото</th>
               <th>Комментарий</th>
@@ -268,6 +348,7 @@ export default function ServiceLogScreen() {
                     </td>
                     <td style={{ textAlign: 'right' }}><CostCell toys={row.toys} total={row.toy_cost} /></td>
                     <td><ToyCostIndicator status={toyCost.view} /></td>
+                    <td><ClawChangeCell change={row.claw_change} /></td>
                     <td>{row.technician_name ?? '—'}</td>
                     <td onClick={(event) => event.stopPropagation()}>
                       <PhotoCell objectKey={row.photo_object_key} />
@@ -279,7 +360,7 @@ export default function ServiceLogScreen() {
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={13} style={{ padding: 0 }}>
+                      <td colSpan={14} style={{ padding: 0 }}>
                         <ServiceDetail row={row} periodDays={periodDays} toyCost={toyCost} />
                       </td>
                     </tr>
@@ -288,7 +369,7 @@ export default function ServiceLogScreen() {
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={13} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
+              <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 24 }}>Ничего не найдено</td></tr>
             )}
           </tbody>
         </table>
@@ -354,6 +435,7 @@ function ServiceDetail({ row, periodDays, toyCost }: { row: ServiceLogRow; perio
         <ToyCostIndicator status={toyCost.view} />
         <p>{toyCost.explanation}</p>
       </div>
+      {row.claw_change && <ClawChangeDetail change={row.claw_change} />}
       <div className="grid-2" style={{ gap: 16 }}>
         <div>
           <div className="lbl">ЭТО ОБСЛУЖИВАНИЕ</div>

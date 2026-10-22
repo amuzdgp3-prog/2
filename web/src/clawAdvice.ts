@@ -179,8 +179,12 @@ export function adviseClaw(input: {
 }
 
 /** Вольты по-русски: 12,6. */
-export const formatVolts = (value: number | null) =>
-  value === null ? '—' : String(roundClaw(value)).replace('.', ',');
+export const formatVolts = (value: number | null) => {
+  if (value === null) return '—';
+  const rounded = roundClaw(value);
+  // Десятые всегда видны (12,0 рядом с 12,2), сотые — только если шаг платы их требует.
+  return (Number.isInteger(rounded * 10) ? rounded.toFixed(1) : String(rounded)).replace('.', ',');
+};
 
 export function adviceText(advice: ClawAdvice): string {
   switch (advice.kind) {

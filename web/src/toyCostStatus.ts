@@ -10,6 +10,17 @@ export type ToyCostLevel = 'low' | 'ok' | 'high';
 export const TOY_COST_LOW_BELOW = 25;
 export const TOY_COST_HIGH_ABOVE = 40;
 
+/**
+ * Коридор нормы. По умолчанию — общая вилка выше; у аппарата с целью отдачи — цель ±10 % от цели
+ * (DECISION-090, clawAdvice.ts payoutBand).
+ */
+export interface ToyCostBand {
+  low: number;
+  high: number;
+}
+
+const DEFAULT_BAND: ToyCostBand = { low: TOY_COST_LOW_BELOW, high: TOY_COST_HIGH_ABOVE };
+
 export interface ToyCostStatus {
   /** Доля затрат на игрушки в выручке, целые проценты. */
   percent: number;
@@ -19,11 +30,14 @@ export interface ToyCostStatus {
   hint: string;
 }
 
-export function toyCostStatus(ratio: number | string | null | undefined): ToyCostStatus | null {
+export function toyCostStatus(
+  ratio: number | string | null | undefined,
+  band: ToyCostBand = DEFAULT_BAND,
+): ToyCostStatus | null {
   if (ratio === null || ratio === undefined || ratio === '') return null;
   const value = Number(ratio);
   if (!Number.isFinite(value) || value <= 0) return null;
-  return statusFromPercent(Math.round(100 / value));
+  return statusFromPercent(Math.round(100 / value), band);
 }
 
 /**
@@ -33,6 +47,7 @@ export function toyCostStatus(ratio: number | string | null | undefined): ToyCos
 export function toyCostStatusFromAmounts(
   toyCost: number | string | null | undefined,
   revenue: number | string | null | undefined,
+  band: ToyCostBand = DEFAULT_BAND,
 ): ToyCostStatus | null {
   if (toyCost === null || toyCost === undefined || revenue === null || revenue === undefined) return null;
   const cost = Number(toyCost);
@@ -42,14 +57,14 @@ export function toyCostStatusFromAmounts(
     // Выручка есть, а игрушек за период не докладывали — призы почти не выпадали.
     return { percent: 0, level: 'low', label: 'отдаёт мало', hint: 'За период игрушки не докладывали. Настроить аппарат на большую отдачу' };
   }
-  return statusFromPercent(Math.round((100 * cost) / income));
+  return statusFromPercent(Math.round((100 * cost) / income), band);
 }
 
-function statusFromPercent(percent: number): ToyCostStatus {
-  if (percent < TOY_COST_LOW_BELOW) {
+function statusFromPercent(percent: number, band: ToyCostBand): ToyCostStatus {
+  if (percent < band.low) {
     return { percent, level: 'low', label: 'отдаёт мало', hint: 'Настроить аппарат на большую отдачу' };
   }
-  if (percent > TOY_COST_HIGH_ABOVE) {
+  if (percent > band.high) {
     return { percent, level: 'high', label: 'отдаёт много', hint: 'Настроить аппарат на меньшую отдачу' };
   }
   return { percent, level: 'ok', label: 'норма', hint: 'В целевой вилке' };

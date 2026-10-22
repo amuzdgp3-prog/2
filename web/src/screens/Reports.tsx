@@ -5,6 +5,7 @@ import { formatGames, formatMoney } from '../calc';
 import { formatRoiSplit } from '../roiSplit';
 import { ToyCostIndicator } from '../components/ui/ToyCostIndicator';
 import { toyCostStatusFromAmounts } from '../toyCostStatus';
+import { payoutBand } from '../clawAdvice';
 
 interface MachineRow {
   machineNumber: string;
@@ -17,6 +18,8 @@ interface MachineRow {
   cash: string;
   toyCost: string;
   lastRevenueToCostRatio: string | null;
+  /** Цель отдачи аппарата, % (DECISION-090); null — общая норма 25–40 %. */
+  targetPayoutPercent?: number | null;
 }
 
 interface LocationRow {
@@ -569,7 +572,13 @@ export default function ReportsScreen() {
                           <td className="right mono">{formatMoney(machine.cashless)}</td>
                           <td>
                             {/* Доля затрат за период: сумма себестоимости ÷ выручка, пересчёт только для показа. */}
-                            <ToyCostIndicator status={toyCostStatusFromAmounts(machine.toyCost, machine.revenue)} />
+                            <ToyCostIndicator
+                              status={toyCostStatusFromAmounts(
+                                machine.toyCost,
+                                machine.revenue,
+                                machine.targetPayoutPercent != null ? payoutBand(machine.targetPayoutPercent) : undefined,
+                              )}
+                            />
                           </td>
                         </tr>
                       ))}
