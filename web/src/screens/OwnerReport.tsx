@@ -7,6 +7,7 @@ import {
   GroupsTable,
   MachineCounts,
   MachineRowsTable,
+  PayoutCard,
   RentCard,
   RevenueAndProfit,
   ToysTable,
@@ -114,6 +115,7 @@ export default function OwnerReportScreen() {
           </div>
           <RentCard report={report} />
           <ToysTable report={report} />
+          <PayoutCard report={report} />
           <MachineRowsTable report={report} />
         </>
       )}

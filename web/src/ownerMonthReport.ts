@@ -1,3 +1,4 @@
+import type { ClawAdvice } from './clawAdvice';
 /**
  * Контракт отчёта владельца за календарный месяц (страница «Отчёт» и ежемесячный xlsx строятся из
  * одного и того же объекта, чтобы экран и файл не расходились).
@@ -117,4 +118,52 @@ export interface OwnerMonthReport {
   rent: OwnerMonthRent;
   toys: { rows: OwnerMonthToyRow[]; totalQuantity: number; totalAmount: string };
   machineRows: OwnerMonthMachineRow[];
+  /** Отдача и настройки клешни (DECISION-090); нет у отчётов старой версии сервера. */
+  payout?: OwnerMonthPayout;
+}
+
+/** Зеркало api/src/domain/ownerMonthPayout.ts. */
+export interface OwnerMonthPayoutType {
+  machineTypeName: string;
+  target: number | null;
+  low: number;
+  high: number;
+  payoutPercent: number | null;
+  payoutPercentPrev: number | null;
+  machines: number;
+  lowCount: number;
+  okCount: number;
+  highCount: number;
+  earlyCount: number;
+  netPerDay: number | null;
+  netPerDayPrev: number | null;
+}
+
+export interface OwnerMonthPayout {
+  types: OwnerMonthPayoutType[];
+  changes: {
+    total: number;
+    machines: number;
+    follow: number;
+    free: number;
+    against: number;
+    pendingAdvice: number;
+    effects: Array<{
+      direction: 'raise' | 'lower';
+      count: number;
+      complete: number;
+      paceAdjustedPercent: number | null;
+      netChangePercent: number | null;
+    }>;
+  };
+  attention: Array<{
+    machineNumber: string;
+    address: string;
+    machineTypeName: string;
+    payoutPercent: number;
+    target: number | null;
+    games: number;
+    since: string | null;
+    advice: ClawAdvice;
+  }>;
 }

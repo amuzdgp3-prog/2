@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { formatGames, formatMoney } from '../calc';
+import { adviceText } from '../clawAdvice';
 import type {
   OwnerMonthExpenseLine,
   OwnerMonthReport,
@@ -289,6 +290,137 @@ export function ToysTable({ report }: { report: OwnerMonthReport }) {
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+const pct = (value: number | null) => (value === null ? '—' : `${(Math.round(value * 10) / 10).toString().replace('.', ',')} %`);
+const signedPct = (value: number | null) =>
+  value === null ? '—' : `${value > 0 ? '+' : value < 0 ? '−' : '±'}${Math.abs(Math.round(value))} %`;
+const rubDay = (value: number | null) => (value === null ? '—' : `${Math.round(value).toLocaleString('ru-RU')} ₽`);
+
+/**
+ * «Отдача и настройки клешни» (DECISION-090): аппараты относительно цели, изменения Weak за месяц
+ * и их эффект, аппараты, где совет висит. Тот же раздел — в xlsx (monthlyExcelReport.ts).
+ */
+export function PayoutCard({ report }: { report: OwnerMonthReport }) {
+  const payout = report.payout;
+  if (!payout || payout.types.length === 0) return null;
+  const sum = payout.types.reduce(
+    (total, type) => ({
+      low: total.low + type.lowCount,
+      ok: total.ok + type.okCount,
+      high: total.high + type.highCount,
+      early: total.early + type.earlyCount,
+    }),
+    { low: 0, ok: 0, high: 0, early: 0 },
+  );
+  const all = sum.low + sum.ok + sum.high + sum.early;
+  const segment = (value: number, color: string, label: string) =>
+    value > 0 ? <div title={`${label}: ${value}`} style={{ flex: value, background: color }} /> : null;
+  return (
+    <div className="card card-pad" style={{ marginBottom: 12 }}>
+      <h2 className="or-title">Отдача и настройки клешни</h2>
+      <p className="or-sub">Аппараты относительно цели — по отдаче с последнего изменения настроек на конец месяца</p>
+
+      {all > 0 && (
+        <>
+          <div className="or-payout-bar">
+            {segment(sum.low, 'var(--warn)', 'отдают мало')}
+            {segment(sum.ok, 'var(--good)', 'в норме')}
+            {segment(sum.high, 'var(--bad)', 'отдают много')}
+            {segment(sum.early, 'var(--line)', 'рано судить')}
+          </div>
+          <div className="or-payout-legend">
+            <span><i style={{ background: 'var(--warn)' }} />отдают мало <b>{sum.low}</b></span>
+            <span><i style={{ background: 'var(--good)' }} />в норме <b>{sum.ok}</b></span>
+            <span><i style={{ background: 'var(--bad)' }} />отдают много <b>{sum.high}</b></span>
+            <span><i style={{ background: 'var(--line)' }} />рано судить <b>{sum.early}</b></span>
+          </div>
+        </>
+      )}
+
+      <div className="table-wrap scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Тип</th>
+              <th className="num">Цель</th>
+              <th className="num">Отдача за месяц</th>
+              <th className="num">Мало / норма / много</th>
+              <th className="num">После игрушек, в сутки на аппарат</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payout.types.map((type) => {
+              const change = type.netPerDay !== null && type.netPerDayPrev ? ((type.netPerDay - type.netPerDayPrev) / type.netPerDayPrev) * 100 : null;
+              return (
+                <tr key={type.machineTypeName}>
+                  <td>{type.machineTypeName}</td>
+                  <td className="num">{type.target === null ? `норма ${type.low}–${type.high} %` : `${type.target} %`}</td>
+                  <td className="num">{pct(type.payoutPercent)} <span className="muted">(было {pct(type.payoutPercentPrev)})</span></td>
+                  <td className="num">{type.lowCount} / {type.okCount} / {type.highCount}</td>
+                  <td className="num"><b>{rubDay(type.netPerDay)}</b> <span className={change === null ? 'muted' : change > 1 ? 'or-up' : change < -1 ? 'or-down' : 'muted'}>{signedPct(change)}</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="or-payout-cols">
+        <div>
+          <h3 className="or-subtitle">Изменения настроек за месяц</h3>
+          <div className="or-payout-kpis">
+            <div><span>Изменений Weak</span><b>{payout.changes.total}</b><small>на {payout.changes.machines} аппаратах</small></div>
+            <div><span>По совету</span><b>{payout.changes.follow}</b><small>без совета {payout.changes.free} · против {payout.changes.against}</small></div>
+            <div><span>Совет висит</span><b>{payout.changes.pendingAdvice}</b><small>аппаратов не трогали</small></div>
+          </div>
+          <div className="table-wrap scroll-x" style={{ marginTop: 10 }}>
+            <table>
+              <thead>
+                <tr><th>Шаг</th><th className="num">Раз</th><th className="num">Игр в сутки</th><th className="num">После игрушек</th></tr>
+              </thead>
+              <tbody>
+                {payout.changes.effects.map((effect) => (
+                  <tr key={effect.direction}>
+                    <td>Weak {effect.direction === 'raise' ? 'прибавили' : 'убавили'}</td>
+                    <td className="num">{effect.count}{effect.complete < effect.count ? <span className="muted"> ({effect.complete} с итогом)</span> : null}</td>
+                    <td className="num">{signedPct(effect.paceAdjustedPercent)}</td>
+                    <td className="num">{signedPct(effect.netChangePercent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="or-sub" style={{ marginTop: 6 }}>14 дней до и после изменения, с поправкой на общий фон типа. Изменения моложе 14 дней ещё не в средних.</p>
+        </div>
+        <div>
+          <h3 className="or-subtitle">Требуют внимания</h3>
+          <p className="or-sub">Вне нормы, 300+ игр с изменения, настройку не меняли</p>
+          {payout.attention.length === 0 ? (
+            <p className="muted">Таких аппаратов нет.</p>
+          ) : (
+            <div className="table-wrap scroll-x">
+              <table>
+                <thead>
+                  <tr><th>Аппарат</th><th className="num">Отдача</th><th className="num">Игр с изменения</th><th>Совет</th></tr>
+                </thead>
+                <tbody>
+                  {payout.attention.map((item) => (
+                    <tr key={item.machineNumber}>
+                      <td className="wrap">№ {item.machineNumber} {item.address} <span className="muted">· {item.machineTypeName}</span></td>
+                      <td className="num">{pct(item.payoutPercent)}{item.target !== null && <span className="muted"> / цель {item.target} %</span>}</td>
+                      <td className="num">{Math.round(item.games).toLocaleString('ru-RU')}</td>
+                      <td>{adviceText(item.advice)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
