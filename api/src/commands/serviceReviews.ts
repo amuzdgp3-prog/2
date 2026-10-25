@@ -1,5 +1,5 @@
 import { withTransaction, type Client } from '../db/pool.js';
-import { auditUpdate, type Actor } from '../lib/audit.js';
+import { auditDelete, auditUpdate, type Actor } from '../lib/audit.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { assertAdmin } from '../lib/scope.js';
 import { clearDraftIssue } from './draftIssues.js';
@@ -371,6 +371,24 @@ export async function rejectReview(
     throw conflict('REVIEW_ALREADY_RESOLVED', 'запись уже разобрана');
   }
   return resolve(client, actor, review, { status: 'REJECTED', serviceId: null, comment: text, changes: [] });
+}
+
+/**
+ * Администратор удаляет запись на проверке целиком — например, техник перепутал аппарат и
+ * исправлять там нечего. Только PENDING: разобранная запись — это уже история для техника или
+ * ссылка на сохранённое обслуживание. Строка стирается, копия остаётся в аудите. Фото уберёт
+ * обычная чистка осиротевших фото.
+ */
+export async function deleteReview(client: Client, actor: Actor, localId: string): Promise<void> {
+  assertAdmin(actor);
+  const review = await loadReview(client, localId, true);
+  if (!review) throw notFound('запись на проверке не найдена');
+  if (review.status !== 'PENDING') {
+    throw conflict('REVIEW_ALREADY_RESOLVED', 'запись уже разобрана — удалить можно только ту, что ещё на проверке');
+  }
+  await client.query('DELETE FROM service_reviews WHERE local_id = $1', [localId]);
+  await clearDraftIssue(client, localId);
+  await auditDelete(client, actor, 'service_review', localId, review as unknown as Record<string, unknown>);
 }
 
 async function resolve(

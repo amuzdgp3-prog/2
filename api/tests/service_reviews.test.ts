@@ -57,9 +57,9 @@ describe('обслуживания на проверке у администра
     });
   }
 
-  const admin = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
+  const admin = (method: 'GET' | 'POST' | 'DELETE', url: string, payload?: unknown) =>
     context.app.inject({ method, url, headers: authHeader(context.adminToken), payload: payload as never });
-  const tech = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
+  const tech = (method: 'GET' | 'POST' | 'DELETE', url: string, payload?: unknown) =>
     context.app.inject({ method, url, headers: authHeader(context.technicianToken), payload: payload as never });
 
   const serviceCount = async (localId: string) =>
@@ -270,6 +270,49 @@ describe('обслуживания на проверке у администра
     assert.equal(cleanup.statusCode, 200, cleanup.body);
     const photo = await pool.query('SELECT 1 FROM photo_objects WHERE object_key = $1', [photos.get(localId)]);
     assert.equal(photo.rowCount, 1);
+  });
+
+  it('администратор удаляет запись на проверке; аудит остаётся, техник её больше не видит', async () => {
+    const localId = randomUUID();
+    const sent = await send(context.technicianToken, localId, {
+      gameCounter: 100,
+      prizeCounter: 200,
+      occurredAt: '2026-01-28T12:00:00Z',
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+
+    const byTech = await tech('DELETE', `/api/service-reviews/${localId}`);
+    assert.equal(byTech.statusCode, 403, byTech.body);
+
+    const removed = await admin('DELETE', `/api/service-reviews/${localId}`);
+    assert.equal(removed.statusCode, 200, removed.body);
+    const row = await pool.query('SELECT 1 FROM service_reviews WHERE local_id = $1', [localId]);
+    assert.equal(row.rowCount, 0);
+    const audit = await pool.query(
+      `SELECT 1 FROM audit_log WHERE entity = 'service_review' AND entity_id = $1 AND action = 'DELETE'`,
+      [localId],
+    );
+    assert.equal(audit.rowCount, 1);
+    const mine = await tech('GET', '/api/service-reviews/mine');
+    assert.ok(!(mine.json() as Array<{ localId: string }>).some((item) => item.localId === localId));
+
+    const again = await admin('DELETE', `/api/service-reviews/${localId}`);
+    assert.equal(again.statusCode, 404, again.body);
+  });
+
+  it('разобранную запись удалить нельзя', async () => {
+    const localId = randomUUID();
+    const sent = await send(context.technicianToken, localId, {
+      gameCounter: 100,
+      prizeCounter: 200,
+      occurredAt: '2026-01-29T12:00:00Z',
+    });
+    assert.equal(sent.statusCode, 202, sent.body);
+    const rejected = await admin('POST', `/api/service-reviews/${localId}/reject`, { comment: 'не тот аппарат' });
+    assert.equal(rejected.statusCode, 200, rejected.body);
+
+    const removed = await admin('DELETE', `/api/service-reviews/${localId}`);
+    assert.equal(removed.statusCode, 409, removed.body);
   });
 
   it('администратор, как и раньше, получает отказ сразу, без очереди проверки', async () => {

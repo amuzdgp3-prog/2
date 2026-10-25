@@ -15,6 +15,7 @@ import {
 } from '../commands/draftIssues.js';
 import {
   approveReview,
+  deleteReview,
   getReview,
   listMyReviews,
   listReviews,
@@ -484,6 +485,12 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
         rejectReview(client, request.actor, request.params.localId, request.body?.comment));
     },
   );
+
+  app.delete<{ Params: { localId: string } }>('/api/service-reviews/:localId', auth, async (request) => {
+    if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
+    await withTransaction((client) => deleteReview(client, request.actor, request.params.localId));
+    return { ok: true };
+  });
 
   app.post<{ Params: { localId: string } }>('/api/service-reviews/:localId/seen', auth, async (request) => {
     if (!UUID_PATTERN.test(request.params.localId)) throw notFound('запись на проверке не найдена');
