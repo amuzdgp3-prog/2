@@ -210,6 +210,20 @@ function ReviewEditor({
     }
   };
 
+  const remove = async () => {
+    if (!confirm('Удалить запись без следа? Обслуживание не сохранится, техник эту запись не увидит.')) return;
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await api.delete(`/api/service-reviews/${localId}`);
+      onResolved('Запись удалена');
+    } catch (caught) {
+      setSaveError((caught as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="stack" style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
       <div className="row" style={{ gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -333,6 +347,9 @@ function ReviewEditor({
           {busy ? 'Сохранение…' : 'Сохранить обслуживание'}
         </button>
         <button disabled={busy} onClick={reject}>Отклонить</button>
+        <button disabled={busy} onClick={remove} title="Для записей, где исправлять нечего: например, техник перепутал аппарат">
+          Удалить
+        </button>
       </div>
     </div>
   );
