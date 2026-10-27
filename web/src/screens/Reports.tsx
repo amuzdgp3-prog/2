@@ -229,16 +229,20 @@ export default function ReportsScreen() {
     setTelegramNotice(null);
     try {
       await api.post(`/api/reports/monthly-excel/send-telegram?year=${excelYear}&month=${excelMonth}`, {});
-      setTelegramNotice('Отчёт отправлен в Telegram');
+      // Не «отправлен»: сервер только ставит отчёт в очередь (DECISION-092), реальную отправку
+      // делает внешний релей — обещать здесь доставку значило бы врать.
+      setTelegramNotice('Отчёт поставлен в очередь на отправку в Telegram');
     } catch (caught) {
-      setTelegramNotice(`Не удалось отправить: ${(caught as Error).message}`);
+      setTelegramNotice(`Не удалось поставить в очередь: ${(caught as Error).message}`);
     } finally {
       setTelegramBusy(false);
     }
   };
 
   /** Второй канал доставки того же файла — на почту, появился после DECISION-074 (сеть сервера
-   * не пропускает Telegram). Кнопка выше не убрана — если сеть починят, снова заработает сама. */
+   * не пропускает Telegram). Остаётся и после DECISION-092: почта уходит с самого сервера
+   * напрямую, а Telegram — только через очередь и внешний релей, то есть зависит от того, что
+   * релей включён. */
   const sendMonthlyExcelToEmail = async () => {
     setEmailBusy(true);
     setEmailNotice(null);

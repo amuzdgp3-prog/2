@@ -34,19 +34,29 @@ mkdir -p "$BACKUP_DIR"
 
 log() { echo "$(date -Is) $*" >>"$LOG"; }
 
-# Оповещение владельцу тем же ботом, что шлёт ежемесячный отчёт. Токен читается из .env и никогда
-# не попадает ни в лог, ни в вывод команды.
+# Оповещение владельцу. Напрямую в Telegram с прода не уходит — сеть сервера не пропускает
+# api.telegram.org (DECISION-074). Поэтому сообщение кладётся в очередь telegram_outbox через
+# собственный API (DECISION-092), а реальную отправку делает внешний релей на машине, где
+# Telegram работает. Логин/пароль читаются из .env и никогда не попадают ни в лог, ни в вывод.
 notify() {
-  # BACKUP_NOTIFY=0 выключает оповещение (на проде Telegram недоступен, DECISION-088).
+  # BACKUP_NOTIFY=0 по-прежнему полностью выключает оповещение.
   [ "${BACKUP_NOTIFY:-1}" = "1" ] || return 0
   local text="$1"
-  local token chat
-  token="$(grep -E '^TELEGRAM_BOT_TOKEN=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
-  chat="$(grep -E '^TELEGRAM_OWNER_CHAT_ID=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
-  [ -n "$token" ] && [ -n "$chat" ] || return 0
-  curl -s -m 10 -o /dev/null -X POST "https://api.telegram.org/bot${token}/sendMessage" \
-    --data-urlencode "chat_id=${chat}" \
-    --data-urlencode "text=${text}" || true
+  local login password token api
+  api="${API_BASE:-https://2.apixspb.ru}"
+  login="$(grep -E '^ADMIN_LOGIN=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
+  password="$(grep -E '^ADMIN_PASSWORD=' "$PROJECT_DIR/.env" | cut -d= -f2-)"
+  [ -n "$login" ] && [ -n "$password" ] || return 0
+  token="$(curl -s -m 10 -X POST "$api/api/auth/login" \
+    -H 'Content-Type: application/json' \
+    --data "$(printf '{"login":%s,"password":%s}' \
+      "$(printf '%s' "$login" | jq -Rs .)" "$(printf '%s' "$password" | jq -Rs .)")" \
+    | jq -r '.token // empty')" || return 0
+  [ -n "$token" ] || return 0
+  curl -s -m 10 -o /dev/null -X POST "$api/api/telegram-outbox" \
+    -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' \
+    --data "$(printf '{"text":%s}' "$(printf '%s' "$text" | jq -Rs .)")" || true
 }
 
 fail() {

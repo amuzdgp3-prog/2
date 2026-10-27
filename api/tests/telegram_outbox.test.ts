@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
+import { MAX_SEND_ATTEMPTS } from '../src/commands/telegramOutbox.js';
 import { authHeader, bootstrap, pool, type TestContext } from './helpers.js';
 
 /**
@@ -119,5 +120,72 @@ describe('telegram outbox', () => {
       headers: authHeader(context.technicianToken),
     });
     assert.equal(response.statusCode, 403);
+  });
+
+  it('POST /api/telegram-outbox: единственная внешняя точка входа, нужна backup.sh (bash, не Node)', async () => {
+    const response = await context.app.inject({
+      method: 'POST',
+      url: '/api/telegram-outbox',
+      headers: authHeader(context.adminToken),
+      payload: { text: 'Бэкап 2.apixspb.ru не прошёл: тест' },
+    });
+    assert.equal(response.statusCode, 200);
+    const { id } = response.json() as { id: number };
+    assert.ok(id > 0);
+
+    const pending = await context.app.inject({
+      method: 'GET',
+      url: '/api/telegram-outbox/pending',
+      headers: authHeader(context.adminToken),
+    });
+    const row = (pending.json() as Array<{ id: number; kind: string; payload: { text: string } }>).find(
+      (r) => r.id === id,
+    );
+    assert.equal(row?.kind, 'text');
+    assert.equal(row?.payload.text, 'Бэкап 2.apixspb.ru не прошёл: тест');
+  });
+
+  it('POST /api/telegram-outbox: пустой текст отклоняется', async () => {
+    const response = await context.app.inject({
+      method: 'POST',
+      url: '/api/telegram-outbox',
+      headers: authHeader(context.adminToken),
+      payload: { text: '   ' },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  it('безнадёжное сообщение перестаёт выдаваться релею после потолка попыток, а не дёргается вечно', async () => {
+    const created = await context.app.inject({
+      method: 'POST',
+      url: '/api/telegram-outbox',
+      headers: authHeader(context.adminToken),
+      payload: { text: 'никогда не уйдёт' },
+    });
+    const { id } = created.json() as { id: number };
+
+    for (let i = 0; i < MAX_SEND_ATTEMPTS; i += 1) {
+      const fail = await context.app.inject({
+        method: 'POST',
+        url: `/api/telegram-outbox/${id}/fail`,
+        headers: authHeader(context.adminToken),
+        payload: { error: `попытка ${i + 1}` },
+      });
+      assert.equal(fail.statusCode, 200);
+    }
+
+    const pending = await context.app.inject({
+      method: 'GET',
+      url: '/api/telegram-outbox/pending',
+      headers: authHeader(context.adminToken),
+    });
+    const stillOffered = (pending.json() as Array<{ id: number }>).some((r) => r.id === id);
+    assert.equal(stillOffered, false, 'после потолка попыток строка не должна выдаваться релею');
+
+    // Но сама строка не исчезает: по ней видно, что не ушло и почему.
+    const left = await pool.query('SELECT attempts, last_error, sent_at FROM telegram_outbox WHERE id = $1', [id]);
+    assert.equal(left.rows[0].attempts, MAX_SEND_ATTEMPTS);
+    assert.equal(left.rows[0].sent_at, null);
+    assert.equal(left.rows[0].last_error, `попытка ${MAX_SEND_ATTEMPTS}`);
   });
 });

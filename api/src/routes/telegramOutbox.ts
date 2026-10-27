@@ -2,12 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import { pool, withTransaction } from '../db/pool.js';
 import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
 import {
+  enqueueTelegramMessage,
   getTelegramMessage,
   listPendingTelegramMessages,
   markTelegramMessageFailed,
   markTelegramMessageSent,
 } from '../commands/telegramOutbox.js';
 import { badRequest } from '../lib/errors.js';
+import { assertAdmin } from '../lib/scope.js';
 
 /**
  * API для внешнего релея (commands/telegramOutbox.ts объясняет, зачем он нужен). Релей логинится
@@ -19,6 +21,19 @@ export async function registerTelegramOutboxRoutes(app: FastifyInstance): Promis
 
   app.get('/api/telegram-outbox/pending', auth, async (request) =>
     withTransaction((client) => listPendingTelegramMessages(client, request.actor)));
+
+  /** Единственный внешний источник, которому нужна именно HTTP-точка входа, — backup.sh: это
+   *  bash на самом проде, не Node, и внутренние функции ему не вызвать напрямую. Остальные
+   *  источники (отчёт, черновик на разбор) ставят в очередь изнутри своих транзакций — тем же
+   *  enqueueTelegramMessage, но в process. Поэтому здесь только 'text': формировать отчёт
+   *  (kind='monthly_report') снаружи незачем. */
+  app.post<{ Body: { text: string } }>('/api/telegram-outbox', auth, async (request) => {
+    assertAdmin(request.actor);
+    const text = request.body?.text?.trim();
+    if (!text) throw badRequest('TEXT_REQUIRED', 'текст сообщения не может быть пустым');
+    const row = await withTransaction((client) => enqueueTelegramMessage(client, 'text', { text }));
+    return { ok: true, id: row.id };
+  });
 
   /** Для kind='monthly_report' — файл не хранится в очереди, пересобирается на момент отправки:
    *  к моменту, когда релей его заберёт, данные успевают устареть меньше, чем если бы отчёт

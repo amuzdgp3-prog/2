@@ -40,6 +40,14 @@ export async function enqueueTelegramMessage(
   return result.rows[0];
 }
 
+/**
+ * Потолок попыток. Сообщение, которое не может уйти в принципе (битый payload, отчёт за месяц,
+ * который не собирается), иначе дёргалось бы релеем каждые несколько минут вечно. После потолка
+ * строка остаётся в таблице с last_error — видно, что именно не ушло и почему, — но из выдачи
+ * релею пропадает.
+ */
+export const MAX_SEND_ATTEMPTS = 10;
+
 /** Список неотправленного для релея — по порядку постановки в очередь. */
 export async function listPendingTelegramMessages(
   client: Client,
@@ -47,7 +55,10 @@ export async function listPendingTelegramMessages(
 ): Promise<TelegramOutboxRow[]> {
   assertAdmin(actor);
   const result = await client.query<TelegramOutboxRow>(
-    `SELECT * FROM telegram_outbox WHERE sent_at IS NULL ORDER BY id`,
+    `SELECT * FROM telegram_outbox
+     WHERE sent_at IS NULL AND attempts < $1
+     ORDER BY id`,
+    [MAX_SEND_ATTEMPTS],
   );
   return result.rows;
 }
