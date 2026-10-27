@@ -164,8 +164,17 @@ async function putOnReview(
   // отправки с телефона после потерянного ответа). Уведомлять администратора нужно только о
   // новом черновике, а не о каждом повторе одного и того же.
   if (row.was_inserted) {
+    // Номер аппарата владельцу ничего не говорит — называет он их по адресу. Адрес берётся из
+    // действующей установки, как и в списке проверок (SELECT_WITH_NAMES); если его нет, остаётся
+    // номер, чтобы сообщение не потеряло привязку к аппарату.
+    const placement = await client.query<{ address: string | null }>(
+      `SELECT address FROM machine_placements WHERE machine_number = $1 AND ended_at IS NULL`,
+      [input.machineNumber],
+    );
+    const address = placement.rows[0]?.address?.trim();
+    const where = address ? `${address} (аппарат ${input.machineNumber})` : `аппарат ${input.machineNumber}`;
     await enqueueTelegramMessage(client, 'text', {
-      text: `Черновик на разбор: аппарат ${input.machineNumber}, ${error.message}`,
+      text: `Черновик на разбор: ${where}. ${error.message}`,
     });
   }
   return row;
