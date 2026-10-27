@@ -3,6 +3,7 @@ import { auditDelete, auditUpdate, type Actor } from '../lib/audit.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { assertAdmin } from '../lib/scope.js';
 import { clearDraftIssue } from './draftIssues.js';
+import { enqueueTelegramMessage } from './telegramOutbox.js';
 import { createService, type ServiceInput, type ToyLine } from './services.js';
 
 /**
@@ -138,13 +139,13 @@ async function putOnReview(
   input: ServiceInput,
   error: AppError,
 ): Promise<ReviewRow> {
-  const result = await client.query<ReviewRow>(
+  const result = await client.query<ReviewRow & { was_inserted: boolean }>(
     `INSERT INTO service_reviews
        (local_id, technician_id, machine_number, occurred_at, payload, photo_object_key,
         error_code, error_message)
      VALUES ($1, $2, $3, $4::timestamptz, $5, $6, $7, $8)
      ON CONFLICT (local_id) DO UPDATE SET updated_at = service_reviews.updated_at
-     RETURNING *`,
+     RETURNING *, (xmax = 0) AS was_inserted`,
     [
       input.localId,
       actor.id,
@@ -158,7 +159,16 @@ async function putOnReview(
   );
   // Запись теперь у администратора целиком — старая жалоба «у техника не уходит» больше не нужна.
   await clearDraftIssue(client, input.localId);
-  return result.rows[0];
+  const row = result.rows[0];
+  // xmax = 0 — строка реально вставлена этим запросом, а не задета веткой ON CONFLICT (повтор
+  // отправки с телефона после потерянного ответа). Уведомлять администратора нужно только о
+  // новом черновике, а не о каждом повторе одного и того же.
+  if (row.was_inserted) {
+    await enqueueTelegramMessage(client, 'text', {
+      text: `Черновик на разбор: аппарат ${input.machineNumber}, ${error.message}`,
+    });
+  }
+  return row;
 }
 
 export interface ReviewListItem {

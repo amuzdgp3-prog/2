@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { pool } from '../db/pool.js';
+import { pool, withTransaction } from '../db/pool.js';
 import {
   aggregateByLocation,
   divideDecimal,
@@ -14,8 +14,8 @@ import { technicianEffectiveness } from '../domain/technicianEffectiveness.js';
 import { buildMonthlyReportWorkbook } from '../domain/monthlyExcelReport.js';
 import { ownerMonthReport } from '../domain/ownerMonthReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
-import { sendTelegramDocument } from '../integrations/telegram.js';
 import { sendReportEmail } from '../integrations/email.js';
+import { enqueueTelegramMessage } from '../commands/telegramOutbox.js';
 import { badRequest, forbidden } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
@@ -325,28 +325,20 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     },
   );
 
-  /** Отправка того же файла владельцу в Telegram — только ADMIN, владелец получает его пассивно. */
+  /** Отправка того же файла владельцу в Telegram — только ADMIN, владелец получает его пассивно.
+   *
+   * Сам сервер в Telegram не стучится (DECISION-074/DECISION-092: прод не достаёт до
+   * api.telegram.org) — ставит запись в telegram_outbox, реальную отправку делает внешний релей.
+   * Файл в очередь не кладётся, только year/month: релей скачает его отдельным запросом к
+   * /api/telegram-outbox/:id/file в момент отправки. */
   app.post<{ Querystring: { year?: string; month?: string } }>(
     '/api/reports/monthly-excel/send-telegram',
     auth,
     async (request) => {
       assertAdmin(request.actor);
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
-      const chatId = process.env.TELEGRAM_OWNER_CHAT_ID;
-      if (!botToken || !chatId) {
-        throw badRequest('TELEGRAM_NOT_CONFIGURED', 'Telegram-бот не настроен (нет токена или chat_id)');
-      }
       const { year, month } = parseYearMonth(request.query);
-      const client = await pool.connect();
-      try {
-        const workbook = await buildMonthlyReportWorkbook(client, request.actor, { year, month });
-        const buffer = await workbook.xlsx.writeBuffer();
-        const filename = `Отчет ${year}-${String(month).padStart(2, '0')}.xlsx`;
-        await sendTelegramDocument(botToken, chatId, Buffer.from(buffer), filename, filename);
-        return { ok: true };
-      } finally {
-        client.release();
-      }
+      await withTransaction((client) => enqueueTelegramMessage(client, 'monthly_report', { year, month }));
+      return { ok: true };
     },
   );
 

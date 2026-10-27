@@ -6,10 +6,12 @@ import { test } from 'node:test';
  * Тот же класс бага, что DECISION-041 уже чинил для кабинета iVend, найден и здесь на реальном
  * проде: у Node-глобального fetch нет таймаута по умолчанию, а сеть сервера не пропускает TCP до
  * api.telegram.org (заблокировано на уровне провайдера/файрвола — ping проходит, TCP:443
- * зависает). Без таймаута нажатие «Отправить в Telegram» держало бы открытым соединение к БД из
- * пула (тот же `finally { client.release() }`, что и у iVend) вечно. Отдельный файл — тесты
- * Node запускают каждый файл в своём процессе, поэтому свои переменные окружения (короткий
- * TELEGRAM_SEND_TIMEOUT_MS и подставной TELEGRAM_API_BASE) не пересекаются с другими тестами.
+ * зависает). Без таймаута отправка держала бы соединение открытым вечно.
+ *
+ * DECISION-092 убрал прямой вызов sendTelegramDocument из API-роута (теперь он только ставит
+ * запись в telegram_outbox, реальную отправку делает внешний релей, который и переиспользует эту
+ * же функцию) — поэтому тест теперь бьёт по sendTelegramDocument напрямую, а не через HTTP-роут
+ * отчёта: именно эта функция и именно эта защита переезжают в релей без изменений.
  */
 async function startHangingTelegram(): Promise<{ close: () => void; url: string }> {
   // Соединение принимается и никогда не отвечает — именно так выглядит зависшее TCP-соединение
@@ -21,30 +23,24 @@ async function startHangingTelegram(): Promise<{ close: () => void; url: string 
   return { close: () => server.close(), url: `http://127.0.0.1:${port}` };
 }
 
-test('отправка отчёта в Telegram: зависшее соединение обрывается по таймауту, а не висит вечно', async () => {
+test('sendTelegramDocument: зависшее соединение обрывается по таймауту, а не висит вечно', async () => {
   const hanging = await startHangingTelegram();
   process.env.TELEGRAM_API_BASE = hanging.url;
   process.env.TELEGRAM_SEND_TIMEOUT_MS = '300';
-  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
-  process.env.TELEGRAM_OWNER_CHAT_ID = 'test-chat';
 
-  const { bootstrap, authHeader } = await import('./helpers.js');
-  const context = await bootstrap();
-  try {
-    const started = Date.now();
-    const response = await context.app.inject({
-      method: 'POST',
-      url: '/api/reports/monthly-excel/send-telegram?year=2026&month=8',
-      headers: authHeader(context.adminToken),
-    });
-    assert.ok(
-      Date.now() - started < 5_000,
-      'зависшее соединение до Telegram должно обрываться по таймауту, а не висеть вечно',
-    );
-    assert.equal(response.statusCode, 400, 'деловая ошибка, а не 500 и не бесконечное ожидание');
-    assert.equal(response.json().error, 'TELEGRAM_SEND_FAILED');
-  } finally {
-    await context.app.close();
-    hanging.close();
-  }
+  const { sendTelegramDocument } = await import('../src/integrations/telegram.js');
+  const started = Date.now();
+  await assert.rejects(
+    () => sendTelegramDocument('test-token', 'test-chat', Buffer.from('x'), 'file.xlsx'),
+    (error: unknown) => {
+      assert.ok(error instanceof Error && 'code' in error);
+      assert.equal((error as { code: string }).code, 'TELEGRAM_SEND_FAILED');
+      return true;
+    },
+  );
+  assert.ok(
+    Date.now() - started < 5_000,
+    'зависшее соединение до Telegram должно обрываться по таймауту, а не висеть вечно',
+  );
+  hanging.close();
 });

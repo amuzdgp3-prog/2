@@ -15,6 +15,7 @@ import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerClientEventRoutes } from './routes/clientEvents.js';
 import { registerExpenseRoutes } from './routes/expenses.js';
 import { registerReportRoutes } from './routes/reports.js';
+import { registerTelegramOutboxRoutes } from './routes/telegramOutbox.js';
 import { registerServiceRoutes } from './routes/services.js';
 
 declare module 'fastify' {
@@ -148,6 +149,7 @@ export async function buildServer() {
   await registerServiceRoutes(app);
   await registerCashlessRoutes(app);
   await registerReportRoutes(app);
+  await registerTelegramOutboxRoutes(app);
   await registerExpenseRoutes(app);
   await registerClientEventRoutes(app);
 
