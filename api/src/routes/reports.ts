@@ -16,6 +16,7 @@ import { ownerMonthReport } from '../domain/ownerMonthReport.js';
 import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js';
 import { sendReportEmail } from '../integrations/email.js';
 import { enqueueTelegramMessage } from '../commands/telegramOutbox.js';
+import { enqueueDailySummaryNow } from '../commands/dailySummary.js';
 import { badRequest, forbidden } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
@@ -339,6 +340,21 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
       const { year, month } = parseYearMonth(request.query);
       await withTransaction((client) => enqueueTelegramMessage(client, 'monthly_report', { year, month }));
       return { ok: true };
+    },
+  );
+
+  /** Ручная отправка ежедневной сводки за дату (по умолчанию — сегодня по Москве). Плановая в
+   *  21:30 от неё не зависит: см. commands/dailySummary.ts (DECISION-093). */
+  app.post<{ Querystring: { date?: string } }>(
+    '/api/reports/daily-summary/send',
+    auth,
+    async (request) => {
+      const date = request.query.date ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(Date.now());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+        throw badRequest('INVALID_DATE', 'дата должна быть в формате ГГГГ-ММ-ДД');
+      }
+      await withTransaction((client) => enqueueDailySummaryNow(client, request.actor, date));
+      return { ok: true, date };
     },
   );
 

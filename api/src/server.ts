@@ -16,6 +16,7 @@ import { registerClientEventRoutes } from './routes/clientEvents.js';
 import { registerExpenseRoutes } from './routes/expenses.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerTelegramOutboxRoutes } from './routes/telegramOutbox.js';
+import { startDailySummaryScheduler } from './jobs/dailySummaryScheduler.js';
 import { registerServiceRoutes } from './routes/services.js';
 
 declare module 'fastify' {
@@ -261,6 +262,7 @@ if (isMain) {
     const app = await buildServer();
     await app.listen({ port: config.port, host: config.host });
     startParserScheduler();
+    startDailySummaryScheduler();
   };
   start().catch((error) => {
     console.error(error);
