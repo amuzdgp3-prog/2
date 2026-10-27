@@ -5,3 +5,4 @@ data/photos/
 *.tsbuildinfo
 backups/
 .import-fedor-images/
+scripts/.telegram-relay-state.json
