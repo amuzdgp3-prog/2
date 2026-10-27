@@ -6,3 +6,4 @@ data/photos/
 backups/
 .import-fedor-images/
 scripts/.telegram-relay-state.json
+scripts/telegram-relay.log
