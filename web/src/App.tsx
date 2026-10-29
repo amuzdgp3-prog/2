@@ -44,6 +44,7 @@ export default function App() {
   const { user, loading, logout } = useAuth();
   const [online, setOnline] = useState(navigator.onLine);
   const [queued, setQueued] = useState(0);
+  const [drafts, setDrafts] = useState(0);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(
     () =>
@@ -142,6 +143,7 @@ export default function App() {
   const refreshQueueCount = async () => {
     const items = await readOutbox();
     setQueued(items.filter((item) => item.status === 'PENDING').length);
+    setDrafts(items.length);
   };
 
   useEffect(() => {
@@ -175,8 +177,10 @@ export default function App() {
     <>
       {canSeeReports && <NavLink to="/log"><span>☰</span>Журнал</NavLink>}
       <NavLink to="/" end><span>▦</span>Аппараты</NavLink>
-      {!isBoss && <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>}
-      {!isBoss && <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>}
+      {/* Задачами администратор управляет во вкладке «Админ». Черновики у него бывают, только
+          если он сам заполнил форму обслуживания, поэтому вкладка видна, пока там что-то лежит. */}
+      {isTechnician && <NavLink to="/tasks"><span>☑</span>Задачи</NavLink>}
+      {(isTechnician || (isAdmin && drafts > 0)) && <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>}
       {isTechnician && <NavLink to="/forgotten"><span>⏰</span>Забытые</NavLink>}
       {isTechnician && <NavLink to="/money"><span>₽</span>Деньги</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
