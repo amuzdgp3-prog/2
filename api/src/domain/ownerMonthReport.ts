@@ -2,6 +2,7 @@ import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { queryMachineRows, rentSummary, sumDecimal, type MachineRow } from './reports.js';
 import { ownerMonthPayout, type OwnerMonthPayout } from './ownerMonthPayout.js';
+import { lastServicesRoi } from './ownerMonthRoi.js';
 
 /**
  * Контракт отчёта владельца за календарный месяц (страница «Отчёт» и ежемесячный xlsx строятся из
@@ -105,6 +106,8 @@ export interface OwnerMonthMachineRow {
   cash: string;
   cashless: string;
   revenue: string;
+  /** ROI за последние три обслуживания на конец месяца (ownerMonthRoi.ts); null — нет данных. */
+  roi3: string | null;
 }
 
 export interface OwnerMonthReport {
@@ -372,6 +375,7 @@ export async function ownerMonthReport(
   const { lines: expenseLines, cardTotal } = await loadExpenseLines(client, range);
   const rent = await loadRent(client, range);
   const payout = await ownerMonthPayout(client, actor, range);
+  const roi3 = await lastServicesRoi(client, machines.map((machine) => machine.machineNumber), range.to);
 
   const revenue = sumDecimal(machines.map((machine) => machine.revenue), 2);
   const cash = sumDecimal(machines.map((machine) => machine.cash), 2);
@@ -419,6 +423,7 @@ export async function ownerMonthReport(
       cash: machine.cash,
       cashless: machine.cashless,
       revenue: machine.revenue,
+      roi3: roi3.get(machine.machineNumber) ?? null,
     })),
     payout,
   };
