@@ -162,6 +162,9 @@ describe('buildMonthlyReportWorkbook — assembles the agreed report format from
       // Прибыль = выручка 1000 − бензин 2400 − игрушки 75.
       assert.ok(cells.includes(-1475), 'прибыль за вычетом расходов должна быть в файле');
       assert.ok(flat.some((v) => v === 'RPT-1: Точка RPT-1'));
+      // ROI за три обслуживания: у единственного обслуживания без начальных игрушек базы нет.
+      assert.ok(flat.includes('ROI (3 обсл.)'), 'ожидался столбец ROI в детализации');
+      assert.ok(flat.includes('нет данных'), 'ROI без базы показывается как «нет данных»');
     } finally {
       client.release();
     }

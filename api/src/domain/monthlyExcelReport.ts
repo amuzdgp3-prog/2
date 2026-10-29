@@ -57,7 +57,7 @@ interface Cursor {
   row: number;
 }
 
-const LAST_COLUMN = 8;
+const LAST_COLUMN = 9;
 
 function sectionTitle(ws: ExcelJS.Worksheet, cursor: Cursor, text: string) {
   cursor.row += 1;
@@ -112,7 +112,7 @@ function writeMachineCounts(ws: ExcelJS.Worksheet, cursor: Cursor, report: Owner
 
 function writeGroups(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'АППАРАТЫ ПО ТИПАМ И ЦЕНЕ ИГРЫ');
-  tableHeader(ws, cursor, ['Тип', 'Цена игры, ₽', 'Аппаратов', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
+  tableHeader(ws, cursor, ['Тип', 'Цена игры, ₽', 'Аппаратов', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽', 'ROI (3 обсл.)']);
   for (const group of report.groups) {
     const r = cursor.row;
     dataCell(ws.getCell(r, 1), group.machineTypeName);
@@ -255,6 +255,8 @@ function writePayout(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthRe
   }
 }
 
+const RATIO_FORMAT = '0.00';
+
 function writeMachineRows(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ');
   tableHeader(ws, cursor, ['Аппарат', 'Тип', 'Цена игры, ₽', 'Терминал', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
@@ -269,6 +271,8 @@ function writeMachineRows(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMo
     moneyCell(ws.getCell(r, 6), machine.cash);
     moneyCell(ws.getCell(r, 7), machine.cashless);
     moneyCell(ws.getCell(r, 8), machine.revenue);
+    dataCell(ws.getCell(r, 9), machine.roi3 === null ? 'нет данных' : Number(machine.roi3));
+    if (machine.roi3 !== null) ws.getCell(r, 9).numFmt = RATIO_FORMAT;
     cursor.row += 1;
   }
   const r = cursor.row;
