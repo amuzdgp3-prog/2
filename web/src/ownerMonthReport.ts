@@ -101,6 +101,8 @@ export interface OwnerMonthMachineRow {
   cash: string;
   cashless: string;
   revenue: string;
+  /** ROI за последние три обслуживания на конец месяца; null — нет данных. Нет у старой версии сервера. */
+  roi3?: string | null;
 }
 
 export interface OwnerMonthReport {

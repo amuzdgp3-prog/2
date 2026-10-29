@@ -448,6 +448,7 @@ export function MachineRowsTable({ report }: { report: OwnerMonthReport }) {
               <th className="num">Наличные</th>
               <th className="num">Безнал</th>
               <th className="num">Выручка</th>
+              <th className="num" title="Выручка ÷ игрушки за последние три обслуживания на конец месяца">ROI (3 обсл.)</th>
             </tr>
           </thead>
           <tbody>
@@ -462,6 +463,7 @@ export function MachineRowsTable({ report }: { report: OwnerMonthReport }) {
                 <td className="num">{money(machine.cash)}</td>
                 <td className="num">{machine.hasTerminal ? money(machine.cashless) : '—'}</td>
                 <td className="num">{money(machine.revenue)}</td>
+                <td className="num">{machine.roi3 == null ? '—' : Number(machine.roi3).toFixed(2).replace('.', ',')}</td>
               </tr>
             ))}
             <tr className="or-total-row">
@@ -472,6 +474,7 @@ export function MachineRowsTable({ report }: { report: OwnerMonthReport }) {
               <td className="num">{money(report.cash)}</td>
               <td className="num">{money(report.cashless)}</td>
               <td className="num">{money(report.revenue)}</td>
+              <td />
             </tr>
           </tbody>
         </table>
