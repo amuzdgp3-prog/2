@@ -184,9 +184,13 @@ export default function HistoryScreen() {
         {hasClaw && (
           <button className={tab === 'claw' ? 'active' : ''} onClick={() => setTab('claw')}>Клешня и отдача</button>
         )}
-        <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
-        <button className={tab === 'routes' ? 'active' : ''} onClick={() => setTab('routes')}>Маршруты</button>
-        <button className={tab === 'technicians' ? 'active' : ''} onClick={() => setTab('technicians')}>Техники</button>
+        {user?.role !== 'TECHNICIAN' && (
+          <>
+            <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
+            <button className={tab === 'routes' ? 'active' : ''} onClick={() => setTab('routes')}>Маршруты</button>
+            <button className={tab === 'technicians' ? 'active' : ''} onClick={() => setTab('technicians')}>Техники</button>
+          </>
+        )}
       </div>
 
       {tab === 'history' && (
