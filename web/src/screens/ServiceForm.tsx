@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { newLocalId } from '../localId';
 import {
   calcNewGames,
@@ -43,6 +44,7 @@ const toTimeInput = (date: Date) => `${pad(date.getHours())}:${pad(date.getMinut
 export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }) {
   const { machineNumber = '', localId: editLocalId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [machine, setMachine] = useState<CachedMachine | null>(null);
   const [toys, setToys] = useState<Array<{ id: number; name: string; unit_cost: string }>>([]);
@@ -587,14 +589,16 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             </div>
           );
         })}
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ marginTop: lines.length > 0 ? 10 : 0 }}
-          onClick={() => { markDirty(); setLines([...lines, { toyId: 0, quantity: '0' }]); }}
-        >
-          + Добавить игрушку
-        </button>
+        {user?.role === 'ADMIN' && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ marginTop: lines.length > 0 ? 10 : 0 }}
+            onClick={() => { markDirty(); setLines([...lines, { toyId: 0, quantity: '0' }]); }}
+          >
+            + Добавить игрушку
+          </button>
+        )}
         {preview && lines.length > 0 && (
           <div className="toy-total">
             <div className="lbl">Итого затраты на игрушки</div>
