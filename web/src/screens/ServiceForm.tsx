@@ -40,64 +40,12 @@ const pad = (value: number) => String(value).padStart(2, '0');
 const toDateInput = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const toTimeInput = (date: Date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
-function RoiSparkline({ points }: { points: Array<{ service_date: string; revenue_to_cost_ratio: string | null } >; }) {
-  // A null revenue_to_cost_ratio means "no cost base" (DECISION-012), not zero — Number(null) is
-  // 0 and would pass Number.isFinite, silently turning a "no data" point into a real ROI of 0
-  // (RoiBadge already guards this the same way; this sparkline was missing the same check).
-  const values = points
-    .map((point) => point.revenue_to_cost_ratio)
-    .filter((value): value is string => value !== null && value !== undefined && value !== '')
-    .map(Number)
-    .filter(Number.isFinite);
-  if (values.length < 2) {
-    return <p className="muted" style={{ margin: 0 }}>Недостаточно истории для тренда.</p>;
-  }
-
-  const width = 140;
-  const height = 40;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const step = width / (values.length - 1);
-  const coords = values.map((value, index) => {
-    const x = index * step;
-    const y = height - ((value - min) / span) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-
-  const trendUp = values[values.length - 1] >= values[0];
-  const color = trendUp ? 'var(--good)' : 'var(--bad)';
-
-  return (
-    <div className="roi-card">
-      <div className="val">
-        <div className="num">{values[values.length - 1].toFixed(1)}</div>
-        <div className="lbl">текущий ROI</div>
-      </div>
-      <svg className="spark" viewBox={`0 0 ${width} ${height}`} width="100%" height={height}>
-        <polyline
-          points={coords.join(' ')}
-          fill="none"
-          stroke={trendUp ? '#2E6B4C' : '#A23F30'}
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <div className="trend" style={{ color }}>
-        {trendUp ? '▲ растёт' : '▼ снижается'}
-      </div>
-    </div>
-  );
-}
-
 export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }) {
   const { machineNumber = '', localId: editLocalId } = useParams();
   const navigate = useNavigate();
 
   const [machine, setMachine] = useState<CachedMachine | null>(null);
   const [toys, setToys] = useState<Array<{ id: number; name: string; unit_cost: string }>>([]);
-  const [roiTrend, setRoiTrend] = useState<Array<{ service_date: string; revenue_to_cost_ratio: string | null }>>([]);
   const [dateContext, setDateContext] = useState<{
     previous: { occurred_at: string; game_counter: number; prize_counter: number };
     next: { occurred_at: string; game_counter: number } | null;
@@ -223,16 +171,6 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       setExistingPhoto(draft.photo);
     });
   }, [editLocalId, machineNumber]);
-
-  useEffect(() => {
-    if (!navigator.onLine) return;
-    api
-      .get<Array<{ service_date: string; revenue_to_cost_ratio: string | null }>>(
-        `/api/machines/${encodeURIComponent(machineNumber)}/roi-trend`,
-      )
-      .then(setRoiTrend)
-      .catch(() => setRoiTrend([]));
-  }, [machineNumber]);
 
   // «Было N» и расчёт прироста должны отталкиваться от обслуживания, которое реально предшествует
   // ВЫБРАННОЙ дате, а не от последнего обслуживания аппарата вообще — иначе при вставке записи
@@ -602,14 +540,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         </>
       )}
 
-      {roiTrend.length > 0 && (
-        <>
-          <div className="section-head"><span className="num">4</span><h3>Тренд ROI</h3><span className="line" /></div>
-          <RoiSparkline points={roiTrend} />
-        </>
-      )}
-
-      <div className="section-head"><span className="num">5</span><h3>Игрушки</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">4</span><h3>Игрушки</h3><span className="line" /></div>
       {machine.default_toy_set_name && (
         <p className="field-hint" style={{ marginTop: -6 }}>
           Набор по умолчанию: {machine.default_toy_set_name}
@@ -674,7 +605,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
 
       {machine.claw_state && claw && (
         <>
-          <div className="section-head"><span className="num">6</span><h3>Клешня · п.3 Weak Catch</h3><span className="line" /></div>
+          <div className="section-head"><span className="num">5</span><h3>Клешня · п.3 Weak Catch</h3><span className="line" /></div>
           <ClawSection
             state={machine.claw_state}
             values={claw}
@@ -693,7 +624,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         </>
       )}
 
-      <div className="section-head"><span className="num">{machine.claw_state ? 7 : 6}</span><h3>Фото</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">{machine.claw_state ? 6 : 5}</span><h3>Фото</h3><span className="line" /></div>
       <div style={{ maxWidth: 220 }}>
         {(photo || existingPhoto) && (
           <div
@@ -732,7 +663,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         />
       </div>
 
-      <div className="section-head"><span className="num">{machine.claw_state ? 8 : 7}</span><h3>Комментарий</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">{machine.claw_state ? 7 : 6}</span><h3>Комментарий</h3><span className="line" /></div>
       <textarea
         rows={3}
         placeholder="Необязательно — что заметили на точке"
