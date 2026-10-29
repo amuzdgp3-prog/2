@@ -162,9 +162,15 @@ describe('buildMonthlyReportWorkbook — assembles the agreed report format from
       // Прибыль = выручка 1000 − бензин 2400 − игрушки 75.
       assert.ok(cells.includes(-1475), 'прибыль за вычетом расходов должна быть в файле');
       assert.ok(flat.some((v) => v === 'RPT-1: Точка RPT-1'));
-      // ROI за три обслуживания: у единственного обслуживания без начальных игрушек базы нет.
-      assert.ok(flat.includes('ROI (3 обсл.)'), 'ожидался столбец ROI в детализации');
-      assert.ok(flat.includes('нет данных'), 'ROI без базы показывается как «нет данных»');
+      // ROI за три обслуживания — последний столбец детализации, а не другой таблицы. У единственного
+      // обслуживания без начальных игрушек базы нет.
+      const valuesOf = (row: number) => (sheet!.getRow(row).values as unknown[]).slice(1);
+      const headerRow = rows.findIndex((row) => Array.isArray(row) && row[1] === 'Аппарат');
+      assert.ok(headerRow > 0, 'ожидалась шапка детализации');
+      assert.equal(valuesOf(headerRow)[8], 'ROI (3 обсл.)');
+      const machineRow = rows.findIndex((row) => Array.isArray(row) && row[1] === 'RPT-1: Точка RPT-1');
+      assert.equal(valuesOf(machineRow)[8], 'нет данных');
+      assert.equal(flat.filter((v) => v === 'ROI (3 обсл.)').length, 1, 'столбец ROI только в детализации');
     } finally {
       client.release();
     }

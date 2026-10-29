@@ -112,7 +112,7 @@ function writeMachineCounts(ws: ExcelJS.Worksheet, cursor: Cursor, report: Owner
 
 function writeGroups(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'АППАРАТЫ ПО ТИПАМ И ЦЕНЕ ИГРЫ');
-  tableHeader(ws, cursor, ['Тип', 'Цена игры, ₽', 'Аппаратов', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽', 'ROI (3 обсл.)']);
+  tableHeader(ws, cursor, ['Тип', 'Цена игры, ₽', 'Аппаратов', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
   for (const group of report.groups) {
     const r = cursor.row;
     dataCell(ws.getCell(r, 1), group.machineTypeName);
@@ -259,7 +259,7 @@ const RATIO_FORMAT = '0.00';
 
 function writeMachineRows(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'ДЕТАЛИЗАЦИЯ ПО АППАРАТАМ');
-  tableHeader(ws, cursor, ['Аппарат', 'Тип', 'Цена игры, ₽', 'Терминал', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽']);
+  tableHeader(ws, cursor, ['Аппарат', 'Тип', 'Цена игры, ₽', 'Терминал', 'Игр', 'Наличные, ₽', 'Безнал, ₽', 'Выручка, ₽', 'ROI (3 обсл.)']);
   for (const machine of report.machineRows) {
     const r = cursor.row;
     dataCell(ws.getCell(r, 1), `${machine.machineNumber}: ${machine.address}`);
