@@ -34,6 +34,7 @@ interface ServiceRow {
   kind: string;
   technician_name: string | null;
   location_name: string;
+  toys: { toyId: number; name: string; quantity: number; unitCost: string }[] | null;
 }
 
 interface RouteRow {
@@ -94,9 +95,26 @@ export default function HistoryScreen() {
   const stats = useMemo(() => {
     if (rows.length === 0) return null;
     const revenue = rows.reduce((total, row) => total + Number(row.revenue), 0);
+    const cash = rows.reduce((total, row) => total + Number(row.cash_amount), 0);
+    const cashless = rows.reduce((total, row) => total + Number(row.cashless_amount), 0);
+    const toyCost = rows.reduce((total, row) => total + Number(row.toy_cost), 0);
     const ratios = rows.map((row) => row.revenue_to_cost_ratio).filter((v): v is string => v !== null);
     const averageRoi = ratios.length > 0 ? ratios.reduce((a, b) => a + Number(b), 0) / ratios.length : null;
-    return { revenue, averageRoi, count: rows.length, currentCounter: rows[0].game_counter };
+
+    const toyTotals = new Map<string, { quantity: number; cost: number }>();
+    for (const row of rows) {
+      for (const toy of row.toys ?? []) {
+        const entry = toyTotals.get(toy.name) ?? { quantity: 0, cost: 0 };
+        entry.quantity += toy.quantity;
+        entry.cost += toy.quantity * Number(toy.unitCost);
+        toyTotals.set(toy.name, entry);
+      }
+    }
+    const toyBreakdown = [...toyTotals.entries()]
+      .map(([name, totals]) => ({ name, ...totals }))
+      .sort((a, b) => b.cost - a.cost);
+
+    return { revenue, cash, cashless, toyCost, averageRoi, toyBreakdown, count: rows.length, currentCounter: rows[0].game_counter };
   }, [rows]);
 
   const remove = async (id: number) => {
@@ -165,8 +183,13 @@ export default function HistoryScreen() {
             <div className="val"><Odometer value={stats.currentCounter} /></div>
           </div>
           <div className="kpi">
-            <div className="lbl">Выручка (загружено)</div>
+            <div className="lbl">Выручка</div>
             <div className="val mono">{formatMoney(stats.revenue)} ₽</div>
+            <div className="sub">нал {formatMoney(stats.cash)} ₽ · безнал {formatMoney(stats.cashless)} ₽</div>
+          </div>
+          <div className="kpi">
+            <div className="lbl">Себестоимость игрушек</div>
+            <div className="val mono">{formatMoney(stats.toyCost)} ₽</div>
           </div>
           <div className="kpi">
             <div className="lbl">Средний ROI</div>
@@ -176,6 +199,24 @@ export default function HistoryScreen() {
             <div className="lbl">Обслуживаний</div>
             <div className="val">{stats.count}</div>
           </div>
+        </div>
+      )}
+
+      {stats && stats.toyBreakdown.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="muted" style={{ marginBottom: 8 }}>Себестоимость игрушек по видам за всю историю</div>
+          <table>
+            <thead><tr><th>Игрушка</th><th className="num">Количество</th><th className="num">Сумма</th></tr></thead>
+            <tbody>
+              {stats.toyBreakdown.map((toy) => (
+                <tr key={toy.name}>
+                  <td>{toy.name}</td>
+                  <td className="num">{toy.quantity}</td>
+                  <td className="num">{formatMoney(toy.cost)} ₽</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
