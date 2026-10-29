@@ -103,7 +103,8 @@ describe('настройки клешни: карточка аппарата', (
     await pool.query(
       `UPDATE claw_settings SET effective_at = '2026-01-01T09:00:00Z' WHERE machine_number = 'CL-1'`,
     );
-    // 400 игр × 10 ₽ = 4000 ₽ при затратах 500 ₽ — отдача 12,5 %, сильно ниже цели 35 %.
+    // 400 игр × 10 ₽ = 4000 ₽, доложено взамен выигранного 10 × 50 = 500 ₽ — отдача 12,5 %, сильно
+    // ниже цели 35 %.
     const first = await postService(context, context.adminToken, 'CL-1', {
       gameCounter: 400, prizeCounter: 0, occurredAt: '2026-01-05T10:00:00Z', toys: [{ toyId, quantity: 10 }],
     });
@@ -125,6 +126,26 @@ describe('настройки клешни: карточка аппарата', (
     result = await card();
     assert.equal(result.machineTarget, 12);
     assert.equal(result.advice.advice.kind, 'ok');
+  });
+
+  it('отдача после изменения — по игрушкам, доложенным уже после него (DECISION-091)', async () => {
+    // Начальные игрушки 40 × 50 = 2000 ₽ — запас аппарата, а не отдача какого-то периода.
+    await installTestMachine(context, {
+      machineNumber: 'CL-3', machineType: 'МиникХ', pricePerGame: 10, initialToys: [{ toyId, quantity: 40 }],
+    });
+    assert.equal((await post({ weak: 12 }, 'CL-3')).statusCode, 200);
+    await pool.query(
+      `UPDATE claw_settings SET effective_at = '2026-01-01T09:00:00Z' WHERE machine_number = 'CL-3'`,
+    );
+    // 4000 ₽ выручки, взамен выигранного доложено 4 × 50 = 200 ₽ — отдача 5 %. По игрушкам
+    // предыдущего обслуживания (начальные 2000 ₽) вышло бы 50 %.
+    await postService(context, context.adminToken, 'CL-3', {
+      gameCounter: 400, prizeCounter: 0, occurredAt: '2026-01-05T10:00:00Z', toys: [{ toyId, quantity: 4 }],
+    });
+    const result = await card('CL-3');
+    assert.equal(result.since.revenue, 4000);
+    assert.equal(result.since.toyCost, 200);
+    assert.equal(result.advice.advice.payoutPercent, 5);
   });
 
   it('цель аппарата задаёт только администратор', async () => {

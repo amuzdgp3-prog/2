@@ -2,7 +2,7 @@ import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { machineScopePredicate } from '../lib/scope.js';
 import { clawVerdict, payoutBand, type ClawAdvice, type ClawAdviceResult } from './clawAdvice.js';
-import { adviceAt, changeEffect, loadCurrentClaw, loadMachineClawConfig } from './clawStats.js';
+import { TOY_COST_SQL, adviceAt, changeEffect, loadCurrentClaw, loadMachineClawConfig } from './clawStats.js';
 
 /**
  * Раздел отчёта владельца «Отдача и настройки клешни» за месяц (DECISION-090). Считается одним
@@ -69,7 +69,6 @@ interface Range {
   end: string;
 }
 
-const TOY_COST_SQL = `CASE WHEN s.revenue_to_cost_ratio > 0 THEN s.revenue / s.revenue_to_cost_ratio ELSE 0 END`;
 
 function previousMonth(range: Range): Range {
   const start = new Date(range.start);
