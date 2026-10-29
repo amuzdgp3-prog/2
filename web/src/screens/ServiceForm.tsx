@@ -618,8 +618,9 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
                 ? {
                     games: Math.max(Number(preview.newGames), 0),
                     revenue: Math.max(Number(preview.revenue), 0),
-                    // Затраты периода — игрушки, доложенные в прошлый раз (как в ROI, DECISION-012).
-                    toyCost: Number(machine.last_toy_cost ?? 0),
+                    // Затраты периода — игрушки, которые техник докладывает сейчас взамен выигранных
+                    // (DECISION-091), а не доложенные в прошлый раз.
+                    toyCost: preview.toyCost,
                   }
                 : null
             }
