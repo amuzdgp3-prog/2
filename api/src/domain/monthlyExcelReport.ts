@@ -112,7 +112,7 @@ function writeExpenses(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonth
     const isOther = line.key === 'other';
     const items = isOther ? groupMonthlyExpenseItems(line.items) : line.items;
     for (const item of items) {
-      labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: isOther ? false : line.collapsed });
+      labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: isOther || line.collapsed });
       if (isOther) {
         const row = ws.getRow(cursor.row - 1);
         row.getCell(1).alignment = { vertical: 'top', wrapText: true };
