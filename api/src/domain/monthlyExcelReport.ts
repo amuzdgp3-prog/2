@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { ownerMonthReport, type OwnerMonthReport } from './ownerMonthReport.js';
+import { sumDecimal } from './reports.js';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -104,14 +105,15 @@ function writeSummary(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthR
 /** Расходы: список строк приходит из расчёта целиком, новая статья появляется без правок здесь. */
 function writeExpenses(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
   sectionTitle(ws, cursor, 'РАСХОДЫ');
-  for (const line of report.expenses.lines) {
+  const lines = report.expenses.lines.filter((line) => line.key !== 'rent' && line.key !== 'toys');
+  for (const line of lines) {
     labelValueRow(ws, cursor, line.label, line.amount);
     // Свёрнутая на странице строка сворачивается и в файле (группировка строк Excel).
     for (const item of line.items) {
       labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: line.collapsed });
     }
   }
-  labelValueRow(ws, cursor, 'Всего расходов', report.expenses.total, { bold: true });
+  labelValueRow(ws, cursor, 'Всего расходов', sumDecimal(lines.map((line) => line.amount), 2), { bold: true });
 }
 
 function writeCashReport(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonthReport) {
