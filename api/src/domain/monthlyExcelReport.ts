@@ -3,6 +3,7 @@ import type { Client } from '../db/pool.js';
 import type { Actor } from '../lib/audit.js';
 import { ownerMonthReport, type OwnerMonthReport } from './ownerMonthReport.js';
 import { sumDecimal } from './reports.js';
+import { groupMonthlyExpenseItems } from './monthlyExpenseItems.js';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -108,9 +109,16 @@ function writeExpenses(ws: ExcelJS.Worksheet, cursor: Cursor, report: OwnerMonth
   const lines = report.expenses.lines.filter((line) => line.key !== 'rent' && line.key !== 'toys');
   for (const line of lines) {
     labelValueRow(ws, cursor, line.label, line.amount);
-    // Свёрнутая на странице строка сворачивается и в файле (группировка строк Excel).
-    for (const item of line.items) {
-      labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: line.collapsed });
+    const isOther = line.key === 'other';
+    const items = isOther ? groupMonthlyExpenseItems(line.items) : line.items;
+    for (const item of items) {
+      labelValueRow(ws, cursor, item.label, item.amount, { indent: true, level: 1, hidden: isOther ? false : line.collapsed });
+      if (isOther) {
+        const row = ws.getRow(cursor.row - 1);
+        row.getCell(1).alignment = { vertical: 'top', wrapText: true };
+        row.getCell(2).alignment = { vertical: 'top' };
+        row.height = 15 * Math.max(1, Math.ceil((item.label.length + 4) / 38));
+      }
     }
   }
   labelValueRow(ws, cursor, 'Всего расходов', sumDecimal(lines.map((line) => line.amount), 2), { bold: true });
