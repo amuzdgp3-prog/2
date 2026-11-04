@@ -209,10 +209,6 @@ export function CashReportCard({ report }: { report: OwnerMonthReport }) {
       <Line label="− Зарплата, бензин, прочие" value={cash.spentFromCash} />
       <Line label="− Переведено на карту" value={cash.transferredToCard} />
       <Line label="Осталось на руках" value={cash.onHand} className="strong" />
-      <div style={{ height: 10 }} />
-      <Line label="Безнал" value={cash.cashless} />
-      <Line label="На карту" value={cash.transferredToCard} />
-      <Line label="Дошло до владельца" value={cash.reachedOwner} className="strong" />
     </div>
   );
 }
