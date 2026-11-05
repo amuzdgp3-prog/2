@@ -1,0 +1,16 @@
+name: Project memory
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/memory.mjs check
+      - run: node --test scripts/memory.test.mjs

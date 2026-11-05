@@ -1,0 +1,93 @@
+[
+  {
+    "id":"services", "title":"Обслуживание, фото, счётчики и пересчёт", "keywords":"обслуживание фото счетчик счётчик выручка counter service photo каскад",
+    "entry":["web/src/screens/ServiceForm.tsx","api/src/routes/services.ts","api/src/commands/services.ts"],
+    "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","web/src/calc.ts","web/src/photoBytes.ts"],
+    "tests":["api/tests/counter_cascade.test.ts","api/tests/counter_divisor.test.ts","api/tests/counter_monotonicity.test.ts","api/tests/service_log.test.ts"],
+    "decisions":["001","004","007","013","027","059"],
+    "note":"Деньги/игры округляются в SQL; перед правкой посмотреть потребителей расчёта и порядок блокировок."
+  },
+  {
+    "id":"claw", "title":"Клешня, отдача, Weak, Strong, Medium и советы", "keywords":"клешня отдача совет настройки слабая claw payout weak strong medium",
+    "entry":["api/src/domain/clawAdvice.ts","api/src/domain/clawStats.ts","web/src/components/ClawSection.tsx"],
+    "related":["web/src/clawAdvice.ts","api/src/commands/clawSettings.ts","api/src/commands/machineTypeClaw.ts","api/src/domain/ownerMonthPayout.ts","web/src/screens/ServiceForm.tsx"],
+    "tests":["api/tests/claw_advice.test.ts","api/tests/claw_settings.test.ts"], "decisions":["090","091"],
+    "note":"Начать с 091: затраты клешни — игрушки текущего обслуживания. Логика совета имеет зеркало в web; ROI — другая формула."
+  },
+  {
+    "id":"reports", "title":"Отчёт владельца, Excel, xlsx, ROI и расходы за месяц", "keywords":"отчет отчёт владелец excel xlsx roi месячный месячная выгрузка прибыль отчетность",
+    "entry":["api/src/routes/reports.ts","api/src/domain/ownerMonthReport.ts","api/src/domain/monthlyExcelReport.ts","web/src/screens/OwnerReport.tsx"],
+    "related":["api/src/domain/ownerMonthRoi.ts","api/src/domain/ownerMonthPayout.ts","api/src/domain/monthlyExpenseItems.ts","web/src/screens/OwnerReportSections.tsx","web/src/ownerMonthReport.ts","web/src/screens/Reports.tsx","api/src/domain/reports.ts"],
+    "tests":["api/tests/monthly_report.test.ts","api/tests/monthly_expense_items.test.ts","api/tests/owner_month_report.test.ts","api/tests/owner_month_roi.test.ts"], "decisions":["012","037","080","091"],
+    "note":"Страница отчёта владельца и общие Отчёты — разные точки входа. Формат xlsx менялся в Git после последнего DECISION: смотреть конкретный генератор и его тесты."
+  },
+  {
+    "id":"offline", "title":"Оффлайн, очередь, синхронизация, черновики и отзывы проверок", "keywords":"офлайн оффлайн очередь синхронизация черновик завис pending outbox offline sync indexeddb проверка обслуживание",
+    "entry":["web/src/db.ts","web/src/sync.ts","web/src/screens/Queue.tsx"],
+    "related":["web/src/api.ts","web/src/serviceReviews.ts","api/src/commands/draftIssues.ts","api/src/commands/serviceReviews.ts","web/vite.config.ts"],
+    "tests":["api/tests/draft_issues.test.ts","api/tests/service_reviews.test.ts","api/tests/service_reviews_telegram.test.ts"], "decisions":["003","052","085","086"],
+    "note":"local_id обеспечивает идемпотентность; кэш и очередь принадлежат пользователю. API не кэшируется service worker."
+  },
+  {
+    "id":"cashless", "title":"Безнал, iVend, терминалы и историческое сопоставление", "keywords":"безнал cashless ivend parser парсер терминал привязка синхронизация платеж",
+    "entry":["api/src/routes/cashless.ts","api/src/commands/cashless.ts","api/src/commands/ivendSync.ts"],
+    "related":["api/src/integrations/ivend.ts","api/src/commands/terminals.ts","api/src/server.ts","web/src/screens/admin/CashlessTab.tsx","web/src/screens/admin/TerminalsTab.tsx"],
+    "tests":["api/tests/ivend_sync.test.ts","api/tests/ivend_timeout.test.ts","api/tests/terminal_transfer.test.ts","api/tests/terminal_similar_serial.test.ts"], "decisions":["008","030","032","041","076","084"],
+    "note":"README о неготовом парсере устарел. Привязка терминала определяется на момент транзакции; настройки/учётные данные не читать ради навигации."
+  },
+  {
+    "id":"machines", "title":"Аппараты, локации, установки, замена и аренда", "keywords":"аппарат локация точка установка замена machine location placement аренда rent тип",
+    "entry":["api/src/commands/machines.ts","api/src/commands/locations.ts","web/src/screens/admin/machines/MachinesTab.tsx"],
+    "related":["api/src/commands/locationRent.ts","api/src/commands/machineTypes.ts","api/src/routes/catalog.ts","web/src/screens/ReplaceMachine.tsx","web/src/screens/admin/LocationsTab.tsx","web/src/screens/admin/machines/LocationRentCard.tsx"],
+    "tests":["api/tests/lifecycle.test.ts","api/tests/move_machine.test.ts","api/tests/location_history.test.ts","api/tests/locationRent.test.ts"], "decisions":["005","013","014","035","047","079"],
+    "note":"История Placement и интервалы требуют проверки соседних операций; номера аппаратов не переиспользуются."
+  },
+  {
+    "id":"auth", "title":"Авторизация, роли, сотрудники и права доступа", "keywords":"авторизация вход логин пароль роль сотрудник техник boss admin rbac auth staff scope доступ",
+    "entry":["api/src/routes/auth.ts","api/src/lib/scope.ts","api/src/commands/staff.ts","web/src/auth.tsx"],
+    "related":["api/src/server.ts","api/src/lib/loginThrottle.ts","api/src/lib/audit.ts","web/src/screens/admin/staff/StaffTab.tsx"],
+    "tests":["api/tests/rbac_cashless_reports.test.ts","api/tests/staff_management.test.ts","api/tests/login_throttle.test.ts"], "decisions":["006","015","017","043","047"],
+    "note":"Проверки доступа серверные. Видимость UI не является разрешением на API."
+  },
+  {
+    "id":"expenses", "title":"Расходы, закрытие дня, бензин и зарплата", "keywords":"расход затраты зарплата бензин закрытие день чек expenses dayclose money деньги",
+    "entry":["api/src/commands/expenses.ts","api/src/commands/dayClose.ts","api/src/routes/expenses.ts","web/src/screens/Money.tsx"],
+    "related":["api/src/domain/monthlyExpenseItems.ts","web/src/screens/admin/ExpensesTab.tsx"],
+    "tests":["api/tests/expenses.test.ts","api/tests/day_close.test.ts","api/tests/monthly_expense_items.test.ts"], "decisions":["037","072","073","080"],
+    "note":"Перевод «на карту» не относится к расходам бизнеса (080)."
+  },
+  {
+    "id":"tasks", "title":"Задачи и эффективность техников", "keywords":"задача задания эффективность техник tasks effectiveness forgotten",
+    "entry":["api/src/commands/tasks.ts","api/src/domain/technicianEffectiveness.ts","web/src/screens/Tasks.tsx"],
+    "related":["web/src/screens/admin/TasksTab.tsx","web/src/screens/Forgotten.tsx","api/src/domain/serviceIntervals.ts"],
+    "tests":["api/tests/tasks.test.ts","api/tests/technician_effectiveness.test.ts","api/tests/technician_effectiveness_api.test.ts"], "decisions":["046","049","050","051","071","090"],
+    "note":"При работе с методикой эффективности читать 071 вместе с исходными решениями."
+  },
+  {
+    "id":"notifications", "title":"Telegram, email, отчёты и ежедневные оповещения", "keywords":"telegram телеграм email почта рассылка оповещение уведомление daily summary outbox",
+    "entry":["api/src/commands/telegramOutbox.ts","api/src/jobs/dailySummaryScheduler.ts","api/src/commands/dailySummary.ts"],
+    "related":["api/src/integrations/telegram.ts","api/src/integrations/email.ts","api/src/routes/telegramOutbox.ts","api/src/domain/dailySummary.ts"],
+    "tests":["api/tests/telegram_outbox.test.ts","api/tests/daily_summary_queue.test.ts","api/tests/telegram_timeout.test.ts","api/tests/email_timeout.test.ts"], "decisions":["037","074","075"],
+    "note":"Не включать реальные отправки для проверки памяти; наличие кода не доказывает живую доставку."
+  },
+  {
+    "id":"ui", "title":"Интерфейс, навигация, журнал, таблицы и стили", "keywords":"интерфейс дизайн ui css таблица журнал телефон мобильный экран navigation layout",
+    "entry":["web/src/App.tsx","web/src/styles.css","web/src/screens/ServiceLog.tsx"],
+    "related":["web/src/screens/Dashboard.tsx","web/src/screens/admin/index.tsx","web/src/components/ui/PhotoLightbox.tsx"],
+    "tests":["api/tests/design_screens.test.ts","api/tests/ui_feedback.test.ts","api/tests/service_log.test.ts"], "decisions":["016","019","029","042","053","054","082","090"],
+    "note":"Журнал на телефоне остаётся таблицей. Проверки исходников не заменяют визуальную проверку интерфейса."
+  },
+  {
+    "id":"operations", "title":"Запуск, конфигурация, миграции, бэкап и диагностика", "keywords":"запуск прод сервер deploy docker backup бэкап база миграция лог вылет диагностика client events",
+    "entry":["README.md","api/src/config.ts","api/src/db/migrate.ts","api/src/commands/clientEvents.ts"],
+    "related":["api/src/routes/clientEvents.ts","web/src/clientLog.ts","api/tests/helpers.ts"],
+    "tests":["api/tests/client_events.test.ts","api/tests/concurrency.test.ts"], "decisions":["036","040","077","078","087","088","089"],
+    "note":"Если есть LOCAL-README.md — начать с него. Не применять Linux-команды к Windows по памяти. Тестовый helpers пересоздаёт схему; сначала проверить отдельную тестовую БД."
+  },
+  {
+    "id":"memory", "title":"Память проекта и навигация по коду", "keywords":"память контекст memory context поиск навигация решения",
+    "entry":["scripts/memory.mjs","scripts/memory-lib.mjs"],
+    "related":["scripts/memory.test.mjs"], "tests":["scripts/memory.test.mjs"], "decisions":["092"],
+    "note":"Документы — docs/memory/START.md и CURRENT.md. Проверки памяти работают без БД и сети; полную бизнес-корректность не проверяют."
+  }
+]
