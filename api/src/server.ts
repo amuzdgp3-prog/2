@@ -14,6 +14,7 @@ import { registerCashlessRoutes } from './routes/cashless.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerClientEventRoutes } from './routes/clientEvents.js';
 import { registerExpenseRoutes } from './routes/expenses.js';
+import { registerCashCollectionRoutes } from './routes/cashCollections.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerTelegramOutboxRoutes } from './routes/telegramOutbox.js';
 import { startDailySummaryScheduler } from './jobs/dailySummaryScheduler.js';
@@ -152,6 +153,7 @@ export async function buildServer() {
   await registerReportRoutes(app);
   await registerTelegramOutboxRoutes(app);
   await registerExpenseRoutes(app);
+  await registerCashCollectionRoutes(app);
   await registerClientEventRoutes(app);
 
   return app;

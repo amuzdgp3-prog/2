@@ -8,6 +8,7 @@ import BossMachinesScreen from './screens/BossMachines';
 import DashboardScreen from './screens/Dashboard';
 import ForgottenScreen from './screens/Forgotten';
 import MoneyScreen from './screens/Money';
+import CashCollectionsScreen from './screens/CashCollections';
 import HistoryScreen from './screens/History';
 import LoginScreen from './screens/Login';
 import MachinesScreen from './screens/Machines';
@@ -183,6 +184,7 @@ export default function App() {
       {(isTechnician || (isAdmin && drafts > 0)) && <NavLink to="/queue"><span>✎</span>Черновики{queued > 0 ? ` (${queued})` : ''}</NavLink>}
       {isTechnician && <NavLink to="/forgotten"><span>⏰</span>Забытые</NavLink>}
       {isTechnician && <NavLink to="/money"><span>₽</span>Деньги</NavLink>}
+      {isAdmin && <NavLink to="/cash-collections"><span>₽</span>Инкассация</NavLink>}
       {canSeeReports && <NavLink to="/dashboard"><span>◧</span>Сводка</NavLink>}
       {canSeeReports && <NavLink to="/owner-report"><span>▤</span>{isBoss ? 'Отчёт' : 'Отчёт владельцу'}</NavLink>}
       {canSeeReports && !isBoss && <NavLink to="/reports"><span>₽</span>Отчёты</NavLink>}
@@ -306,6 +308,7 @@ export default function App() {
           <Route path="/queue" element={isBoss ? <Navigate to="/" /> : <QueueScreen onChange={refreshQueueCount} />} />
           <Route path="/forgotten" element={isTechnician ? <ForgottenScreen /> : <Navigate to="/" />} />
           <Route path="/money" element={isTechnician ? <MoneyScreen /> : <Navigate to="/" />} />
+          <Route path="/cash-collections" element={isAdmin ? <CashCollectionsScreen /> : <Navigate to="/" />} />
           <Route path="/dashboard" element={canSeeReports ? <DashboardScreen /> : <Navigate to="/" />} />
           <Route path="/owner-report" element={canSeeReports ? <OwnerReportScreen /> : <Navigate to="/" />} />
           <Route path="/log" element={canSeeReports ? <ServiceLogScreen /> : <Navigate to="/" />} />
