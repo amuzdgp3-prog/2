@@ -356,7 +356,7 @@ export default function ReportsScreen() {
             <tbody>
               {monthly.map((row) => (
                 <tr key={row.monthStart}>
-                  <td>{new Date(row.monthStart).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</td>
+                  <td>{new Date(row.monthStart).toLocaleDateString('ru-RU', { month: 'long', year: '2-digit' })}</td>
                   <td className="num">{row.services}</td>
                   <td className="num">{formatGames(row.newGames)}</td>
                   <td className="num">{formatMoney(row.revenue)} ₽</td>

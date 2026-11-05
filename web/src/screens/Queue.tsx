@@ -1,3 +1,4 @@
+import { formatDateTime } from '../dateFormat';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MachineTag } from '../components/ui/MachineTag';
@@ -84,7 +85,7 @@ export default function QueueScreen({ onChange }: { onChange: () => void }) {
               </span>
             </div>
             <div className="muted mono" style={{ marginTop: 8, fontSize: 11.5 }}>
-              создан {new Date(item.queuedAt).toLocaleString('ru-RU')}
+              создан {formatDateTime(item.queuedAt)}
             </div>
             <div className="muted mono" style={{ marginTop: 4 }}>
               счётчик {item.gameCounter} · призы {item.prizeCounter} · тест {item.testGames}
@@ -122,7 +123,7 @@ export default function QueueScreen({ onChange }: { onChange: () => void }) {
               </span>
             </div>
             <div className="muted mono" style={{ marginTop: 8, fontSize: 11.5 }}>
-              создан {new Date(item.queuedAt).toLocaleString('ru-RU')}
+              создан {formatDateTime(item.queuedAt)}
             </div>
             <div
               style={{
@@ -195,7 +196,7 @@ function ReviewCard({ review, onSeen }: { review: MyReviewItem; onSeen: () => vo
       </div>
       <div className="muted mono" style={{ marginTop: 8, fontSize: 11.5 }}>
         {review.machineAddress ? `${review.machineAddress} · ` : ''}
-        {new Date(review.occurredAt).toLocaleString('ru-RU')}
+        {formatDateTime(review.occurredAt)}
       </div>
       {review.status === 'PENDING' && (
         // Причину отказа технику намеренно не показываем: она написана как указание «проверьте

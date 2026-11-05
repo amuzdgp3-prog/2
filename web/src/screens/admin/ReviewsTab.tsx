@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api, getToken } from '../../api';
 import { PhotoThumbnail } from '../../components/ui/PhotoLightbox';
@@ -64,7 +65,7 @@ export function ReviewsTab({ onDone, onError }: TabProps) {
               <strong>№ {row.machineNumber}</strong>
               {row.machineAddress ? ` — ${row.machineAddress}` : ''}
               <div className="muted">
-                {row.technicianName ?? 'техник не указан'} · {new Date(row.occurredAt).toLocaleString('ru-RU')}
+                {row.technicianName ?? 'техник не указан'} · {formatDateTime(row.occurredAt)}
               </div>
             </div>
             {status === 'PENDING' && (
@@ -90,7 +91,7 @@ function ResolvedSummary({ row }: { row: ReviewListItem }) {
       <div className="muted">
         {row.status === 'APPROVED' ? 'Сохранено' : 'Отклонено'}
         {row.resolvedByName ? ` · ${row.resolvedByName}` : ''}
-        {row.resolvedAt ? ` · ${new Date(row.resolvedAt).toLocaleString('ru-RU')}` : ''}
+        {row.resolvedAt ? ` · ${formatDateTime(row.resolvedAt)}` : ''}
       </div>
       {row.changes.length > 0 && (
         <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>

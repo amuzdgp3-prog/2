@@ -1,3 +1,4 @@
+import { formatDate } from '../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { formatMoney } from '../calc';
@@ -110,7 +111,7 @@ export default function DashboardScreen() {
                 {data.anomalies.map((row) => (
                   <tr key={row.id}>
                     <td>{row.machine_number}</td>
-                    <td>{row.service_date}</td>
+                    <td>{formatDate(row.service_date)}</td>
                     <td className="right mono">{formatMoney(row.revenue)}</td>
                     <td className="right mono">{formatMoney(row.cashless_amount)}</td>
                   </tr>

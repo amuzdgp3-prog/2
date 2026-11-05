@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../dateFormat';
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../../api';
 import { PageSizeSelect } from '../../components/ui/PageSizeSelect';
@@ -97,7 +98,7 @@ export function AuditTab({ onError }: TabProps) {
             {rows.map((row) => (
               <Fragment key={row.id}>
                 <tr>
-                  <td className="mono">{new Date(row.occurred_at).toLocaleString('ru-RU')}</td>
+                  <td className="mono">{formatDateTime(row.occurred_at)}</td>
                   <td>{row.actor_login ?? 'система'}</td>
                   <td className="mono">{row.entity}</td>
                   <td className="mono">{row.entity_id}</td>

@@ -1,3 +1,4 @@
+import { formatDate } from '../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
@@ -16,7 +17,6 @@ type Collection = {
 type Overview = { start: string; technicians: Technician[]; history: Collection[] };
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
 const rub = (value: string) => `${Number(value).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
-const human = (value: string) => value.split('-').reverse().join('.');
 const next = (value: string) => new Date(Date.parse(value) + 86400000).toISOString().slice(0, 10);
 const categories: Record<string, string> = { SALARY: 'Зарплата', FUEL: 'Бензин', OTHER: 'Прочие расходы', CARD: 'Передано на карту' };
 const message = (error: unknown) => error instanceof Error ? error.message : 'Не удалось выполнить операцию';
@@ -36,14 +36,14 @@ function Breakdown({ data }: { data: Calculation }) {
     {data.services.some(item => Number(item.amount) < 0) && <p role="alert">Есть обслуживания с отрицательными наличными. Проверьте показания и безнал перед фиксацией.</p>}
     <details><summary>Обслуживания и расходы по позициям ({data.services.length + data.expenses.length})</summary>
       <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Дата</th><th>Позиция</th><th>Сумма</th></tr></thead><tbody>
-        {data.services.map(item => <tr key={`s${item.id}`}><td>{human(item.date)}</td><td>Аппарат {item.label} · <a href={`/history/${encodeURIComponent(item.label)}`}>история</a></td><td>{rub(item.amount)}</td></tr>)}
-        {data.expenses.map(item => <tr key={`e${item.id}`}><td>{human(item.date)}</td><td>{categories[item.category] ?? item.category}{item.label ? ` · ${item.label}` : ''}</td><td>−{rub(item.amount)}</td></tr>)}
+        {data.services.map(item => <tr key={`s${item.id}`}><td>{formatDate(item.date)}</td><td>Аппарат {item.label} · <a href={`/history/${encodeURIComponent(item.label)}`}>история</a></td><td>{rub(item.amount)}</td></tr>)}
+        {data.expenses.map(item => <tr key={`e${item.id}`}><td>{formatDate(item.date)}</td><td>{categories[item.category] ?? item.category}{item.label ? ` · ${item.label}` : ''}</td><td>−{rub(item.amount)}</td></tr>)}
       </tbody></table></div>
       {!data.services.length && !data.expenses.length && <p className="muted">За период нет записей.</p>}
     </details>
     {data.corrections.length > 0 && <details><summary>Изменения в закрытых периодах</summary>
       <p className="muted">Изменения относительно первоначальных расчётов. Часть могла быть уже учтена последующими инкассациями; к текущему мешку применяется только строка «Корректировка» выше.</p>
-      {data.corrections.map(row => <p key={row.collectionId}>Инкассация №{row.collectionId}, {human(row.from)}–{human(row.to)}: {rub(row.delta)}</p>)}
+      {data.corrections.map(row => <p key={row.collectionId}>Инкассация №{row.collectionId}, {formatDate(row.from)}–{formatDate(row.to)}: {rub(row.delta)}</p>)}
     </details>}
   </>;
 }
@@ -72,14 +72,14 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
   };
   return <section className="card card-pad" style={{ marginBottom: 12 }}>
     <h3>{technician.full_name}{!technician.is_active ? ' · неактивен' : ''}</h3>
-    <p className="muted">{technician.last_to ? `Предыдущая инкассация — по ${human(technician.last_to)}. ` : 'Первая инкассация. '}Новый период с {human(from)}.</p>
+    <p className="muted">{technician.last_to ? `Предыдущая инкассация — по ${formatDate(technician.last_to)}. ` : 'Первая инкассация. '}Новый период с {formatDate(from)}.</p>
     {from > today() ? <p>Все дни по сегодня уже закрыты.</p> : <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
         <label>Деньги по дату включительно<input type="date" min={from} max={today()} value={to} disabled={busy} onChange={event => { setTo(event.target.value); setPreview(null); setReady(false); }} /></label>
         <button onClick={() => void calculate()} disabled={busy || !to || to < from}>Рассчитать сумму</button>
       </div>
       {preview && <div style={{ marginTop: 16 }}>
-        <p>Период: <strong>{human(preview.from)}–{human(preview.to)} включительно</strong></p>
+        <p>Период: <strong>{formatDate(preview.from)}–{formatDate(preview.to)} включительно</strong></p>
         <Breakdown data={preview} />
         <label style={{ display: 'flex', gap: 8, margin: '16px 0' }}><input type="checkbox" style={{ width: 'auto' }} checked={ready} disabled={busy} onChange={event => setReady(event.target.checked)} />Все обслуживания и расходы за период отправлены с телефона; расчёт проверен, мешок получен.</label>
         {Number(preview.expected) < 0 && <p role="alert">Расходы превышают наличные. Проверьте записи перед инкассацией.</p>}
@@ -103,7 +103,7 @@ function HistoryCard({ row, onSaved }: { row: Collection; onSaved: () => Promise
   };
   return <section className="card card-pad" style={{ marginBottom: 12 }}>
     <h3>№{row.id} · {row.full_name}</h3>
-    <p>{human(row.period_from)}–{human(row.period_to)}</p>
+    <p>{formatDate(row.period_from)}–{formatDate(row.period_to)}</p>
     <p>Ожидалось: <strong>{rub(row.expected)}</strong></p>
     {Number(row.source_delta) !== 0 && <p role="status">Записи за этот период изменились на {rub(row.source_delta)} относительно сохранённого расчёта. Исходная сверка сохранена. Изменения учитываются в последующих расчётах отдельной корректировкой.</p>}
     {row.actual === null ? <>

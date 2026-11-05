@@ -1,3 +1,4 @@
+import { formatDate } from '../dateFormat';
 import { useState } from 'react';
 import {
   adviceText,
@@ -77,7 +78,7 @@ function AdviceBox({ advice, state }: { advice: ReturnType<typeof clawAdvice>; s
   const band = state.band;
   const target = band.target === null ? `норма ${band.low}–${band.high} %` : `цель ${band.target} %`;
   const since = state.changedAt
-    ? `с ${new Date(state.changedAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}`
+    ? `с ${formatDate(state.changedAt)}`
     : '';
   let head = '';
   let body = '';

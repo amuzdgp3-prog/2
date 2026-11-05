@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from '../../dateFormat';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../api';
 import type { Machine, TabProps } from './types';
@@ -166,7 +167,7 @@ export function TasksTab({ onDone, onError }: TabProps) {
                 {task.machine_address ? ` — ${task.machine_address}` : ''}
                 {' · '}
                 {task.assigned_name ?? 'любой техник'}
-                {task.due_date ? ` · до ${new Date(task.due_date).toLocaleDateString('ru-RU')}` : ''}
+                {task.due_date ? ` · до ${formatDate(task.due_date)}` : ''}
               </div>
             </div>
             <button onClick={() => act(task, 'cancel')}>Отменить</button>
@@ -187,7 +188,7 @@ export function TasksTab({ onDone, onError }: TabProps) {
                     <div className="muted">
                       {STATUS_LABELS[task.status]}
                       {task.closed_by_name ? ` · ${task.closed_by_name}` : ''}
-                      {task.closed_at ? ` · ${new Date(task.closed_at).toLocaleString('ru-RU')}` : ''}
+                      {task.closed_at ? ` · ${formatDateTime(task.closed_at)}` : ''}
                     </div>
                     {task.close_note && <div style={{ marginTop: 4 }}>{task.close_note}</div>}
                   </div>

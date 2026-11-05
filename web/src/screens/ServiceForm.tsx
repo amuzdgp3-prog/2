@@ -1,3 +1,4 @@
+import { formatDateTime } from '../dateFormat';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
@@ -273,7 +274,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     }
     if (dateContext?.next) {
       list.push(
-        `Между выбранной датой и ${new Date(dateContext.next.occurred_at).toLocaleString('ru-RU')} уже есть обслуживание — вся цепочка после сохранения будет пересчитана.`,
+        `Между выбранной датой и ${formatDateTime(dateContext.next.occurred_at)} уже есть обслуживание — вся цепочка после сохранения будет пересчитана.`,
       );
     }
 
@@ -416,12 +417,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       {machine.last_service_at && (
         <div className="readonly-prev">
           <div className="lbl">
-            ПРОШЛОЕ ОБСЛУЖИВАНИЕ · {new Date(machine.last_service_at).toLocaleString('ru-RU', {
-              day: '2-digit',
-              month: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+            ПРОШЛОЕ ОБСЛУЖИВАНИЕ · {formatDateTime(machine.last_service_at)}
           </div>
           <div className="grid">
             <div className="cell">

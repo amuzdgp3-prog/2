@@ -1,3 +1,4 @@
+import { formatDate } from '../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { formatVolts, payoutBand } from '../../clawAdvice';
@@ -311,7 +312,7 @@ export function TypeClawPanel({ row, onDone, onError }: {
             <strong>Больше выигрывают — больше играют?</strong>
             <span className="muted" style={{ fontSize: 12 }}>
               {analytics.periods.toLocaleString('ru-RU')} периодов
-              {analytics.firstServiceAt ? ` с ${new Date(analytics.firstServiceAt).toLocaleDateString('ru-RU')}` : ''}
+              {analytics.firstServiceAt ? ` с ${formatDate(analytics.firstServiceAt)}` : ''}
             </span>
           </div>
           <div className="grid-2" style={{ gap: 16, alignItems: 'start' }}>

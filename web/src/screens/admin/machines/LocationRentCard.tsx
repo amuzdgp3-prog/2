@@ -1,3 +1,4 @@
+import { formatDate } from '../../../dateFormat';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../../api';
 import { formatMoney } from '../../../calc';
@@ -43,7 +44,7 @@ export function LocationRentCard({ locationId, onDone, onError }: TabProps & { l
       <div className="row">
         <div>
           <strong>{current ? `${formatMoney(current.monthly_amount)} ₽/мес` : 'не задана'}</strong>
-          {current && <div className="muted" style={{ fontSize: 11 }}>с {new Date(current.started_at).toLocaleDateString('ru-RU')}</div>}
+          {current && <div className="muted" style={{ fontSize: 11 }}>с {formatDate(current.started_at)}</div>}
         </div>
         {history.length > 0 && (
           <button type="button" onClick={() => setShowHistory(!showHistory)}>
@@ -56,9 +57,9 @@ export function LocationRentCard({ locationId, onDone, onError }: TabProps & { l
         <div className="stack" style={{ marginTop: 8 }}>
           {history.map((p) => (
             <div className="muted" key={p.id} style={{ fontSize: 12 }}>
-              {formatMoney(p.monthly_amount)} ₽/мес: {new Date(p.started_at).toLocaleDateString('ru-RU')}
+              {formatMoney(p.monthly_amount)} ₽/мес: {formatDate(p.started_at)}
               {' — '}
-              {p.ended_at ? new Date(p.ended_at).toLocaleDateString('ru-RU') : 'по настоящее время'}
+              {p.ended_at ? formatDate(p.ended_at) : 'по настоящее время'}
             </div>
           ))}
         </div>

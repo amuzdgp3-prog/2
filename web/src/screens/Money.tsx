@@ -1,3 +1,4 @@
+import { formatDate } from '../dateFormat';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { newLocalId } from '../localId';
@@ -34,10 +35,7 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function humanDate(iso: string): string {
-  const [year, month, day] = iso.split('-');
-  return `${day}.${month}.${year}`;
-}
+
 
 export default function MoneyScreen() {
   const [workDate, setWorkDate] = useState(today());
@@ -261,7 +259,7 @@ export default function MoneyScreen() {
             <div className="card card-pad row" key={row.id}>
               <div>
                 <strong>{formatMoney(row.amount)} ₽</strong>
-                <span className="muted"> · {humanDate(row.expense_date)}</span>
+                <span className="muted"> · {formatDate(row.expense_date)}</span>
                 <div className="muted">{row.comment}</div>
                 {row.photo_object_key && <div className="muted" style={{ fontSize: 12 }}>чек приложен</div>}
               </div>
@@ -287,7 +285,7 @@ export default function MoneyScreen() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.workDate}>
-                  <td className="mono">{humanDate(row.workDate)}</td>
+                  <td className="mono">{formatDate(row.workDate)}</td>
                   <td className="num">{formatMoney(row.salary)} ₽</td>
                   <td className="num">{formatMoney(row.fuel)} ₽</td>
                   <td className="muted" style={{ fontSize: 12 }}>

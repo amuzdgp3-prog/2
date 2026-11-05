@@ -1,3 +1,4 @@
+import { formatDateTime } from '../dateFormat';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -164,7 +165,7 @@ export default function MachinesScreen() {
 
       {syncedAt && (
         <p className="muted" style={{ marginTop: 0 }}>
-          Каталог обновлён: {new Date(syncedAt).toLocaleString('ru-RU')}
+          Каталог обновлён: {formatDateTime(syncedAt)}
         </p>
       )}
 

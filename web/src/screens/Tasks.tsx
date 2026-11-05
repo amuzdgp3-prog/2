@@ -1,3 +1,4 @@
+import { formatDate } from '../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { MachineTag } from '../components/ui/MachineTag';
@@ -97,7 +98,7 @@ export default function TasksScreen() {
           {task.details && <div style={{ marginTop: 8 }}>{task.details}</div>}
           {task.due_date && (
             <div className="muted mono" style={{ marginTop: 6, fontSize: 11.5 }}>
-              до {new Date(task.due_date).toLocaleDateString('ru-RU')}
+              до {formatDate(task.due_date)}
             </div>
           )}
           {task.claw_plan && (

@@ -1,3 +1,4 @@
+import { formatDate } from '../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api, getToken } from '../../api';
 import { formatMoney } from '../../calc';
@@ -63,10 +64,7 @@ function monthRange(): { from: string; to: string } {
   return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
 }
 
-function humanDate(iso: string): string {
-  const [year, month, day] = iso.split('-');
-  return `${day}.${month}.${year}`;
-}
+
 
 /** Чек открывается в новой вкладке; токен идёт параметром, потому что <a> не шлёт заголовки. */
 function ReceiptLink({ objectKey }: { objectKey: string }) {
@@ -145,7 +143,7 @@ export function ExpenseSummaryTab({ onError }: TabProps) {
                   <tbody>
                     {person.days.map((day) => (
                       <tr key={day.date}>
-                        <td className="mono">{humanDate(day.date)}</td>
+                        <td className="mono">{formatDate(day.date)}</td>
                         <td className="num">{formatMoney(day.salary)} ₽</td>
                         <td className="num">{formatMoney(day.fuel)} ₽</td>
                         <td className="num">{formatMoney(day.other)} ₽</td>
@@ -195,7 +193,7 @@ export function ExpenseSummaryTab({ onError }: TabProps) {
                 <tbody>
                   {summary.ownerExpenses.map((row) => (
                     <tr key={row.id}>
-                      <td className="mono">{humanDate(row.date)}</td>
+                      <td className="mono">{formatDate(row.date)}</td>
                       <td>{CATEGORY_LABELS[row.category] ?? row.category}</td>
                       <td className="num">{formatMoney(row.amount)} ₽</td>
                       <td className="wrap">

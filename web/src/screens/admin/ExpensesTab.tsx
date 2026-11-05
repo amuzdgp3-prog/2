@@ -1,3 +1,4 @@
+import { formatDate } from '../../dateFormat';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, getToken } from '../../api';
 import { formatMoney } from '../../calc';
@@ -37,10 +38,7 @@ function monthRangeInput(offset = 0): { from: string; to: string } {
   return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
 }
 
-function humanDate(iso: string): string {
-  const [year, month, day] = iso.slice(0, 10).split('-');
-  return `${day}.${month}.${year}`;
-}
+
 
 /** Кому принадлежит расход: техник по имени или сам владелец, если техник не проставлен. */
 function personKey(expense: Expense): string {
@@ -194,7 +192,7 @@ export function ExpensesTab({ onDone, onError }: TabProps) {
                     </tr>
                   ) : (
                     <tr key={expense.id}>
-                      <td className="mono">{humanDate(expense.expense_date)}</td>
+                      <td className="mono">{formatDate(expense.expense_date)}</td>
                       <td>{EXPENSE_CATEGORY_LABELS[expense.category]}</td>
                       <td className="num">{formatMoney(expense.amount)} ₽</td>
                       <td>

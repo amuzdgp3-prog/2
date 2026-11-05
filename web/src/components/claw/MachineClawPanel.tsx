@@ -1,3 +1,4 @@
+import { formatDate } from '../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { formatMoney } from '../../calc';
@@ -60,7 +61,6 @@ const SOURCE: Record<SettingRow['source'], string> = {
 
 const pct = (value: number | null, digits = 1) =>
   value === null ? '—' : `${value.toFixed(digits).replace('.', ',')} %`;
-const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
 /** Рубли в сутки — без копеек. */
 const rub = (value: number) => Math.round(value).toLocaleString('ru-RU');
 const signed = (value: number | null) =>
@@ -272,7 +272,7 @@ function LastEffect({ card }: { card: MachineClawCardData }) {
   return (
     <>
       <div className="claw-insight">
-        <b>Последнее изменение: {describeChange(row, previous)} ({date(row.effectiveAt)})</b>
+        <b>Последнее изменение: {describeChange(row, previous)} ({formatDate(row.effectiveAt)})</b>
         <span className="muted">{summary}</span>
       </div>
       <div className="claw-effect">
@@ -339,7 +339,7 @@ function SettingPeriods({ card }: { card: MachineClawCardData }) {
           {rows.map((item) => (
             <tr key={item.row.id} className={item === best && finished.length > 1 ? 'best' : undefined}>
               <td className="mono">{formatVolts(item.row.weak)}</td>
-              <td className="mono">{date(item.row.effectiveAt)}</td>
+              <td className="mono">{formatDate(item.row.effectiveAt)}</td>
               <td className="num mono">{Math.round(item.days)}</td>
               <td className="num mono">{item.gamesPerDay === null ? '—' : Math.round(item.gamesPerDay)}</td>
               <td className="num mono">{pct(item.payoutPercent, 0)}</td>
@@ -410,7 +410,7 @@ export function MachineClawPanel({ machineNumber, canEditTarget, canEditValues }
           <Corridor percent={since.payoutPercent} band={band} />
           <div className="claw-since">
             <div className="row">
-              <span className="muted">{current ? `С ${date(current.effectiveAt)} (текущая настройка)` : 'Настройки ещё не вносились'}</span>
+              <span className="muted">{current ? `С ${formatDate(current.effectiveAt)} (текущая настройка)` : 'Настройки ещё не вносились'}</span>
               <Indicator percent={since.payoutPercent} band={band} />
             </div>
             <dl className="claw-kv">
@@ -447,7 +447,7 @@ export function MachineClawPanel({ machineNumber, canEditTarget, canEditValues }
           <ul className="claw-hist">
             {card.history.map((row, index) => (
               <li key={row.id}>
-                <span className="d mono">{date(row.effectiveAt)}</span>
+                <span className="d mono">{formatDate(row.effectiveAt)}</span>
                 <div>
                   <div>{describeChange(row, card.history[index + 1] ?? null)}</div>
                   <div className="who">{row.enteredByName ?? '—'} · через {SOURCE[row.source]}</div>

@@ -201,7 +201,7 @@ export async function buildMonthlyReportWorkbook(
   titleCell(ws.getCell(1, 1), `ОТЧЁТ ЗА ${monthName.toUpperCase()} ${year}`);
   labelCell(ws.getCell(2, 1), 'Сформировано:');
   ws.getCell(2, 2).value = new Date();
-  ws.getCell(2, 2).numFmt = 'dd/mm/yyyy hh:mm';
+  ws.getCell(2, 2).numFmt = 'dd.mm.yy hh:mm';
 
   const cursor: Cursor = { row: 3 };
   writeSummary(ws, cursor, report);

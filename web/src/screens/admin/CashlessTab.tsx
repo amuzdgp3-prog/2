@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { formatMoney } from '../../calc';
@@ -187,7 +188,7 @@ function IvendSettingsPanel({ onDone, onError }: TabProps) {
 
       {settings.lastRun && (
         <p className="muted" style={{ marginTop: 10, marginBottom: 0, fontSize: 12 }}>
-          Последний запуск: {new Date(settings.lastRun.startedAt).toLocaleString('ru-RU')}
+          Последний запуск: {formatDateTime(settings.lastRun.startedAt)}
           {settings.lastRun.status === 'SUCCESS'
             ? ` — успешно, новых транзакций ${settings.lastRun.rowsInserted}, сопоставлено аппаратов ${settings.lastRun.rowsMatched}`
             : ` — ${settings.lastRun.status === 'RUNNING' ? 'выполняется…' : 'ошибка'}`}
@@ -267,7 +268,7 @@ export function CashlessTab({ onDone, onError }: TabProps) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.id as number}>
-                <td>{new Date(row.occurred_at as string).toLocaleString('ru-RU')}</td>
+                <td>{formatDateTime(row.occurred_at as string)}</td>
                 <td>{row.terminal_external_id}</td>
                 <td className="right mono">{formatMoney(row.amount as string)}</td>
                 <td>{(row.matched_machine_number as string) ?? '—'}</td>

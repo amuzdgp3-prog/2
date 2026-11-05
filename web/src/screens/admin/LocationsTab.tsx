@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../dateFormat';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../api';
 import { formatMoney } from '../../calc';
@@ -33,7 +34,6 @@ interface AddressHistoryData {
   terminals: Array<{ id: number; serial: string; label: string; machine_number: string; started_at: string; ended_at: string | null }>;
 }
 
-const formatDateTime = (value: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
 
 /** История одного Адреса — раскрывается прямо под карточкой при клике, без отдельного роута. */
 

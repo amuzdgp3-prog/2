@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../../../api';
 import type { Location, TabProps, Classifier } from '../types';
@@ -97,9 +98,9 @@ export function StaffTab({ onDone, onError }: TabProps) {
                 </span>
               </div>
               <div className="muted mono" style={{ fontSize: 11.5, marginTop: 2 }}>
-                обслуживание за {new Date(String(issue.occurred_at)).toLocaleString('ru-RU')}
+                обслуживание за {formatDateTime(String(issue.occurred_at))}
                 {' · последняя попытка '}
-                {new Date(String(issue.updated_at)).toLocaleString('ru-RU')}
+                {formatDateTime(String(issue.updated_at))}
               </div>
               <div className="alert error" style={{ marginTop: 6 }}>{issue.error_message}</div>
               <button

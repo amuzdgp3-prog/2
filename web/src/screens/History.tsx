@@ -1,3 +1,4 @@
+import { formatDate, formatTime } from '../dateFormat';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getToken } from '../api';
@@ -241,10 +242,10 @@ export default function HistoryScreen() {
             <div className="card card-pad" key={row.id} style={{ marginBottom: 12 }}>
               <div className="row">
                 <div>
-                  <strong>{row.service_date}</strong>
+                  <strong>{formatDate(row.service_date)}</strong>
                   {row.kind === 'FINAL' && <span className="chip" style={{ marginLeft: 8 }}>финальное</span>}
                   <div className="muted">
-                    {new Date(row.occurred_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    {formatTime(row.occurred_at)}
                     {row.technician_name ? ` · ${row.technician_name}` : ''}
                   </div>
                 </div>

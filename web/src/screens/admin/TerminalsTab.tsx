@@ -1,3 +1,4 @@
+import { formatDateTime } from '../../dateFormat';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../../api';
 import { formatMoney } from '../../calc';
@@ -210,7 +211,7 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
                 <div className="alert error" style={{ marginTop: 6 }}>
                   Непривязанный безнал: {terminal.unmatched_count} транз. на{' '}
                   {formatMoney(terminal.unmatched_amount ?? 0)} ₽, первая —{' '}
-                  {new Date(String(terminal.earliest_unmatched)).toLocaleString('ru-RU')}.
+                  {formatDateTime(String(terminal.earliest_unmatched))}.
                   {terminal.bound_machine
                     ? ' Эти деньги пришли до текущей привязки.'
                     : ' При привязке поставьте дату начала не позже первой транзакции.'}

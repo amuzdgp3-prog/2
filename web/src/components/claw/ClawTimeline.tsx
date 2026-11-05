@@ -1,3 +1,4 @@
+import { formatDate } from '../../dateFormat';
 import { formatVolts, payoutLevel, type PayoutBand } from '../../clawAdvice';
 
 /**
@@ -25,10 +26,6 @@ const niceCeil = (value: number) => {
   return 10 * magnitude;
 };
 
-const dayMonth = (iso: string) => {
-  const [, month, day] = iso.split('-');
-  return `${day}.${month}`;
-};
 
 export function ClawTimeline({ periods, band }: { periods: ClawPeriodPoint[]; band: PayoutBand }) {
   const W = 680;
@@ -77,7 +74,7 @@ export function ClawTimeline({ periods, band }: { periods: ClawPeriodPoint[]; ba
   });
 
   // Подписи дат — не чаще, чем помещаются.
-  const labelEvery = Math.max(1, Math.ceil(n / 9));
+  const labelEvery = Math.max(1, Math.ceil(n / 7));
 
   return (
     <div className="scroll-x">
@@ -141,11 +138,11 @@ export function ClawTimeline({ periods, band }: { periods: ClawPeriodPoint[]; ba
         {periods.map((p, index) => (
           <g key={`lbl-${index}`}>
             {index % labelEvery === 0 && (
-              <text x={cx(index)} y={y0(2) + PH + 16} textAnchor="middle">{dayMonth(p.serviceDate)}</text>
+              <text x={cx(index)} y={y0(2) + PH + 16} textAnchor="middle">{formatDate(p.serviceDate)}</text>
             )}
             <rect x={L + cw * index} y={TOP - 4} width={cw} height={y0(2) + PH - TOP + 6} fill="transparent">
               <title>
-                {`${dayMonth(p.serviceDate)}: ${p.gamesPerDay === null ? '—' : Math.round(p.gamesPerDay)} игр в сутки · отдача ${p.payoutPercent === null ? '—' : Math.round(p.payoutPercent) + ' %'} · Weak ${formatVolts(p.weak)} В`}
+                {`${formatDate(p.serviceDate)}: ${p.gamesPerDay === null ? '—' : Math.round(p.gamesPerDay)} игр в сутки · отдача ${p.payoutPercent === null ? '—' : Math.round(p.payoutPercent) + ' %'} · Weak ${formatVolts(p.weak)} В`}
               </title>
             </rect>
           </g>

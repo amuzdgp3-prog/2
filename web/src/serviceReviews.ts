@@ -1,3 +1,4 @@
+import { formatDateTime } from './dateFormat';
 /**
  * Обслуживания на проверке у администратора (DECISION-086). Зеркало типов из
  * api/src/commands/serviceReviews.ts.
@@ -76,12 +77,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 const formatValue = (field: string, value: unknown): string => {
   if (field === 'occurredAt' && typeof value === 'string') {
-    return new Date(value).toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDateTime(value);
   }
   if (value === '' || value == null) return '—';
   return String(value);

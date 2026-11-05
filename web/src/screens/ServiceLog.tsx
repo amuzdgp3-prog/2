@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime, formatTime } from '../dateFormat';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api, getToken } from '../api';
 import { useAuth } from '../auth';
@@ -77,8 +78,8 @@ interface StaffOption {
 function splitDateTime(iso: string): { date: string; time: string } {
   const value = new Date(iso);
   return {
-    date: value.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
-    time: value.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+    date: formatDate(value),
+    time: formatTime(value),
   };
 }
 
@@ -237,7 +238,7 @@ export default function ServiceLogScreen() {
     const header = ['Дата', 'Аппарат', 'Адрес', 'Техник', 'Новых игр', 'Выручка', 'Себестоимость', 'ROI'];
     const lines = response.rows.map((row) =>
       [
-        new Date(row.occurred_at).toLocaleString('ru-RU'),
+        formatDateTime(row.occurred_at),
         row.machine_number,
         `"${(row.address || row.machine_model || '').replaceAll('"', '""')}"`,
         row.technician_name ?? '',
@@ -465,7 +466,7 @@ function ServiceDetail({ row, periodDays, toyCost }: { row: ServiceLogRow; perio
             <>
               <div className="grid">
                 <div className="cell">
-                  <b className="mono">{new Date(row.prev_occurred_at as string).toLocaleDateString('ru-RU')}</b>
+                  <b className="mono">{formatDate(row.prev_occurred_at as string)}</b>
                   <span>дата</span>
                 </div>
                 <div className="cell"><b className="mono">{row.prev_game_counter}</b><span>счётчик игр</span></div>
