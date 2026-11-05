@@ -1,42 +1,17 @@
 import { formatDate, formatTime } from '../dateFormat';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, getToken } from '../api';
+import { api } from '../api';
 import { useAuth } from '../auth';
-import { formatGames, formatMoney } from '../calc';
-import { MachineTag } from '../components/ui/MachineTag';
-import { Odometer } from '../components/ui/Odometer';
-import { PhotoThumbnail } from '../components/ui/PhotoLightbox';
+import { formatMoney } from '../calc';
 import { machineQrValue, QrCode } from '../components/ui/QrCode';
 import { RoiBadge } from '../components/ui/RoiBadge';
 import { ReplaceMachineForm } from './ReplaceMachine';
 import { MachineClawPanel } from '../components/claw/MachineClawPanel';
-import { readCachedMachines } from '../db';
-
-interface ServiceRow {
-  id: number;
-  service_date: string;
-  occurred_at: string;
-  game_counter: number;
-  prize_counter: number;
-  test_games: number;
-  new_games: string;
-  new_prizes: number;
-  revenue: string;
-  cash_amount: string;
-  cashless_amount: string;
-  toy_cost: string;
-  counter_divisor_applied: string;
-  price_per_game_snapshot: string;
-  revenue_to_cost_ratio: string | null;
-  is_financial_anomaly: boolean;
-  photo_object_key: string;
-  notes: string;
-  kind: string;
-  technician_name: string | null;
-  location_name: string;
-  toys: { toyId: number; name: string; quantity: number; unitCost: string }[] | null;
-}
+import { readCachedMachines, type CachedMachine } from '../db';
+import { ServiceHistory } from './history/ServiceHistory';
+import type { ServiceRow } from './history/types';
+import './history/MachineCard.css';
 
 interface RouteRow {
   id: number;
@@ -52,7 +27,7 @@ interface TechnicianRow {
 
 type Tab = 'history' | 'claw' | 'routes' | 'technicians';
 
-/** Карточка аппарата (docs/design/mockups/06_admin_machine_card.html): статистика + вкладки. */
+/** Карточка аппарата: согласованный вариант «Обзор и журнал», DECISION-099. */
 export default function HistoryScreen() {
   const { machineNumber = '' } = useParams();
   const { user } = useAuth();
@@ -63,17 +38,21 @@ export default function HistoryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const [openPhoto, setOpenPhoto] = useState<number | null>(null);
-  // Вкладка «Клешня и отдача» — только у типов с меню Claw Set (DECISION-090): это знает каталог.
-  const [hasClaw, setHasClaw] = useState(false);
-  const [band, setBand] = useState<{ low: number; high: number } | undefined>(undefined);
+  const [machineInfo, setMachineInfo] = useState<CachedMachine | undefined>();
+  // Сначала офлайн-каталог, затем актуальные данные: прямая ссылка работает и с пустым кэшем.
+  const hasClaw = Boolean(machineInfo?.claw_state);
+  const band = machineInfo?.claw_state?.band.target != null ? machineInfo.claw_state.band : undefined;
   useEffect(() => {
-    void readCachedMachines().then((machines) => {
-      const machine = machines.find((item) => item.machine_number === machineNumber);
-      setHasClaw(Boolean(machine?.claw_state));
-      // Значок ROI меряет норму той же целью аппарата, что и вкладка «Клешня и отдача».
-      setBand(machine?.claw_state?.band.target != null ? machine.claw_state.band : undefined);
-    });
+    let cancelled = false;
+    setMachineInfo(undefined);
+    const apply = (machines: CachedMachine[]) => {
+      if (!cancelled) setMachineInfo(machines.find((item) => item.machine_number === machineNumber));
+    };
+    void (async () => {
+      try { apply(await readCachedMachines()); } catch { /* Пустой/недоступный кэш не блокирует сеть. */ }
+      try { apply(await api.get<CachedMachine[]>('/api/machines')); } catch { /* Офлайн остаётся кэш. */ }
+    })();
+    return () => { cancelled = true; };
   }, [machineNumber]);
 
   const load = () =>
@@ -123,217 +102,79 @@ export default function HistoryScreen() {
   };
 
   return (
-    <>
-      <div className="mc-header">
-        <div className="left">
-          <MachineTag number={machineNumber} size="lg" />
+    <div className="machine-card-overview">
+      <nav className="mch-breadcrumb" aria-label="Навигация карточки">
+        <Link to="/">Аппараты</Link><span aria-hidden="true">›</span><span>Карточка аппарата</span>
+      </nav>
+      <header className="mch-header">
+        <div className="mch-identity">
+          <span className="mch-machine-number" aria-label={`Аппарат № ${machineNumber}`}>{machineNumber}</span>
           <div>
-            <h1 style={{ fontSize: 20 }}>{rows[0]?.location_name ? rows[0].location_name : `Аппарат № ${machineNumber}`}</h1>
-            <div className="sub">{rows.length > 0 ? `${rows.length} обслуживаний в истории` : 'обслуживаний ещё не было'}</div>
-          </div>
-        </div>
-        <div className="btns">
-          {user?.role === 'ADMIN' && (
-            <button className="btn btn-ghost" onClick={() => setShowReplace(!showReplace)}>
-              ⇄ Заменить аппарат
-            </button>
-          )}
-          <button className="btn btn-ghost" onClick={() => setShowQr(!showQr)}>▥ QR-код</button>
-          {user?.role !== 'BOSS' && (
-            <Link to={`/service/${encodeURIComponent(machineNumber)}`}>
-              <button className="btn btn-primary">Новое обслуживание</button>
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {showQr && (
-        <div className="card card-pad" style={{ marginBottom: 16, textAlign: 'center' }}>
-          <QrCode value={machineQrValue(machineNumber)} />
-          <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
-            Наклейте на корпус аппарата — сканирование откроет форму обслуживания напрямую
-          </p>
-        </div>
-      )}
-
-      {showReplace && user?.role === 'ADMIN' && (
-        <ReplaceMachineForm
-          oldMachineNumber={machineNumber}
-          onDone={(message) => {
-            setNotice(message);
-            setShowReplace(false);
-          }}
-          onError={(caught) => setError((caught as Error).message)}
-        />
-      )}
-
-      {error && <div className="alert error">{error}</div>}
-      {notice && <div className="alert ok">{notice}</div>}
-
-      {stats && (
-        <div className="mc-stats">
-          <div className="kpi">
-            <div className="lbl">Счётчик игр</div>
-            <div className="val"><Odometer value={stats.currentCounter} /></div>
-          </div>
-          <div className="kpi">
-            <div className="lbl">Выручка</div>
-            <div className="val mono">{formatMoney(stats.revenue)} ₽</div>
-            <div className="sub">нал {formatMoney(stats.cash)} ₽ · безнал {formatMoney(stats.cashless)} ₽</div>
-          </div>
-          <div className="kpi">
-            <div className="lbl">Себестоимость игрушек</div>
-            <div className="val mono">{formatMoney(stats.toyCost)} ₽</div>
-          </div>
-          <div className="kpi">
-            <div className="lbl">Средний ROI</div>
-            <div className="val"><RoiBadge value={stats.averageRoi} band={band} /></div>
-          </div>
-          <div className="kpi">
-            <div className="lbl">Обслуживаний</div>
-            <div className="val">{stats.count}</div>
-          </div>
-        </div>
-      )}
-
-      {stats && stats.toyBreakdown.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 16 }}>
-          <div className="muted" style={{ marginBottom: 8 }}>Себестоимость игрушек по видам за всю историю</div>
-          <table>
-            <thead><tr><th>Игрушка</th><th className="num">Количество</th><th className="num">Сумма</th></tr></thead>
-            <tbody>
-              {stats.toyBreakdown.map((toy) => (
-                <tr key={toy.name}>
-                  <td>{toy.name}</td>
-                  <td className="num">{toy.quantity}</td>
-                  <td className="num">{formatMoney(toy.cost)} ₽</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="mc-tabs">
-        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>История</button>
-        {hasClaw && (
-          <button className={tab === 'claw' ? 'active' : ''} onClick={() => setTab('claw')}>Клешня и отдача</button>
-        )}
-        {user?.role !== 'TECHNICIAN' && (
-          <>
-            <button className={tab === 'routes' ? 'active' : ''} onClick={() => setTab('routes')}>Маршруты</button>
-            <button className={tab === 'technicians' ? 'active' : ''} onClick={() => setTab('technicians')}>Техники</button>
-          </>
-        )}
-      </div>
-
-      {tab === 'history' && (
-        <>
-          {rows.length === 0 && !error && <p className="muted">Обслуживаний пока нет.</p>}
-          {rows.map((row) => (
-            <div className="card card-pad" key={row.id} style={{ marginBottom: 12 }}>
-              <div className="row">
-                <div>
-                  <strong>{formatDate(row.service_date)}</strong>
-                  {row.kind === 'FINAL' && <span className="chip" style={{ marginLeft: 8 }}>финальное</span>}
-                  <div className="muted">
-                    {formatTime(row.occurred_at)}
-                    {row.technician_name ? ` · ${row.technician_name}` : ''}
-                  </div>
-                </div>
-                <div className="right">
-                  <div className="mono big">{formatMoney(row.revenue)} ₽</div>
-                  <div className="muted mono">{formatGames(row.new_games)} игр</div>
-                </div>
-              </div>
-
-              {row.is_financial_anomaly && (
-                <div className="alert warn" style={{ marginTop: 10, marginBottom: 0 }}>
-                  Безнал больше выручки — расхождение отмечено, значения не подгонялись.
-                </div>
-              )}
-
-              <div className="table-wrap scroll-x" style={{ marginTop: 10 }}>
-                <table>
-                  <tbody>
-                    <tr>
-                      <td className="wrap">Счётчик игр / призов</td>
-                      <td className="right mono">{row.game_counter} / {row.prize_counter}</td>
-                    </tr>
-                    <tr>
-                      <td className="wrap">Тестовые игры</td>
-                      <td className="right mono">{row.test_games}</td>
-                    </tr>
-                    <tr>
-                      <td className="wrap">Коэффициент и цена на момент записи</td>
-                      <td className="right mono">
-                        ÷{Number(row.counter_divisor_applied)} · {formatMoney(row.price_per_game_snapshot)} ₽
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="wrap">Нал / безнал</td>
-                      <td className="right mono">{formatMoney(row.cash_amount)} / {formatMoney(row.cashless_amount)}</td>
-                    </tr>
-                    <tr>
-                      <td className="wrap">Себестоимость игрушек</td>
-                      <td className="right mono">{formatMoney(row.toy_cost)} ₽</td>
-                    </tr>
-                    <tr>
-                      <td className="wrap">Выручка / себестоимость</td>
-                      <td className="right mono">
-                        {row.revenue_to_cost_ratio === null ? <span className="muted">нет данных</span> : Number(row.revenue_to_cost_ratio).toFixed(2)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              {row.notes && <p className="muted" style={{ marginBottom: 0, marginTop: 10 }}>{row.notes}</p>}
-
-              <div className="row" style={{ marginTop: 10 }}>
-                <button onClick={() => setOpenPhoto(openPhoto === row.id ? null : row.id)}>
-                  {openPhoto === row.id ? 'Скрыть фото' : 'Фото счётчика'}
-                </button>
-                {user?.role === 'ADMIN' && (
-                  <div className="row" style={{ gap: 6 }}>
-                    <button onClick={() => setEditing(editing === row.id ? null : row.id)}>
-                      {editing === row.id ? 'Отмена' : 'Изменить'}
-                    </button>
-                    <button className="icon-btn danger" onClick={() => remove(row.id)}>✕</button>
-                  </div>
-                )}
-              </div>
-
-              {openPhoto === row.id && (
-                <PhotoThumbnail src={`/api/photos/${row.photo_object_key}?token=${getToken()}`} alt="Фото счётчика" />
-              )}
-
-              {editing === row.id && (
-                <EditServiceForm
-                  row={row}
-                  onDone={async (message) => {
-                    setNotice(message);
-                    setEditing(null);
-                    await load();
-                  }}
-                  onError={(caught) => setError((caught as Error).message)}
-                />
-              )}
+            <h1>{machineInfo?.location_name || rows[0]?.location_name || `Аппарат № ${machineNumber}`}</h1>
+            <div className="mch-meta">
+              {machineInfo && <><span>{machineInfo.machine_type}</span><span>Цена игры {formatMoney(machineInfo.price_per_game)} ₽</span></>}
+              <span>{rows.length > 0 ? `Обслуживаний: ${rows.length}` : 'Обслуживаний ещё не было'}</span>
             </div>
-          ))}
-        </>
-      )}
+          </div>
+        </div>
+        <div className="mch-header-actions">
+          {user?.role !== 'BOSS' && <Link className="mch-button mch-primary" to={`/service/${encodeURIComponent(machineNumber)}`}><span aria-hidden="true">＋</span> Обслуживание</Link>}
+          <details className="mch-more">
+            <summary className="mch-button" aria-label="Другие действия с аппаратом"><span aria-hidden="true">⋯</span></summary>
+            <div className="mch-more-menu">
+              <button type="button" onClick={(event) => { setShowQr(!showQr); event.currentTarget.closest('details')?.removeAttribute('open'); }}>QR-код аппарата</button>
+              {user?.role === 'ADMIN' && <button type="button" onClick={(event) => { setShowReplace(!showReplace); event.currentTarget.closest('details')?.removeAttribute('open'); }}>Заменить аппарат</button>}
+            </div>
+          </details>
+        </div>
+      </header>
 
-      {tab === 'claw' && (
-        <MachineClawPanel
-          machineNumber={machineNumber}
-          canEditTarget={user?.role === 'ADMIN'}
-          canEditValues={user?.role === 'ADMIN' || user?.role === 'TECHNICIAN'}
-        />
-      )}
-      {tab === 'routes' && <RoutesTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
-      {tab === 'technicians' && <TechniciansTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
-    </>
+      {showQr && <div className="mch-qr-panel">
+        <QrCode value={machineQrValue(machineNumber)} />
+        <p>Наклейте на корпус аппарата — сканирование откроет форму обслуживания напрямую</p>
+        <button type="button" onClick={() => setShowQr(false)}>Скрыть QR-код</button>
+      </div>}
+      {showReplace && user?.role === 'ADMIN' && <ReplaceMachineForm oldMachineNumber={machineNumber} onDone={(message) => { setNotice(message); setShowReplace(false); }} onError={(caught) => setError((caught as Error).message)} />}
+      {error && <div className="alert error" role="alert">{error}</div>}
+      {notice && <div className="alert ok" role="status">{notice}</div>}
+
+      {stats && <>
+        <div className="mch-stats">
+          <div className="mch-stat"><div className="mch-stat-label">Выручка</div><div className="mch-stat-value">{formatMoney(stats.revenue)} <small>₽</small></div><div className="mch-stat-note">Нал {formatMoney(stats.cash)} · безнал {formatMoney(stats.cashless)}</div></div>
+          <div className="mch-stat"><div className="mch-stat-label">Себестоимость игрушек</div><div className="mch-stat-value">{formatMoney(stats.toyCost)} <small>₽</small></div><div className="mch-stat-note">Добавлено при обслуживании</div></div>
+          <div className="mch-stat"><div className="mch-stat-label">Средний ROI</div><div className="mch-stat-value">{stats.averageRoi === null ? '—' : stats.averageRoi.toFixed(2)}</div><div className="mch-stat-note"><RoiBadge value={stats.averageRoi} band={band} /></div></div>
+          <div className="mch-stat"><div className="mch-stat-label">Счётчик игр</div><div className="mch-stat-value">{stats.currentCounter}</div><div className="mch-stat-note">Показание от {formatDate(rows[0].service_date)}</div></div>
+        </div>
+        <div className="mch-range"><span>Сводка по последним обслуживаниям: {stats.count}{stats.count === 200 ? ' (не более 200 последних)' : ''}</span><span>Последнее: {formatDate(rows[0].service_date)}, {formatTime(rows[0].occurred_at)}</span></div>
+      </>}
+
+      <div className="mch-tabs" role="tablist" aria-label="Разделы карточки аппарата">
+        {([
+          { id: 'history', label: 'История', visible: true },
+          { id: 'claw', label: 'Клешня и отдача', visible: hasClaw },
+          { id: 'routes', label: 'Маршруты', visible: user?.role !== 'TECHNICIAN' },
+          { id: 'technicians', label: 'Техники', visible: user?.role !== 'TECHNICIAN' },
+        ] as const).filter((item) => item.visible).map((item) => <button key={item.id} type="button" id={`mch-tab-${item.id}`} role="tab" aria-controls="mch-active-panel" aria-selected={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}
+      </div>
+
+      <section id="mch-active-panel" className="mch-active-panel" role="tabpanel" aria-labelledby={`mch-tab-${tab}`}>
+        {tab === 'history' && <>
+          <div className="mch-section-heading"><h2>История обслуживаний</h2><span>{rows.length} записей</span></div>
+          {rows.length === 0 && !error && <p className="muted">Обслуживаний пока нет.</p>}
+          {rows.length > 0 && <ServiceHistory rows={rows} isAdmin={user?.role === 'ADMIN'} editing={editing} onEdit={setEditing} onRemove={remove} renderEditor={(row) => <EditServiceForm row={row} onDone={async (message) => { setNotice(message); setEditing(null); await load(); }} onError={(caught) => setError((caught as Error).message)} />} />}
+          {stats && stats.toyBreakdown.length > 0 && <details className="mch-toy-breakdown">
+            <summary><span>Себестоимость игрушек по видам <span className="mch-muted">· {formatMoney(stats.toyCost)} ₽</span></span><span aria-hidden="true">⌄</span></summary>
+            <div className="mch-table-scroll"><table>
+              <thead><tr><th>Игрушка</th><th className="num">Количество</th><th className="num">Сумма</th></tr></thead>
+              <tbody>{stats.toyBreakdown.map((toy) => <tr key={toy.name}><td>{toy.name}</td><td className="num">{toy.quantity}</td><td className="num">{formatMoney(toy.cost)} ₽</td></tr>)}</tbody>
+            </table></div>
+          </details>}
+        </>}
+        {tab === 'claw' && <MachineClawPanel machineNumber={machineNumber} canEditTarget={user?.role === 'ADMIN'} canEditValues={user?.role === 'ADMIN' || user?.role === 'TECHNICIAN'} />}
+        {tab === 'routes' && <RoutesTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
+        {tab === 'technicians' && <TechniciansTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
+      </section>
+    </div>
   );
 }
 
