@@ -3,7 +3,7 @@
     "id":"cash-collections", "title":"Инкассация, мешки наличных и сверка по техникам", "keywords":"инкассация мешок наличные пересчет пересчёт сверка недостача излишек cash collection",
     "entry":["web/src/screens/CashCollections.tsx","api/src/routes/cashCollections.ts","api/src/commands/cashCollections.ts"],
     "related":["api/src/migrations/025_cash_collections.sql","api/src/commands/dayClose.ts","api/src/commands/expenses.ts","api/src/db/pool.ts"],
-    "tests":["api/tests/cash_collections.test.ts"], "decisions":["093"],
+    "tests":["api/tests/cash_collections.test.ts"], "decisions":["093","094"],
     "note":"С 01.11.2026, нулевой входящий остаток; TECHNICIAN-расходы из своей налички. Снимок ожидаемой суммы, фактический пересчёт, поздние изменения отдельной корректировкой. Тесту нужна доказанно отдельная БД (cash_collections_test_* или apixspb_test); helpers пересоздаёт схему."
   },
   {

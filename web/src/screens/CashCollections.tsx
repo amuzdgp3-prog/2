@@ -10,7 +10,7 @@ type Calculation = {
 };
 type Technician = { id: number; full_name: string; is_active: boolean; last_to: string | null };
 type Collection = {
-  id: number; technician_id: number; full_name: string; period_from: string; period_to: string; received_on: string; source_delta: string;
+  id: number; technician_id: number; full_name: string; period_from: string; period_to: string; source_delta: string;
   expected: string; actual: string | null; difference: string | null; comment: string; snapshot: Calculation;
 };
 type Overview = { start: string; technicians: Technician[]; history: Collection[] };
@@ -51,7 +51,6 @@ function Breakdown({ data }: { data: Calculation }) {
 function TechnicianCard({ technician, onSaved }: { technician: Technician; onSaved: () => Promise<void> }) {
   const from = technician.last_to ? next(technician.last_to) : '2026-11-01';
   const [to, setTo] = useState(today);
-  const [receivedOn, setReceivedOn] = useState(today);
   const [preview, setPreview] = useState<Calculation | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -66,7 +65,7 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
     if (!preview || !ready) return;
     setBusy(true); setError('');
     try {
-      await api.post('/api/cash-collections', { technicianId: technician.id, to, receivedOn, token: preview.token });
+      await api.post('/api/cash-collections', { technicianId: technician.id, to, receivedOn: today(), token: preview.token });
       setPreview(null); setReady(false); await onSaved();
     } catch (error) { setError(message(error)); setPreview(null); setReady(false); }
     finally { setBusy(false); }
@@ -77,7 +76,6 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
     {from > today() ? <p>Все дни по сегодня уже закрыты.</p> : <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
         <label>Деньги по дату включительно<input type="date" min={from} max={today()} value={to} disabled={busy} onChange={event => { setTo(event.target.value); setPreview(null); setReady(false); }} /></label>
-        <label>Дата получения мешка<input type="date" min={to} max={today()} value={receivedOn} disabled={busy} onChange={event => setReceivedOn(event.target.value)} /></label>
         <button onClick={() => void calculate()} disabled={busy || !to || to < from}>Рассчитать сумму</button>
       </div>
       {preview && <div style={{ marginTop: 16 }}>
@@ -85,7 +83,7 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
         <Breakdown data={preview} />
         <label style={{ display: 'flex', gap: 8, margin: '16px 0' }}><input type="checkbox" style={{ width: 'auto' }} checked={ready} disabled={busy} onChange={event => setReady(event.target.checked)} />Все обслуживания и расходы за период отправлены с телефона; расчёт проверен, мешок получен.</label>
         {Number(preview.expected) < 0 && <p role="alert">Расходы превышают наличные. Проверьте записи перед инкассацией.</p>}
-        <button className="primary" disabled={busy || !ready || !receivedOn || receivedOn < to || Number(preview.expected) < 0} onClick={() => void save()}>Зафиксировать инкассацию · {rub(preview.expected)}</button>
+        <button className="primary" disabled={busy || !ready || Number(preview.expected) < 0} onClick={() => void save()}>Зафиксировать инкассацию · {rub(preview.expected)}</button>
       </div>}
     </>}
     {error && <p role="alert" className="error">{error}</p>}
@@ -105,7 +103,7 @@ function HistoryCard({ row, onSaved }: { row: Collection; onSaved: () => Promise
   };
   return <section className="card card-pad" style={{ marginBottom: 12 }}>
     <h3>№{row.id} · {row.full_name}</h3>
-    <p>{human(row.period_from)}–{human(row.period_to)} · Получено {human(row.received_on)}</p>
+    <p>{human(row.period_from)}–{human(row.period_to)}</p>
     <p>Ожидалось: <strong>{rub(row.expected)}</strong></p>
     {Number(row.source_delta) !== 0 && <p role="status">Записи за этот период изменились на {rub(row.source_delta)} относительно сохранённого расчёта. Исходная сверка сохранена. Изменения учитываются в последующих расчётах отдельной корректировкой.</p>}
     {row.actual === null ? <>
