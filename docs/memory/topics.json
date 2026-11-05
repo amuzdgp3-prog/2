@@ -80,7 +80,7 @@
   {
     "id":"ui", "title":"Интерфейс, навигация, журнал, таблицы и стили", "keywords":"интерфейс дизайн ui css таблица журнал телефон мобильный экран navigation layout",
     "entry":["web/src/App.tsx","web/src/styles.css","web/src/screens/ServiceLog.tsx"],
-    "related":["web/src/screens/Dashboard.tsx","web/src/screens/admin/index.tsx","web/src/components/AdminNavigation.tsx","web/src/components/ui/PhotoLightbox.tsx"],
+    "related":["web/src/screens/Dashboard.tsx","web/src/screens/admin/index.tsx","web/src/components/ui/PhotoLightbox.tsx"],
     "tests":["api/tests/design_screens.test.ts","api/tests/ui_feedback.test.ts","api/tests/service_log.test.ts"], "decisions":["016","019","029","042","053","054","082","090","095"],
     "note":"Журнал на телефоне остаётся таблицей. Проверки исходников не заменяют визуальную проверку интерфейса."
   },
