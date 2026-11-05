@@ -50,14 +50,7 @@ interface TechnicianRow {
   source: 'location' | 'machine';
 }
 
-interface InitialToyRow {
-  toy_id: number;
-  name: string;
-  quantity: number;
-  unit_cost_snapshot: string;
-}
-
-type Tab = 'history' | 'claw' | 'toys' | 'routes' | 'technicians';
+type Tab = 'history' | 'claw' | 'routes' | 'technicians';
 
 /** Карточка аппарата (docs/design/mockups/06_admin_machine_card.html): статистика + вкладки. */
 export default function HistoryScreen() {
@@ -228,7 +221,6 @@ export default function HistoryScreen() {
         )}
         {user?.role !== 'TECHNICIAN' && (
           <>
-            <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
             <button className={tab === 'routes' ? 'active' : ''} onClick={() => setTab('routes')}>Маршруты</button>
             <button className={tab === 'technicians' ? 'active' : ''} onClick={() => setTab('technicians')}>Техники</button>
           </>
@@ -339,48 +331,9 @@ export default function HistoryScreen() {
           canEditValues={user?.role === 'ADMIN' || user?.role === 'TECHNICIAN'}
         />
       )}
-      {tab === 'toys' && <ToysTab machineNumber={machineNumber} />}
       {tab === 'routes' && <RoutesTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
       {tab === 'technicians' && <TechniciansTab machineNumber={machineNumber} isAdmin={user?.role === 'ADMIN'} />}
     </>
-  );
-}
-
-function ToysTab({ machineNumber }: { machineNumber: string }) {
-  const [toys, setToys] = useState<InitialToyRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api
-      .get<InitialToyRow[]>(`/api/machines/${encodeURIComponent(machineNumber)}/initial-toys`)
-      .then(setToys)
-      .catch((caught) => setError((caught as Error).message));
-  }, [machineNumber]);
-
-  if (error) return <div className="alert error">{error}</div>;
-  if (!toys) return <p className="muted">Загрузка…</p>;
-
-  return (
-    <div className="card card-pad">
-      <div className="muted" style={{ marginBottom: 8 }}>
-        Начальные игрушки текущей установки — состояние при монтаже, не входят в себестоимость первого обслуживания
-      </div>
-      {toys.length === 0 && <p className="muted" style={{ marginBottom: 0 }}>Начальных игрушек не указано.</p>}
-      {toys.length > 0 && (
-        <table>
-          <thead><tr><th>Игрушка</th><th className="num">Количество</th><th className="num">Цена на момент установки</th></tr></thead>
-          <tbody>
-            {toys.map((toy) => (
-              <tr key={toy.toy_id}>
-                <td>{toy.name}</td>
-                <td className="num">{toy.quantity}</td>
-                <td className="num">{formatMoney(toy.unit_cost_snapshot)} ₽</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
   );
 }
 
