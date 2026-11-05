@@ -65,6 +65,7 @@ import {
   assertMachineInScope,
   listScopedMachineNumbers,
   machineScopePredicate,
+  staffMachineScopePredicate,
 } from '../lib/scope.js';
 
 const machineBodySchema = {
@@ -844,8 +845,8 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
   );
 
   /**
-   * Техники, которые могут обслуживать этот аппарат: через дерево точек (scope) или через
-   * точечное назначение — обе ветки формируют один и тот же реальный доступ на сервере.
+   * Техники с реальным доступом: дерево точек, каталог и точечное назначение.
+   * Предикат общий с серверной проверкой доступа, чтобы список не терял способы назначения.
    */
   app.get<{ Params: { machineNumber: string } }>(
     '/api/machines/:machineNumber/technicians',
@@ -855,7 +856,7 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       const result = await pool.query(
         `WITH RECURSIVE machine_location AS (
            SELECT location_id FROM machine_placements
-           WHERE machine_number = $1 AND ended_at IS NULL
+           WHERE machine_number = $1
          ),
          location_ancestors AS (
            SELECT l.id, l.parent_id FROM locations l
@@ -865,11 +866,13 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
            JOIN location_ancestors child ON parent.id = child.parent_id
          )
          SELECT DISTINCT st.id, st.full_name, st.login,
-                CASE WHEN mt.staff_id IS NOT NULL THEN 'machine' ELSE 'location' END AS source
+                CASE WHEN mt.staff_id IS NOT NULL THEN 'machine'
+                     WHEN sls.staff_id IS NOT NULL THEN 'location'
+                     ELSE 'classifier' END AS source
          FROM staff st
          LEFT JOIN staff_location_scope sls ON sls.staff_id = st.id AND sls.location_id IN (SELECT id FROM location_ancestors)
          LEFT JOIN machine_technicians mt ON mt.staff_id = st.id AND mt.machine_number = $1
-         WHERE st.role = 'TECHNICIAN' AND (sls.staff_id IS NOT NULL OR mt.staff_id IS NOT NULL)
+         WHERE st.role = 'TECHNICIAN' AND ${staffMachineScopePredicate('$1::text', 'st.id')}
          ORDER BY st.full_name`,
         [request.params.machineNumber],
       );

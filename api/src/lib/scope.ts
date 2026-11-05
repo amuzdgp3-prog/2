@@ -78,6 +78,11 @@ const GRANTS_EXIST_SQL = `
   )
 `;
 
+/** SQL expressions must be trusted code; use bound parameters for external values. */
+export function staffMachineScopePredicate(machineColumn: string, staffExpression: string): string {
+  return `${machineColumn} IN (${SCOPED_MACHINES_SQL.replaceAll('$STAFF', staffExpression)})`;
+}
+
 /**
  * Builds a SQL predicate restricting a query to the machines the actor may see.
  * ADMIN always sees everything. TECHNICIAN always sees exactly what's granted — an ungranted
@@ -96,7 +101,7 @@ export function machineScopePredicate(
     return { sql: 'TRUE', params: [] };
   }
   const staffParam = `$${nextParamIndex}`;
-  const scoped = `${machineColumn} IN (${SCOPED_MACHINES_SQL.replaceAll('$STAFF', staffParam)})`;
+  const scoped = staffMachineScopePredicate(machineColumn, staffParam);
   const sql =
     actor.role === 'BOSS'
       ? `(NOT (${GRANTS_EXIST_SQL.replaceAll('$STAFF', staffParam)}) OR ${scoped})`

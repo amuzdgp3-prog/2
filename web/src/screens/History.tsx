@@ -47,7 +47,7 @@ interface TechnicianRow {
   id: number;
   full_name: string;
   login: string;
-  source: 'location' | 'machine';
+  source: 'location' | 'machine' | 'classifier';
 }
 
 type Tab = 'history' | 'claw' | 'routes' | 'technicians';
@@ -424,7 +424,7 @@ function TechniciansTab({ machineNumber, isAdmin }: { machineNumber: string; isA
   return (
     <div className="card card-pad">
       <div className="muted" style={{ marginBottom: 8 }}>
-        Техники, у которых есть доступ к этому аппарату — через точку или точечное назначение
+        Техники, у которых есть доступ к этому аппарату — через точку, каталог или точечное назначение
       </div>
       {technicians.length === 0 && <p className="muted" style={{ marginBottom: 0 }}>Ни один техник ещё не имеет доступа.</p>}
       {technicians.length > 0 && (
@@ -435,7 +435,7 @@ function TechniciansTab({ machineNumber, isAdmin }: { machineNumber: string; isA
               <tr key={tech.id}>
                 <td>{tech.full_name}</td>
                 <td className="mono">{tech.login}</td>
-                <td>{tech.source === 'machine' ? 'точечно' : 'через точку'}</td>
+                <td>{tech.source === 'machine' ? 'точечно' : tech.source === 'classifier' ? 'через каталог' : 'через точку'}</td>
               </tr>
             ))}
           </tbody>
