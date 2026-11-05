@@ -18,6 +18,7 @@ import ReportsScreen from './screens/Reports';
 import ServiceFormScreen from './screens/ServiceForm';
 import ServiceLogScreen from './screens/ServiceLog';
 import TasksScreen from './screens/Tasks';
+import { AdminNavigation } from './components/AdminNavigation';
 import { ToastHost } from './components/ui/ToastHost';
 
 /**
@@ -218,7 +219,7 @@ export default function App() {
       <ToastHost />
       <aside className="sidebar">
         <div className="brand">Apixspb</div>
-        {links}
+        {isAdmin ? <AdminNavigation drafts={drafts} queued={queued} /> : links}
         <div className="spacer" />
         {installButton}
         {iosInstallHint}
@@ -241,7 +242,7 @@ export default function App() {
 
       <div className={isWideLayout ? 'app app-wide' : 'app'}>
         <div className="topbar">
-          <h1>Apixspb</h1>
+          <h1>{isAdmin ? ({ '/log': 'Журнал', '/': 'Аппараты', '/cash-collections': 'Инкассация', '/dashboard': 'Сводка', '/owner-report': 'Отчёт владельцу', '/reports': 'Отчёты и выгрузки', '/admin': 'Управление', '/queue': 'Черновики' }[location.pathname] ?? 'Apixspb') : 'Apixspb'}</h1>
           <div className="row" style={{ gap: 6 }}>
             {queued > 0 && <span className="badge queue">В очереди: {queued}</span>}
             <span className={`badge ${online ? 'online' : 'offline'}`}>
@@ -329,7 +330,7 @@ export default function App() {
         </Routes>
       </div>
 
-      {!hideBottomNav && <nav className="nav">{links}</nav>}
+      {!hideBottomNav && (isAdmin ? <AdminNavigation mobile drafts={drafts} queued={queued} /> : <nav className="nav">{links}</nav>)}
     </>
   );
 }

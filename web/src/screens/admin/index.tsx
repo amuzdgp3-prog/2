@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AuditTab } from './AuditTab';
 import { CashlessTab } from './CashlessTab';
 import { CatalogTab } from './CatalogTab';
@@ -16,8 +17,34 @@ import { ToysTab } from './ToysTab';
 
 type Tab = 'machines' | 'reviews' | 'tasks' | 'types' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'expenses' | 'expense-summary' | 'audit';
 
+const groups: { label: string; tabs: { id: Tab; label: string }[] }[] = [
+  { label: 'Работа', tabs: [
+    { id: 'machines', label: 'Управление аппаратами' },
+    { id: 'reviews', label: 'Проверка обслуживаний' },
+    { id: 'tasks', label: 'Задачи' },
+  ] },
+  { label: 'Финансы', tabs: [
+    { id: 'expenses', label: 'Затраты' },
+    { id: 'expense-summary', label: 'Сводка расходов' },
+    { id: 'cashless', label: 'Безналичные платежи' },
+    { id: 'consumption', label: 'Расход игрушек' },
+  ] },
+  { label: 'Справочники', tabs: [
+    { id: 'locations', label: 'Адреса' }, { id: 'types', label: 'Типы аппаратов' },
+    { id: 'catalog', label: 'Каталог' }, { id: 'terminals', label: 'Терминалы' },
+    { id: 'toys', label: 'Игрушки' },
+  ] },
+  { label: 'Система', tabs: [
+    { id: 'staff', label: 'Сотрудники' }, { id: 'audit', label: 'Аудит действий' },
+  ] },
+];
+
 export default function AdminScreen() {
-  const [tab, setTab] = useState<Tab>('machines');
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab');
+  const group = groups.find(item => item.tabs.some(tab => tab.id === requested)) ?? groups[0];
+  const tab = group.tabs.find(item => item.id === requested)?.id ?? 'machines';
+  const setTab = (next: Tab) => { setParams({ tab: next }); setNotice(null); setError(null); };
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,22 +59,17 @@ export default function AdminScreen() {
 
   return (
     <>
-      <div className="tabs">
-        <button className={tab === 'machines' ? 'active' : ''} onClick={() => setTab('machines')}>Аппараты</button>
-        <button className={tab === 'reviews' ? 'active' : ''} onClick={() => setTab('reviews')}>Проверка</button>
-        <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}>Задачи</button>
-        <button className={tab === 'types' ? 'active' : ''} onClick={() => setTab('types')}>Типы</button>
-        <button className={tab === 'locations' ? 'active' : ''} onClick={() => setTab('locations')}>Адреса</button>
-        <button className={tab === 'catalog' ? 'active' : ''} onClick={() => setTab('catalog')}>Каталог</button>
-        <button className={tab === 'terminals' ? 'active' : ''} onClick={() => setTab('terminals')}>Терминалы</button>
-        <button className={tab === 'staff' ? 'active' : ''} onClick={() => setTab('staff')}>Сотрудники</button>
-        <button className={tab === 'toys' ? 'active' : ''} onClick={() => setTab('toys')}>Игрушки</button>
-        <button className={tab === 'consumption' ? 'active' : ''} onClick={() => setTab('consumption')}>Расход</button>
-        <button className={tab === 'expenses' ? 'active' : ''} onClick={() => setTab('expenses')}>Затраты</button>
-        <button className={tab === 'expense-summary' ? 'active' : ''} onClick={() => setTab('expense-summary')}>Сводка расходов</button>
-        <button className={tab === 'cashless' ? 'active' : ''} onClick={() => setTab('cashless')}>Безнал</button>
-        <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Аудит</button>
+      <div className="admin-section-header">
+        <p className="muted">Настройки, справочники и контроль работы</p>
       </div>
+      <nav className="admin-group-tabs" aria-label="Группы управления">
+        {groups.map(item => <button key={item.label} className={group === item ? 'active' : ''}
+          aria-pressed={group === item} onClick={() => setTab(item.tabs[0].id)}>{item.label}</button>)}
+      </nav>
+      <nav className="admin-section-tabs" aria-label={group.label}>
+        {group.tabs.map(item => <button key={item.id} className={tab === item.id ? 'active' : ''}
+          aria-pressed={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}
+      </nav>
 
       {notice && <div className="alert ok">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
