@@ -93,54 +93,56 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
   };
 
   return (
-    <form onSubmit={submit} style={{ marginTop: 12 }}>
+    <div style={{ marginTop: 12 }}>
       <div className="stack">
-        <div>
-          <label>Адрес</label>
-          <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="улица, дом" />
-        </div>
-        <div>
-          <label>Тип аппарата</label>
-          <select value={machineType} onChange={(event) => setMachineType(event.target.value)}>
-            {machineTypes.map((type) => (
-              <option key={type.name} value={type.name}>
-                {type.name}
-                {!type.is_active ? ' (отключён в справочнике)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="grid-2">
+        <form onSubmit={submit} className="stack">
           <div>
-            <label>Цена игры, ₽</label>
-            <input type="number" step="0.01" value={pricePerGame} onChange={(event) => setPricePerGame(event.target.value)} />
+            <label>Адрес</label>
+            <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="улица, дом" />
           </div>
           <div>
-            <label>Коэффициент счётчика</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={counterDivisor}
-              onChange={(event) => setCounterDivisor(event.target.value)}
-            />
+            <label>Тип аппарата</label>
+            <select value={machineType} onChange={(event) => setMachineType(event.target.value)}>
+              {machineTypes.map((type) => (
+                <option key={type.name} value={type.name}>
+                  {type.name}
+                  {!type.is_active ? ' (отключён в справочнике)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-        <p className="muted" style={{ margin: 0 }}>
-          Цена и коэффициент фиксируются в момент записи обслуживания. Изменение здесь действует
-          только на будущие обслуживания — уже закрытая финансовая история не меняется.
-        </p>
-        <div className="grid-2">
-          <div>
-            <label>Мин. интервал, дней</label>
-            <input type="number" value={minDays} onChange={(event) => setMinDays(event.target.value)} />
+          <div className="grid-2">
+            <div>
+              <label>Цена игры, ₽</label>
+              <input type="number" step="0.01" value={pricePerGame} onChange={(event) => setPricePerGame(event.target.value)} />
+            </div>
+            <div>
+              <label>Коэффициент счётчика</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={counterDivisor}
+                onChange={(event) => setCounterDivisor(event.target.value)}
+              />
+            </div>
           </div>
-          <div>
-            <label>Макс. интервал, дней</label>
-            <input type="number" value={maxDays} onChange={(event) => setMaxDays(event.target.value)} />
+          <p className="muted" style={{ margin: 0 }}>
+            Цена и коэффициент фиксируются в момент записи обслуживания. Изменение здесь действует
+            только на будущие обслуживания — уже закрытая финансовая история не меняется.
+          </p>
+          <div className="grid-2">
+            <div>
+              <label>Мин. интервал, дней</label>
+              <input type="number" value={minDays} onChange={(event) => setMinDays(event.target.value)} />
+            </div>
+            <div>
+              <label>Макс. интервал, дней</label>
+              <input type="number" value={maxDays} onChange={(event) => setMaxDays(event.target.value)} />
+            </div>
           </div>
-        </div>
-        <button className="primary" type="submit">Сохранить</button>
+          <button className="primary" type="submit">Сохранить</button>
+        </form>
 
         <div className="card" style={{ marginBottom: 0, background: 'var(--paper-deep)' }}>
           <div className="muted" style={{ marginBottom: 8 }}>Теги каталога — на этом аппарате напрямую</div>
@@ -198,7 +200,7 @@ export function EditMachineForm({ machine, onDone, onError }: TabProps & { machi
           </div>
         </div>
       </div>
-    </form>
+    </div>
   );
 }
 
