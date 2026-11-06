@@ -152,8 +152,8 @@ export default function HistoryScreen() {
         {([
           { id: 'history', label: 'История', visible: true },
           { id: 'claw', label: 'Клешня и отдача', visible: hasClaw },
-          { id: 'routes', label: 'Маршруты', visible: user?.role !== 'TECHNICIAN' },
-          { id: 'technicians', label: 'Техники', visible: user?.role !== 'TECHNICIAN' },
+          { id: 'routes', label: 'Маршруты', visible: true },
+          { id: 'technicians', label: 'Техники', visible: user?.role === 'ADMIN' },
         ] as const).filter((item) => item.visible).map((item) => <button key={item.id} type="button" id={`mch-tab-${item.id}`} role="tab" aria-controls="mch-active-panel" aria-selected={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}
       </div>
 
