@@ -1,0 +1,24 @@
+services:
+  api:
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATABASE_URL: ${API_RUNTIME_DATABASE_URL:?set a dedicated runtime database connection}
+      DB_MIGRATE_ON_START: "0"
+      ADMIN_LOGIN: ""
+      ADMIN_PASSWORD: ""
+      ACCEPT_LEGACY_SESSIONS: ${ACCEPT_LEGACY_SESSIONS:-1}
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+  web:
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"

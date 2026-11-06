@@ -5,7 +5,7 @@ import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { config } from './config.js';
 import { runIvendSync } from './commands/ivendSync.js';
-import { runMigrations } from './db/migrate.js';
+import { assertMigrationsApplied, runMigrations } from './db/migrate.js';
 import { pool } from './db/pool.js';
 import { seedAdmin } from './db/seed.js';
 import { AppError } from './lib/errors.js';
@@ -290,8 +290,12 @@ function startParserScheduler(): void {
 const isMain = process.argv[1]?.includes('server');
 if (isMain) {
   const start = async () => {
-    await runMigrations((message) => console.log(message));
-    await seedAdmin();
+    if (config.migrateOnStart) {
+      await runMigrations((message) => console.log(message));
+      await seedAdmin();
+    } else {
+      await assertMigrationsApplied();
+    }
     const app = await buildServer();
     await app.listen({ port: config.port, host: config.host });
     startParserScheduler();

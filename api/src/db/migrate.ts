@@ -4,6 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { pool, withTransaction } from './pool.js';
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+const migrationFiles = async () => (await readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort();
+
+export async function assertMigrationsApplied(): Promise<void> {
+  const files = await migrationFiles();
+  const result = await pool.query<{ name: string }>('SELECT name FROM schema_migrations');
+  const applied = new Set(result.rows.map((row) => row.name));
+  const pending = files.filter((file) => !applied.has(file));
+  if (pending.length) throw Error(`Run the migration command before starting API: ${pending.join(', ')}`);
+}
 
 export async function runMigrations(log: (message: string) => void = console.log): Promise<void> {
   await pool.query(`
@@ -13,7 +22,7 @@ export async function runMigrations(log: (message: string) => void = console.log
     )
   `);
 
-  const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort();
+  const files = await migrationFiles();
 
   for (const file of files) {
     const applied = await pool.query('SELECT 1 FROM schema_migrations WHERE name = $1', [file]);
@@ -28,7 +37,7 @@ export async function runMigrations(log: (message: string) => void = console.log
   }
 }
 
-if (process.argv[1] && process.argv[1].endsWith('migrate.ts')) {
+if (process.argv[1] && /[\\/]migrate\.(ts|js)$/.test(process.argv[1])) {
   runMigrations()
     .then(() => pool.end())
     .catch((error) => {
