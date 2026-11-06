@@ -1,0 +1,32 @@
+http:
+  routers:
+    site2-login:
+      entryPoints:
+        - websecure
+      rule: "Host(`2.apixspb.ru`) && Path(`/api/auth/login`) && Method(`POST`)"
+      priority: 1000
+      service: site2@docker
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - site2-login-ip
+        - site2-login-total
+        - site2-login-concurrent
+  middlewares:
+    site2-login-ip:
+      rateLimit:
+        average: 20
+        period: 1m
+        burst: 12
+    site2-login-total:
+      rateLimit:
+        average: 120
+        period: 1m
+        burst: 30
+        sourceCriterion:
+          requestHost: true
+    site2-login-concurrent:
+      inFlightReq:
+        amount: 12
+        sourceCriterion:
+          requestHost: true
