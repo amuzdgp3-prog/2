@@ -52,8 +52,8 @@
   {
     "id":"auth", "title":"Авторизация, роли, сотрудники и права доступа", "keywords":"авторизация вход логин пароль роль сотрудник техник boss admin rbac auth staff scope доступ",
     "entry":["api/src/routes/auth.ts","api/src/lib/scope.ts","api/src/commands/staff.ts","web/src/auth.tsx"],
-    "related":["api/src/server.ts","api/src/lib/loginThrottle.ts","api/src/lib/audit.ts","web/src/screens/admin/staff/StaffTab.tsx"],
-    "tests":["api/tests/rbac_cashless_reports.test.ts","api/tests/staff_management.test.ts","api/tests/login_throttle.test.ts"], "decisions":["006","015","017","043","047","098"],
+    "related":["api/src/server.ts","api/src/lib/loginThrottle.ts","api/src/commands/authSessions.ts","web/src/screens/DeviceSessions.tsx","web/src/screens/admin/staff/StaffTab.tsx"],
+    "tests":["api/tests/rbac_cashless_reports.test.ts","api/tests/staff_management.test.ts","api/tests/login_throttle.test.ts","api/tests/device_sessions.test.ts"], "decisions":["006","015","017","043","047","098","104"],
     "note":"Проверки доступа серверные. Видимость UI не является разрешением на API."
   },
   {
@@ -87,8 +87,8 @@
   {
     "id":"operations", "title":"Запуск, конфигурация, миграции, бэкап и диагностика", "keywords":"запуск прод сервер deploy docker backup бэкап база миграция лог вылет диагностика client events",
     "entry":["README.md","api/src/config.ts","api/src/db/migrate.ts","api/src/commands/clientEvents.ts"],
-    "related":["api/src/routes/clientEvents.ts","web/src/clientLog.ts","api/tests/helpers.ts"],
-    "tests":["api/tests/client_events.test.ts","api/tests/concurrency.test.ts"], "decisions":["036","040","077","078","087","088","089","103"],
+    "related":["api/src/routes/clientEvents.ts","web/src/clientLog.ts","api/tests/helpers.ts","backup.sh"],
+    "tests":["api/tests/client_events.test.ts","api/tests/concurrency.test.ts"], "decisions":["036","040","077","078","087","088","089","103","104"],
     "note":"Если есть LOCAL-README.md — начать с него. Не применять Linux-команды к Windows по памяти. Тестовый helpers пересоздаёт схему; сначала проверить отдельную тестовую БД."
   },
   {
