@@ -16,6 +16,7 @@
 # rclone, до строки лога, и о сбое можно было узнать только открыв cron.log вручную.
 
 set -uo pipefail
+umask 077
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$PROJECT_DIR/backups"
