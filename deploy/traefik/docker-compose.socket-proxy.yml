@@ -1,0 +1,36 @@
+services:
+  traefik:
+    volumes: !override
+      - /opt/traefik-root/traefik/acme:/letsencrypt
+      - /opt/traefik-root/traefik/dynamic:/etc/traefik/dynamic:ro
+      - /opt/traefik-root/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+    networks:
+      web:
+      docker-access:
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+  docker-api:
+    image: node:22.23.4-alpine
+    command: ["node", "/proxy.cjs"]
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/traefik-root/traefik/docker-api-proxy.cjs:/proxy.cjs:ro
+    networks:
+      docker-access:
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+networks:
+  docker-access:
+    internal: true
