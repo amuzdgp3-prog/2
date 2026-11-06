@@ -88,7 +88,7 @@
     "id":"operations", "title":"Запуск, конфигурация, миграции, бэкап и диагностика", "keywords":"запуск прод сервер deploy docker backup бэкап база миграция лог вылет диагностика client events",
     "entry":["README.md","api/src/config.ts","api/src/db/migrate.ts","api/src/commands/clientEvents.ts"],
     "related":["api/src/routes/clientEvents.ts","web/src/clientLog.ts","api/tests/helpers.ts"],
-    "tests":["api/tests/client_events.test.ts","api/tests/concurrency.test.ts"], "decisions":["036","040","077","078","087","088","089"],
+    "tests":["api/tests/client_events.test.ts","api/tests/concurrency.test.ts"], "decisions":["036","040","077","078","087","088","089","103"],
     "note":"Если есть LOCAL-README.md — начать с него. Не применять Linux-команды к Windows по памяти. Тестовый helpers пересоздаёт схему; сначала проверить отдельную тестовую БД."
   },
   {
