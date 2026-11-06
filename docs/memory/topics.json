@@ -11,7 +11,7 @@
     "entry":["web/src/screens/ServiceForm.tsx","api/src/routes/services.ts","api/src/commands/services.ts"],
     "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","web/src/calc.ts","web/src/photoBytes.ts"],
     "tests":["api/tests/counter_cascade.test.ts","api/tests/counter_divisor.test.ts","api/tests/counter_monotonicity.test.ts","api/tests/service_log.test.ts"],
-    "decisions":["001","004","007","013","027","059"],
+    "decisions":["001","004","007","013","027","059","101"],
     "note":"Деньги/игры округляются в SQL; перед правкой посмотреть потребителей расчёта и порядок блокировок."
   },
   {

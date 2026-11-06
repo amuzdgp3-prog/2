@@ -546,7 +546,20 @@ th { color: var(--ink-soft); font-weight: 500; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .row3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 
-.counter-field { position: relative; }
+.service-counter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+@media (max-width: 360px) {
+  .service-counter-row .field-label {
+    display: flex;
+    align-items: flex-end;
+    min-height: 2.5em;
+    line-height: 1.25;
+  }
+}
 
 .roi-card {
   background: var(--surface);
