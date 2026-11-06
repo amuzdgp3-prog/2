@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getToken } from '../api';
+import { api } from '../api';
 import type { OwnerMonthReport } from '../ownerMonthReport';
 import {
   CashReportCard,
@@ -64,10 +64,7 @@ export default function OwnerReportScreen() {
   const downloadExcel = async () => {
     setDownloading(true);
     try {
-      const response = await fetch(`/api/reports/monthly-excel?year=${period.year}&month=${period.month}`, {
-        headers: { authorization: `Bearer ${getToken()}` },
-      });
-      const blob = await response.blob();
+      const blob = await api.getBlob(`/api/reports/monthly-excel?year=${period.year}&month=${period.month}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

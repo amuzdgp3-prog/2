@@ -90,6 +90,7 @@ export async function setStaffPassword(
 
   const passwordHash = await hashPassword(newPassword);
   await client.query('UPDATE staff SET password_hash = $2 WHERE id = $1', [staffId, passwordHash]);
+  await client.query('UPDATE auth_sessions SET revoked_at = now() WHERE staff_id = $1 AND revoked_at IS NULL', [staffId]);
 
   await auditUpdate(client, actor, 'staff', staffId, existing.rows[0], existing.rows[0], {
     reason: 'password_reset',

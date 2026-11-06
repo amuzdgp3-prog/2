@@ -331,7 +331,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
    */
   const authenticatePhoto = async (request: Parameters<typeof app.authenticate>[0]) => {
     const queryToken = (request.query as { token?: string } | undefined)?.token;
-    if (queryToken && !request.headers.authorization) {
+    if (config.acceptLegacySessions && queryToken && !request.headers.authorization) {
       request.headers.authorization = `Bearer ${queryToken}`;
     }
     await app.authenticate(request);

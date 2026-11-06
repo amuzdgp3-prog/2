@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { link, mkdir, open, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import sharp from 'sharp';
 import type { Client } from '../db/pool.js';
+import { config } from '../config.js';
 import { badRequest } from './errors.js';
 
 export function photoPath(directory: string, objectKey: string): string {
@@ -23,17 +24,30 @@ function rasterType(bytes: Buffer): string | undefined {
 export async function normalizePhoto(input: Buffer) {
   const originalType = rasterType(input);
   if (!originalType) throw badRequest('INVALID_PHOTO', 'загрузите изображение JPEG, PNG или WebP');
-  try {
-    const decoded = sharp(input, { limitInputPixels: 32_000_000, failOn: 'warning' }).rotate();
-    const png = originalType === 'image/png';
-    return {
-      bytes: await (png ? decoded.png() : decoded.jpeg({ quality: 90 })).toBuffer(),
-      extension: png ? 'png' : 'jpg',
-      contentType: png ? 'image/png' : 'image/jpeg',
-    };
-  } catch {
+  const png = originalType === 'image/png';
+  const codec = png ? 'png' : originalType === 'image/jpeg' ? 'mjpeg' : 'webp';
+  const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const process = execFile('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-filter_threads', '1',
+      '-max_pixels', '32000000', '-threads', '1', '-protocol_whitelist', 'pipe',
+      '-f', 'image2pipe', '-c:v', codec, '-i', 'pipe:0', '-frames:v', '1', '-map_metadata', '-1',
+      '-threads:v', '1', '-c:v', png ? 'png' : 'mjpeg',
+      ...(png ? [] : ['-q:v', '2']),
+      '-f', 'image2pipe', 'pipe:1',
+    ], { encoding: 'buffer', maxBuffer: config.maxPhotoBytes, timeout: 8000, windowsHide: true }, (error, output) => {
+      if (error) reject(error);
+      else resolve(output);
+    });
+    process.stdin?.on('error', reject);
+    process.stdin?.end(input);
+  }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') throw error;
+    throw badRequest('INVALID_PHOTO', 'изображение повреждено или слишком велико');
+  });
+  if (rasterType(bytes) !== (png ? 'image/png' : 'image/jpeg')) {
     throw badRequest('INVALID_PHOTO', 'изображение повреждено или слишком велико');
   }
+  return { bytes, extension: png ? 'png' : 'jpg', contentType: png ? 'image/png' : 'image/jpeg' };
 }
 
 export function immutablePhotoKey(localId: string, actorId: number | null, bytes: Buffer, extension: string): string {

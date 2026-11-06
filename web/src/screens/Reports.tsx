@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getToken } from '../api';
+import { api } from '../api';
 import { useAuth } from '../auth';
 import { formatGames, formatMoney } from '../calc';
 import { formatRoiSplit } from '../roiSplit';
@@ -194,10 +194,7 @@ export default function ReportsScreen() {
   useEffect(loadReport, [query]);
 
   const downloadCsv = async () => {
-    const response = await fetch(`/api/reports/export.csv?${query}`, {
-      headers: { authorization: `Bearer ${getToken()}` },
-    });
-    const blob = await response.blob();
+    const blob = await api.getBlob(`/api/reports/export.csv?${query}`);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -209,10 +206,7 @@ export default function ReportsScreen() {
   const downloadMonthlyExcel = async () => {
     setExcelBusy(true);
     try {
-      const response = await fetch(`/api/reports/monthly-excel?year=${excelYear}&month=${excelMonth}`, {
-        headers: { authorization: `Bearer ${getToken()}` },
-      });
-      const blob = await response.blob();
+      const blob = await api.getBlob(`/api/reports/monthly-excel?year=${excelYear}&month=${excelMonth}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

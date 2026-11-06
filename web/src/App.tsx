@@ -16,6 +16,7 @@ import OwnerReportScreen from './screens/OwnerReport';
 import QueueScreen from './screens/Queue';
 import ReportsScreen from './screens/Reports';
 import ServiceFormScreen from './screens/ServiceForm';
+import DeviceSessionsScreen from './screens/DeviceSessions';
 import ServiceLogScreen from './screens/ServiceLog';
 import TasksScreen from './screens/Tasks';
 import { ToastHost } from './components/ui/ToastHost';
@@ -223,6 +224,7 @@ export default function App() {
           <div style={{ padding: '0 10px 8px' }}>
             <div>{user.fullName}</div>
             <div className="muted">{ROLE_LABELS[user.role] ?? user.role}</div>
+            <NavLink to="/sessions">Сессии устройств</NavLink>
           </div>
           <button
             onClick={logout}
@@ -238,11 +240,12 @@ export default function App() {
       <div className={isWideLayout ? 'app app-wide' : 'app'}>
         <div className="topbar">
           <h1>Apixspb</h1>
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             {queued > 0 && <span className="badge queue">В очереди: {queued}</span>}
             <span className={`badge ${online ? 'online' : 'offline'}`}>
               {online ? 'Онлайн' : 'Оффлайн'}
             </span>
+            <NavLink className="mobile-only" to="/sessions">Сессии</NavLink>
             <button
               className="mobile-only"
               onClick={logout}
@@ -295,6 +298,7 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={isBoss ? <BossMachinesScreen /> : <MachinesScreen />} />
+          <Route path="/sessions" element={<DeviceSessionsScreen />} />
           <Route
             path="/service/:machineNumber/:localId?"
             element={<ServiceFormScreen onQueued={refreshQueueCount} />}

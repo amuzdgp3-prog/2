@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, it } from 'node:test';
-import sharp from 'sharp';
 import { authHeader, bootstrap, pool, type TestContext } from './helpers.js';
 
 let context: TestContext;
@@ -23,7 +22,8 @@ function upload(token: string, localId: string, bytes: Buffer, claimedType: stri
   });
 }
 
-const png = (background: string) => sharp({ create: { width: 8, height: 8, channels: 3, background } }).png().toBuffer();
+const WHITE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAD0lEQVQImWP4jwMwDC0JALoev0GybL49AAAAAElFTkSuQmCC', 'base64');
+const BLACK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgGB4AAADIAAH4XVuUAAAAAElFTkSuQmCC', 'base64');
 
 it('rejects active contents even with an image MIME type', async () => {
   const response = await upload(context.technicianToken, randomUUID(), Buffer.from('<html>not an image</html>'), 'image/jpeg');
@@ -33,18 +33,20 @@ it('rejects active contents even with an image MIME type', async () => {
 
 it('stores immutable photos and serves the detected raster type with private headers', async () => {
   const localId = randomUUID();
-  const first = await png('white');
+  const first = WHITE_PNG;
   const saved = await upload(context.adminToken, localId, first, 'text/html');
   assert.equal(saved.statusCode, 200, saved.body);
   const { objectKey } = saved.json();
+  const url = `/api/photos/${objectKey}`;
+  const before = await context.app.inject({ url, headers: authHeader(context.adminToken) });
+  assert.equal(before.statusCode, 200);
   const retry = await upload(context.adminToken, localId, first, 'image/png');
   assert.equal(retry.json().objectKey, objectKey);
-  const replacement = await upload(context.adminToken, localId, await png('black'), 'image/png');
+  const replacement = await upload(context.adminToken, localId, BLACK_PNG, 'image/png');
   assert.notEqual(replacement.json().objectKey, objectKey);
   const differentActor = await upload(context.technicianToken, localId, first, 'image/png');
   assert.notEqual(differentActor.json().objectKey, objectKey);
 
-  const url = `/api/photos/${objectKey}`;
   const denied = await context.app.inject({ url, headers: authHeader(context.technicianToken) });
   assert.equal(denied.statusCode, 403);
   const photo = await context.app.inject({ url, headers: authHeader(context.adminToken) });
@@ -52,6 +54,5 @@ it('stores immutable photos and serves the detected raster type with private hea
   assert.match(photo.headers['content-type'] ?? '', /^image\/png/);
   assert.equal(photo.headers['cache-control'], 'private, no-store');
   assert.equal(photo.headers['x-content-type-options'], 'nosniff');
-  const pixels = await sharp(photo.rawPayload).raw().toBuffer();
-  assert(pixels.every(value => value === 255));
+  assert.deepEqual(photo.rawPayload, before.rawPayload);
 });

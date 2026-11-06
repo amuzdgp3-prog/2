@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
@@ -86,15 +87,28 @@ export async function buildServer() {
   });
 
   await app.register(cors, { origin: config.publicOrigin });
-  await app.register(jwt, { secret: config.jwtSecret });
+  await app.register(cookie);
+  await app.register(jwt, {
+    secret: config.jwtSecret,
+    sign: { algorithm: 'HS256' },
+    verify: { algorithms: ['HS256'] },
+  });
   await app.register(multipart, { limits: { fileSize: config.maxPhotoBytes } });
 
   app.decorate('authenticate', async (request: import('fastify').FastifyRequest) => {
     await request.jwtVerify();
-    const payload = request.user as { sub: number; login: string; role: Actor['role'] };
+    const payload = request.user as { sub: number; login: string; role: Actor['role']; sid?: string; purpose?: string };
+    if (!payload.sid && !config.acceptLegacySessions && payload.purpose !== 'automation') {
+      throw new AppError(401, 'UNAUTHORIZED', 'сессия истекла, войдите заново');
+    }
     const result = await pool.query<{ role: Actor['role']; is_active: boolean }>(
-      'SELECT role, is_active FROM staff WHERE id = $1',
-      [Number(payload.sub)],
+      `SELECT role, is_active FROM staff WHERE id = $1 AND (
+        $2::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM auth_sessions
+          WHERE id = $2 AND staff_id = $1 AND revoked_at IS NULL AND expires_at > now()
+        )
+      )`,
+      [Number(payload.sub), payload.sid ?? null],
     );
     const staff = result.rows[0];
     if (!staff || !staff.is_active) {

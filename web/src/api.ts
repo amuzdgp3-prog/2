@@ -21,12 +21,73 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const UPLOAD_TIMEOUT_MS = 60_000;
 
 const TOKEN_KEY = 'apixspb.token';
+const DEVICE_KEY = 'apixspb.device-session';
+let deviceAccess: string | null = null;
+let deviceOwner = localStorage.getItem(DEVICE_KEY);
+let sessionGeneration = 0;
+let refreshRequest: Promise<boolean> | null = null;
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const hasDeviceSession = () => deviceOwner !== null;
+export const getToken = () => deviceAccess ?? localStorage.getItem(TOKEN_KEY);
 export const setToken = (token: string | null) => {
+  sessionGeneration += 1;
+  deviceAccess = null;
+  deviceOwner = null;
+  refreshRequest = null;
+  localStorage.removeItem(DEVICE_KEY);
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
 };
+export function setDeviceAccess(token: string, userId: number) {
+  setToken(null);
+  deviceAccess = token;
+  deviceOwner = String(userId);
+  localStorage.setItem(DEVICE_KEY, deviceOwner);
+}
+
+async function postSession(path: '/api/auth/refresh' | '/api/auth/logout'): Promise<Response> {
+  try {
+    return await fetch(path, { method: 'POST', credentials: 'same-origin', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch {
+    announce('api:unreachable');
+    throw new OfflineError();
+  }
+}
+
+function refreshAccess(): Promise<boolean> {
+  if (refreshRequest) return refreshRequest;
+  const generation = sessionGeneration;
+  const pending = postSession('/api/auth/refresh').then(async (response) => {
+    if (response.status === 401) return false;
+    if (!response.ok) throw new ApiError(response.status, 'REFRESH_FAILED', 'не удалось обновить сессию');
+    const { token, userId } = await response.json() as { token: string; userId: number };
+    if (generation !== sessionGeneration || !hasDeviceSession()) return false;
+    if (deviceOwner !== String(userId)) {
+      throw new ApiError(409, 'SESSION_CHANGED', 'аккаунт сменился в другой вкладке, откройте приложение заново');
+    }
+    deviceAccess = token;
+    return true;
+  }).finally(() => {
+    if (refreshRequest === pending) refreshRequest = null;
+  });
+  refreshRequest = pending;
+  return pending;
+}
+
+export async function closeDeviceSession() {
+  if (!hasDeviceSession()) return;
+  if (deviceOwner !== localStorage.getItem(DEVICE_KEY)) {
+    throw new ApiError(409, 'SESSION_CHANGED', 'аккаунт сменился в другой вкладке, откройте приложение заново');
+  }
+  const response = await postSession('/api/auth/logout');
+  if (!response.ok) throw new ApiError(response.status, 'LOGOUT_FAILED', 'не удалось завершить сессию устройства');
+}
+
+function expired(): never {
+  setToken(null);
+  window.dispatchEvent(new CustomEvent('auth:expired'));
+  throw new ApiError(401, 'UNAUTHORIZED', 'сессия истекла, войдите заново');
+}
 
 /**
  * navigator.onLine only says the device is attached to a network, not that the server can be
@@ -35,7 +96,9 @@ export const setToken = (token: string | null) => {
 const announce = (event: 'api:reachable' | 'api:unreachable') =>
   window.dispatchEvent(new CustomEvent(event));
 
-async function request<T>(path: string, init: RequestInit = {}, readResponse?: (response: Response) => Promise<T>): Promise<T> {
+async function request<T>(
+  path: string, init: RequestInit = {}, readResponse?: (response: Response) => Promise<T>, retry = true,
+): Promise<T> {
   // A 401 on the login endpoint itself means "wrong login or password", not "your session
   // expired" — there was no session to expire yet. Treating it as expiry showed a scary,
   // misleading message instead of the server's actual reason, and could clear a token that
@@ -45,6 +108,12 @@ async function request<T>(path: string, init: RequestInit = {}, readResponse?: (
   // attempt (e.g. switching accounts on one device, DECISION-017) — some auth middlewares would
   // inspect it before the credentials even get checked, turning a bad old token into a confusing
   // failure on what should be an unrelated new login.
+  const generation = sessionGeneration;
+  if (!isLoginAttempt && !getToken() && hasDeviceSession()) {
+    const refreshed = await refreshAccess();
+    if (!refreshed && generation === sessionGeneration) expired();
+  }
+  if (generation !== sessionGeneration) throw new ApiError(401, 'UNAUTHORIZED', 'сессия изменилась');
   const token = isLoginAttempt ? null : getToken();
   let response: Response;
 
@@ -71,11 +140,12 @@ async function request<T>(path: string, init: RequestInit = {}, readResponse?: (
   }
 
   if (response.status === 401 && !isLoginAttempt) {
-    setToken(null);
-    // The token is gone but React state doesn't know yet; without this the app can be stuck
-    // showing screens as if logged in while every request silently fails with 401.
-    window.dispatchEvent(new CustomEvent('auth:expired'));
-    throw new ApiError(401, 'UNAUTHORIZED', 'сессия истекла, войдите заново');
+    if (generation !== sessionGeneration) throw new ApiError(401, 'UNAUTHORIZED', 'сессия изменилась');
+    if (retry && hasDeviceSession() && ((getToken() !== token) || await refreshAccess())) {
+      if (generation === sessionGeneration) return request(path, init, readResponse, false);
+    }
+    if (generation !== sessionGeneration) throw new ApiError(401, 'UNAUTHORIZED', 'сессия изменилась');
+    expired();
   }
 
   if (response.ok && readResponse) return readResponse(response);

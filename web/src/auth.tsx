@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, getToken, setToken } from './api';
+import { api, closeDeviceSession, getToken, hasDeviceSession, setDeviceAccess, setToken } from './api';
 import { clearCachedCatalog } from './db';
+import { showToast } from './toast';
 
 export type Role = 'ADMIN' | 'TECHNICIAN' | 'BOSS';
 
@@ -32,10 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Сначала кэш, потом сеть: если токен и профиль уже есть на телефоне, приложение открывается сразу,
   // а /auth/me подтверждается в фоне. Ждать ответа сервера на слабой связи незачем — очередь и
   // справочник и так работают из IndexedDB.
-  const [loading, setLoading] = useState(() => !(getToken() && localStorage.getItem(USER_KEY)));
+  const [loading, setLoading] = useState(() => !((getToken() || hasDeviceSession()) && localStorage.getItem(USER_KEY)));
 
   useEffect(() => {
-    if (!getToken()) {
+    if (!getToken() && !hasDeviceSession()) {
       setUser(null);
       setLoading(false);
       return;
@@ -52,16 +53,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (loginName: string, password: string) => {
-    const result = await api.post<{ token: string; user: CurrentUser }>('/api/auth/login', {
+    const result = await api.post<{ token: string; user: CurrentUser; deviceSession?: boolean }>('/api/auth/login', {
       login: loginName,
       password,
+      deviceSession: true,
     });
-    setToken(result.token);
+    if (result.deviceSession) setDeviceAccess(result.token, result.user.id);
+    else setToken(result.token);
     localStorage.setItem(USER_KEY, JSON.stringify(result.user));
     setUser(result.user);
   }, []);
 
-  const logout = useCallback(() => {
+  const clearAuth = useCallback(() => {
     setToken(null);
     localStorage.removeItem(USER_KEY);
     setUser(null);
@@ -78,10 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/', { replace: true });
   }, [navigate]);
 
+  const logout = useCallback(() => {
+    void closeDeviceSession().then(clearAuth).catch((error: Error) => showToast(error.message));
+  }, [clearAuth]);
+
   useEffect(() => {
-    window.addEventListener('auth:expired', logout);
-    return () => window.removeEventListener('auth:expired', logout);
-  }, [logout]);
+    window.addEventListener('auth:expired', clearAuth);
+    return () => window.removeEventListener('auth:expired', clearAuth);
+  }, [clearAuth]);
 
   const value = useMemo(() => ({ user, loading, login, logout }), [user, loading, login, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
