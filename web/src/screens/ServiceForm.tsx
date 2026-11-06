@@ -14,7 +14,7 @@ import {
   normalizeDivisor,
 } from '../calc';
 import { MachineTag } from '../components/ui/MachineTag';
-import { RoiBadge } from '../components/ui/RoiBadge';
+import { PreviousService } from '../components/PreviousService';
 import {
   clearPhotoDraft,
   enqueueService,
@@ -91,9 +91,10 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     // "previous service" could silently show whatever was cached from a much earlier visit.
     let cancelled = false;
     const loadFromCache = () =>
-      readCachedMachines().then((cached) => {
+      Promise.all([readCachedMachines(), readCachedToys()]).then(([cached, cachedToys]) => {
         if (cancelled) return;
         setMachine(cached.find((item) => item.machine_number === machineNumber) ?? null);
+        setToys(cachedToys);
       });
 
     void loadFromCache().then(async () => {
@@ -107,8 +108,6 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         // offline or server unreachable: keep showing the cached data already rendered above
       }
     });
-    void readCachedToys().then(setToys);
-
     return () => {
       cancelled = true;
     };
@@ -415,52 +414,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       ))}
 
       {machine.last_service_at && (
-        <div className="readonly-prev">
-          <div className="lbl">
-            ПРОШЛОЕ ОБСЛУЖИВАНИЕ · {formatDateTime(machine.last_service_at)}
-          </div>
-          <div className="grid">
-            <div className="cell">
-              <b className="mono">{machine.previous_game_counter}</b>
-              <span>счётчик игр</span>
-            </div>
-            <div className="cell">
-              <b className="mono">
-                {machine.last_new_games ? `+${formatGames(machine.last_new_games)}` : '—'}
-              </b>
-              <span>новых игр</span>
-            </div>
-            <div className="cell">
-              <b className="mono">{machine.last_revenue ? `${formatMoney(machine.last_revenue)} ₽` : '—'}</b>
-              <span>выручка</span>
-            </div>
-            <div className="cell">
-              <b className="mono">{daysSince(machine.last_service_at) ?? '—'} дн.</b>
-              <span>период</span>
-            </div>
-            <div className="cell">
-              <b className="mono">{machine.last_toy_cost ? `${formatMoney(machine.last_toy_cost)} ₽` : '—'}</b>
-              <span>игрушки</span>
-            </div>
-            <div className="cell">
-              <RoiBadge
-                value={machine.last_revenue_to_cost_ratio}
-                band={machine.claw_state?.band.target != null ? machine.claw_state.band : undefined}
-              />
-            </div>
-          </div>
-          {machine.last_toy_quantities && Object.keys(machine.last_toy_quantities).length > 0 && (
-            <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-              {Object.entries(machine.last_toy_quantities)
-                .map(([toyId, quantity]) => {
-                  const toy = toys.find((item) => item.id === Number(toyId));
-                  return toy ? `${toy.name} ×${quantity}` : null;
-                })
-                .filter(Boolean)
-                .join(', ')}
-            </div>
-          )}
-        </div>
+        <PreviousService key={`${machine.machine_number}:${machine.last_service_at}`} machine={machine} toys={toys} />
       )}
 
       <div className="section-head"><span className="num">1</span><h3>Дата и время</h3><span className="line" /></div>

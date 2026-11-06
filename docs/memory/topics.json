@@ -9,16 +9,16 @@
   {
     "id":"services", "title":"Обслуживание, фото, счётчики и пересчёт", "keywords":"обслуживание фото счетчик счётчик выручка counter service photo каскад",
     "entry":["web/src/screens/ServiceForm.tsx","api/src/routes/services.ts","api/src/commands/services.ts"],
-    "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","web/src/calc.ts","web/src/photoBytes.ts"],
+    "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","web/src/calc.ts","web/src/photoBytes.ts","web/src/components/PreviousService.tsx"],
     "tests":["api/tests/counter_cascade.test.ts","api/tests/counter_divisor.test.ts","api/tests/counter_monotonicity.test.ts","api/tests/service_log.test.ts"],
-    "decisions":["001","004","007","013","027","059","101"],
+    "decisions":["001","004","007","013","027","059","101","102"],
     "note":"Деньги/игры округляются в SQL; перед правкой посмотреть потребителей расчёта и порядок блокировок."
   },
   {
     "id":"claw", "title":"Клешня, отдача, Weak, Strong, Medium и советы", "keywords":"клешня отдача совет настройки слабая claw payout weak strong medium",
     "entry":["api/src/domain/clawAdvice.ts","api/src/domain/clawStats.ts","web/src/components/ClawSection.tsx"],
     "related":["web/src/clawAdvice.ts","api/src/commands/clawSettings.ts","api/src/commands/machineTypeClaw.ts","api/src/domain/ownerMonthPayout.ts","web/src/screens/ServiceForm.tsx"],
-    "tests":["api/tests/claw_advice.test.ts","api/tests/claw_settings.test.ts"], "decisions":["090","091"],
+    "tests":["api/tests/claw_advice.test.ts","api/tests/claw_settings.test.ts"], "decisions":["090","091","102"],
     "note":"Начать с 091: затраты клешни — игрушки текущего обслуживания. Логика совета имеет зеркало в web; ROI — другая формула."
   },
   {
