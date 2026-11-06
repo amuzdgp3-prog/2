@@ -1,0 +1,83 @@
+.previous-service-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 6px;
+  margin-bottom: 8px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.previous-service-header h2 {
+  font: inherit;
+  font-weight: 700;
+}
+.previous-service-header span { white-space: nowrap; }
+
+.previous-service-advice { position: relative; }
+.previous-service-advice summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 34px;
+  padding-inline: 7px;
+  border-radius: var(--r-md);
+  list-style: none;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+.previous-service-advice summary::-webkit-details-marker { display: none; }
+.previous-service-advice.needs-attention summary {
+  color: var(--bad);
+  background: var(--bad-soft);
+}
+.previous-service-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+.previous-service-trend::after { content: "▾"; }
+.previous-service-advice[open] .previous-service-trend::after { transform: rotate(180deg); }
+@media (max-width: 360px) {
+  .previous-service-advice summary { gap: 5px; padding-inline: 6px; font-size: 12px; }
+  .previous-service-trend { font-size: 11px; }
+}
+.previous-service-detail {
+  position: absolute;
+  z-index: 1;
+  inset: calc(100% + 4px) 0 auto;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 14%);
+  font-size: 13px;
+}
+.previous-service-detail p { margin: 0; color: var(--ink-soft); }
+
+.previous-service-groups { margin-top: 4px; }
+.previous-service-group {
+  display: grid;
+  grid-template-columns: 44px repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  min-height: 29px;
+}
+.previous-service-group + .previous-service-group { border-top: 1px solid var(--line); }
+.previous-service-group h3 {
+  color: var(--ink-soft);
+  font: 600 11px/1.2 var(--f-body);
+}
+.previous-service-metric { display: grid; gap: 1px; }
+.previous-service-metric span { color: var(--ink-soft); font-size: 10.5px; line-height: 11px; }
+.previous-service-metric b { font-size: 13px; line-height: 15px; overflow-wrap: anywhere; }
+.previous-service-toys { margin: 6px 0 0; color: var(--ink-soft); font-size: 12px; }
