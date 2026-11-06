@@ -70,7 +70,20 @@ const CONSTRAINT_MESSAGES: Record<string, { code: string; message: string }> = {
 };
 
 export async function buildServer() {
-  const app = Fastify({ logger: { level: config.logLevel } });
+  const app = Fastify({
+    logger: {
+      level: config.logLevel,
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url?.split('?', 1)[0],
+            remoteAddress: request.ip,
+          };
+        },
+      },
+    },
+  });
 
   await app.register(cors, { origin: true });
   await app.register(jwt, { secret: config.jwtSecret });
