@@ -85,7 +85,7 @@ export async function buildServer() {
     },
   });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, { origin: config.publicOrigin });
   await app.register(jwt, { secret: config.jwtSecret });
   await app.register(multipart, { limits: { fileSize: config.maxPhotoBytes } });
 
@@ -116,6 +116,10 @@ export async function buildServer() {
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
+      if (error.code === 'TOO_MANY_LOGIN_ATTEMPTS') {
+        const seconds = (error.details as { retryAfterSeconds?: number } | undefined)?.retryAfterSeconds;
+        if (seconds) reply.header('Retry-After', String(seconds));
+      }
       return reply
         .code(error.statusCode)
         .send({ error: error.code, message: error.message, details: error.details });

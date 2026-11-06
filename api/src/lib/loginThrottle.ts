@@ -15,11 +15,9 @@ import { AppError } from './errors.js';
  */
 const MAX_FAILURES = 10;
 const WINDOW_MS = 15 * 60_000;
-// Потолок на число отслеживаемых логинов, чтобы поток запросов со случайными логинами не раздувал
-// память: при превышении из карты вычищаются записи с истёкшим окном.
 const MAX_TRACKED = 10_000;
 
-const failures = new Map<string, { count: number; firstAt: number }>();
+const failures = new Map<string, { count: number; firstAt: number; nextAt: number }>();
 
 const keyOf = (login: string): string => login.trim().toLowerCase();
 
@@ -31,28 +29,30 @@ export function assertLoginAllowed(login: string, now = Date.now()): void {
     failures.delete(key);
     return;
   }
-  if (entry.count >= MAX_FAILURES) {
-    const minutes = Math.max(1, Math.ceil((entry.firstAt + WINDOW_MS - now) / 60_000));
+  const blockedUntil = entry.count >= MAX_FAILURES ? entry.firstAt + WINDOW_MS : entry.nextAt;
+  if (blockedUntil > now) {
+    const seconds = Math.ceil((blockedUntil - now) / 1000);
     throw new AppError(
       429,
       'TOO_MANY_LOGIN_ATTEMPTS',
-      `слишком много неудачных попыток входа, повторите через ${minutes} мин`,
+      `слишком много неудачных попыток входа, повторите через ${seconds} сек`,
+      { retryAfterSeconds: seconds },
     );
   }
 }
 
 export function recordLoginFailure(login: string, now = Date.now()): void {
-  if (failures.size >= MAX_TRACKED) {
-    for (const [key, entry] of failures) {
-      if (now - entry.firstAt > WINDOW_MS) failures.delete(key);
-    }
-  }
   const key = keyOf(login);
   const entry = failures.get(key);
   if (!entry || now - entry.firstAt > WINDOW_MS) {
-    failures.set(key, { count: 1, firstAt: now });
+    if (!entry && failures.size >= MAX_TRACKED) {
+      const oldest = failures.keys().next().value;
+      if (oldest !== undefined) failures.delete(oldest);
+    }
+    failures.set(key, { count: 1, firstAt: now, nextAt: now });
   } else {
     entry.count += 1;
+    if (entry.count >= 5) entry.nextAt = now + Math.min(30, 2 ** (entry.count - 5)) * 1000;
   }
 }
 

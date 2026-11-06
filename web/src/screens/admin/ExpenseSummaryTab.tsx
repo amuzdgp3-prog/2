@@ -1,6 +1,7 @@
 import { formatDate } from '../../dateFormat';
 import { useEffect, useState } from 'react';
-import { api, getToken } from '../../api';
+import { api } from '../../api';
+import { PhotoThumbnail } from '../../components/ui/PhotoLightbox';
 import { formatMoney } from '../../calc';
 import type { TabProps } from './types';
 import { Section } from './shared/Section';
@@ -66,18 +67,8 @@ function monthRange(): { from: string; to: string } {
 
 
 
-/** Чек открывается в новой вкладке; токен идёт параметром, потому что <a> не шлёт заголовки. */
 function ReceiptLink({ objectKey }: { objectKey: string }) {
-  return (
-    <a
-      href={`/api/photos/${objectKey}?token=${getToken() ?? ''}`}
-      target="_blank"
-      rel="noreferrer"
-      title="Открыть чек"
-    >
-      📷 чек
-    </a>
-  );
+  return <PhotoThumbnail objectKey={objectKey} alt="Открыть чек" label="📷 чек" />;
 }
 
 export function ExpenseSummaryTab({ onError }: TabProps) {

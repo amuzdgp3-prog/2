@@ -35,7 +35,7 @@ export const setToken = (token: string | null) => {
 const announce = (event: 'api:reachable' | 'api:unreachable') =>
   window.dispatchEvent(new CustomEvent(event));
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, readResponse?: (response: Response) => Promise<T>): Promise<T> {
   // A 401 on the login endpoint itself means "wrong login or password", not "your session
   // expired" — there was no session to expire yet. Treating it as expiry showed a scary,
   // misleading message instead of the server's actual reason, and could clear a token that
@@ -78,6 +78,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(401, 'UNAUTHORIZED', 'сессия истекла, войдите заново');
   }
 
+  if (response.ok && readResponse) return readResponse(response);
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const body = isJson ? await response.json() : await response.text();
 
@@ -96,6 +97,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  getBlob: (path: string) => request(path, {}, (response) => response.blob()),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>

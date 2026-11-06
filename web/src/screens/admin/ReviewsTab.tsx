@@ -1,6 +1,6 @@
 import { formatDateTime } from '../../dateFormat';
 import { useEffect, useState } from 'react';
-import { api, getToken } from '../../api';
+import { api } from '../../api';
 import { PhotoThumbnail } from '../../components/ui/PhotoLightbox';
 import {
   describeChange,
@@ -228,7 +228,7 @@ function ReviewEditor({
   return (
     <div className="stack" style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
       <div className="row" style={{ gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <PhotoThumbnail src={`/api/photos/${detail.photoObjectKey}?token=${getToken() ?? ''}`} alt="Фото счётчика" />
+        <PhotoThumbnail objectKey={detail.photoObjectKey} alt="Фото счётчика" />
         <div className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 180 }}>
           Прислал техник: счётчик игр {detail.payload.gameCounter}, призов {detail.payload.prizeCounter},
           тестовых {detail.payload.testGames ?? 0}. Сверьте с фото и поправьте, что нужно. Если дело в

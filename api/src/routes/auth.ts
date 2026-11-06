@@ -13,7 +13,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         body: {
           type: 'object',
           required: ['login', 'password'],
-          properties: { login: { type: 'string' }, password: { type: 'string' } },
+          properties: {
+            login: { type: 'string', minLength: 1, maxLength: 320 },
+            password: { type: 'string', minLength: 1, maxLength: 1024 },
+          },
         },
       },
     },

@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { formatDate, formatTime } from '../../dateFormat';
 import { formatGames, formatMoney } from '../../calc';
-import { getToken } from '../../api';
 import { PhotoThumbnail } from '../../components/ui/PhotoLightbox';
 import type { ServiceRow } from './types';
 
@@ -103,7 +102,7 @@ function ServiceDetails({ row, isAdmin, editing, onEdit, onRemove, children }: {
           <button type="button" className="mch-delete" onClick={onRemove}>Удалить</button>
         </>}
       </div>
-      {showPhoto && <PhotoThumbnail src={`/api/photos/${row.photo_object_key}?token=${getToken()}`} alt="Фото счётчика" />}
+      {showPhoto && row.photo_object_key && <PhotoThumbnail objectKey={row.photo_object_key} alt="Фото счётчика" />}
       {children}
     </div>
   );

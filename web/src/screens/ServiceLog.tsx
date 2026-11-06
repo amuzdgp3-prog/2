@@ -1,6 +1,6 @@
 import { formatDate, formatDateTime, formatTime } from '../dateFormat';
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { api, getToken } from '../api';
+import { api } from '../api';
 import { useAuth } from '../auth';
 import { daysBetween, formatGames, formatMoney } from '../calc';
 import { PageSizeSelect } from '../components/ui/PageSizeSelect';
@@ -497,7 +497,7 @@ function PhotoCell({ objectKey }: { objectKey: string }) {
       <button className="icon-btn" onClick={() => setOpen(!open)} title="Фото счётчика">📷</button>
       {open && (
         <div style={{ marginTop: 8 }}>
-          <PhotoThumbnail src={`/api/photos/${objectKey}?token=${getToken()}`} alt="Фото счётчика" />
+          <PhotoThumbnail objectKey={objectKey} alt="Фото счётчика" />
         </div>
       )}
     </>

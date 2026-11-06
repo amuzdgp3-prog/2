@@ -9,6 +9,7 @@ export const config = {
   host: process.env.HOST ?? '0.0.0.0',
   databaseUrl: required('DATABASE_URL'),
   jwtSecret: required('JWT_SECRET'),
+  publicOrigin: process.env.PUBLIC_ORIGIN ?? 'https://2.apixspb.ru',
   // Staff stay logged in on their device until they explicitly log out: for an internal tool
   // where the phone itself is the access control, re-asking for a password every 12 hours was
   // pure friction with no real security benefit. 180 days is long enough that in practice it
