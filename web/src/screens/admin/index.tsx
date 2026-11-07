@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import './index.css';
 import { AuditTab } from './AuditTab';
 import { CashlessTab } from './CashlessTab';
 import { CatalogTab } from './CatalogTab';
@@ -32,7 +33,7 @@ export default function AdminScreen() {
 
   return (
     <>
-      <div className="tabs">
+      <div className="tabs admin-tabs">
         <button className={tab === 'machines' ? 'active' : ''} onClick={() => setTab('machines')}>Аппараты</button>
         <button className={tab === 'reviews' ? 'active' : ''} onClick={() => setTab('reviews')}>Проверка</button>
         <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}>Задачи</button>
