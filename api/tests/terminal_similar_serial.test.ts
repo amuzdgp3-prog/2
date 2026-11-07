@@ -99,4 +99,68 @@ describe('поиск похожего терминала по последним
     assert.equal(created.statusCode, 200, created.body);
     assert.equal(created.json().serial, '50777777');
   });
+
+  it('исправляет номер и выводит терминал из оборота, сохраняя старые платежи', async () => {
+    await installTestMachine(context, { machineNumber: 'SIM-63', pricePerGame: 10 });
+    const headers = authHeader(context.adminToken);
+    const created = await context.app.inject({
+      method: 'POST', url: '/api/terminals', headers,
+      payload: { serial: '308588', provider: 'demo' },
+    });
+    assert.equal(created.statusCode, 200, created.body);
+    const terminalId = created.json().id;
+    const bound = await context.app.inject({
+      method: 'POST', url: '/api/terminals/bind', headers,
+      payload: { terminalId, machineNumber: 'SIM-63', startedAt: '2026-02-01T00:00:00Z' },
+    });
+    assert.equal(bound.statusCode, 200, bound.body);
+
+    const corrected = await context.app.inject({
+      method: 'PATCH', url: `/api/terminals/${terminalId}`, headers,
+      payload: { serial: '  50308588  ' },
+    });
+    assert.equal(corrected.statusCode, 200, corrected.body);
+    assert.equal(corrected.json().serial, '50308588');
+
+    const imported = await context.app.inject({
+      method: 'POST', url: '/api/cashless/import', headers,
+      payload: { provider: 'demo', transactions: [{
+        providerTransactionId: 'sim-308588', terminalExternalId: '50308588',
+        occurredAt: '2026-02-10T00:00:00Z', amount: '50', paymentType: 'CARD',
+      }] },
+    });
+    assert.equal(imported.statusCode, 200, imported.body);
+
+    const blockedEdit = await context.app.inject({
+      method: 'PATCH', url: `/api/terminals/${terminalId}`, headers,
+      payload: { serial: '50308589' },
+    });
+    assert.equal(blockedEdit.statusCode, 409, blockedEdit.body);
+    const blockedRetirement = await context.app.inject({
+      method: 'DELETE', url: `/api/terminals/${terminalId}`, headers,
+    });
+    assert.equal(blockedRetirement.statusCode, 409, blockedRetirement.body);
+
+    const unbound = await context.app.inject({
+      method: 'POST', url: '/api/terminals/unbind', headers,
+      payload: { terminalId, endedAt: '2026-03-01T00:00:00Z' },
+    });
+    assert.equal(unbound.statusCode, 200, unbound.body);
+    const retired = await context.app.inject({
+      method: 'DELETE', url: `/api/terminals/${terminalId}`, headers,
+    });
+    assert.equal(retired.statusCode, 200, retired.body);
+    assert.equal(retired.json().status, 'RETIRED');
+
+    const payment = await pool.query(
+      `SELECT terminal_external_id, terminal_id, matched_machine_number, match_status
+       FROM cashless_transactions WHERE provider_transaction_id = 'sim-308588'`,
+    );
+    assert.deepEqual(payment.rows[0], {
+      terminal_external_id: '50308588', terminal_id: terminalId,
+      matched_machine_number: 'SIM-63', match_status: 'MATCHED',
+    });
+    const listed = await context.app.inject({ method: 'GET', url: '/api/terminals', headers });
+    assert.ok(!(listed.json() as Array<{ id: number }>).some((row) => row.id === terminalId));
+  });
 });

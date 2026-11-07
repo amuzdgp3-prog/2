@@ -32,6 +32,8 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
   const [bindTo, setBindTo] = useState<Record<number, string>>({});
   const [bindFrom, setBindFrom] = useState<Record<number, string>>({});
   const [transferring, setTransferring] = useState<number | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editedSerial, setEditedSerial] = useState('');
   const [showWithoutTerminal, setShowWithoutTerminal] = useState(false);
   const [assignTo, setAssignTo] = useState<Record<string, string>>({});
 
@@ -307,7 +309,52 @@ export function TerminalsTab({ onDone, onError }: TabProps) {
                 </button>
               </div>
             )}
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => {
+                setEditing(editing === terminal.id ? null : Number(terminal.id));
+                setEditedSerial(String(terminal.serial));
+              }}>
+                {editing === terminal.id ? 'Отмена' : 'Изменить'}
+              </button>
+              <button disabled={!!terminal.bound_machine} title={terminal.bound_machine ? 'Сначала снимите терминал с аппарата' : undefined} onClick={async () => {
+                if (!confirm(
+                  `Удалить терминал ${terminal.serial} из рабочего списка?\n\n`
+                  + 'История привязок и прошлые транзакции сохранятся. '
+                  + 'Если терминал стоит на аппарате, сначала снимите его.',
+                )) return;
+                try {
+                  await api.delete(`/api/terminals/${terminal.id}`);
+                  onDone(`Терминал ${terminal.serial} выведен из оборота, история сохранена`);
+                  load();
+                } catch (caught) {
+                  onError(caught);
+                }
+              }}>
+                Удалить
+              </button>
+            </div>
           </div>
+
+          {editing === terminal.id && (
+            <form onSubmit={async (event) => {
+              event.preventDefault();
+              try {
+                await api.patch(`/api/terminals/${terminal.id}`, { serial: editedSerial });
+                onDone(`Номер терминала исправлен на ${editedSerial.trim()}`);
+                setEditing(null);
+                load();
+              } catch (caught) {
+                onError(caught);
+              }
+            }} style={{ marginTop: 12 }}>
+              <label>Номер терминала в iVend</label>
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                <input value={editedSerial} onChange={(event) => setEditedSerial(event.target.value)} required />
+                <button className="primary" type="submit">Сохранить</button>
+              </div>
+              <div className="muted">Если по прежнему номеру уже есть платежи, система сохранит его для истории и отклонит изменение.</div>
+            </form>
+          )}
 
           {transferring === terminal.id && (
             <div style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 12 }}>

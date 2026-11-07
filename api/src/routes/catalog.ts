@@ -25,7 +25,9 @@ import {
   bindTerminal,
   createTerminal,
   findSimilarTerminals,
+  retireTerminal,
   unbindTerminal,
+  updateTerminalSerial,
 } from '../commands/terminals.js';
 import { previewMachineChain } from '../domain/counterChain.js';
 import {
@@ -1207,6 +1209,15 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     auth,
     async (request) =>
       withTransaction((client) => createTerminal(client, request.actor, request.body)),
+  );
+
+  app.patch<{ Params: { id: string }; Body: { serial: string } }>(
+    '/api/terminals/:id', auth, async (request) =>
+      withTransaction((client) => updateTerminalSerial(client, request.actor, Number(request.params.id), request.body.serial)),
+  );
+
+  app.delete<{ Params: { id: string } }>('/api/terminals/:id', auth, async (request) =>
+    withTransaction((client) => retireTerminal(client, request.actor, Number(request.params.id))),
   );
 
   app.post<{ Body: { terminalId: number; machineNumber: string; startedAt: string } }>(

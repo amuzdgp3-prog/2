@@ -1,6 +1,6 @@
 import type { Client } from '../db/pool.js';
 import { auditInsert, auditUpdate, type Actor } from '../lib/audit.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { lockMachines } from '../lib/locks.js';
 import { assertAdmin } from '../lib/scope.js';
 import { rematchCashless } from './cashless.js';
@@ -21,6 +21,60 @@ export async function createTerminal(
   );
   await auditInsert(client, actor, 'terminal', inserted.rows[0].id, inserted.rows[0]);
   return inserted.rows[0];
+}
+
+export async function updateTerminalSerial(
+  client: Client,
+  actor: Actor,
+  id: number,
+  value: string,
+): Promise<Record<string, unknown>> {
+  assertAdmin(actor);
+  const serial = value.trim();
+  if (!serial) throw badRequest('SERIAL_REQUIRED', 'серийный номер не может быть пустым');
+  const current = await client.query('SELECT * FROM terminals WHERE id = $1 FOR UPDATE', [id]);
+  if (!current.rowCount) throw notFound('терминал не существует');
+  const before = current.rows[0];
+  if (before.status === 'RETIRED') throw conflict('TERMINAL_RETIRED', 'терминал выведен из оборота');
+  if (before.serial === serial) return before;
+
+  const existing = await client.query('SELECT id FROM terminals WHERE serial = $1', [serial]);
+  if (existing.rowCount) throw conflict('SERIAL_EXISTS', 'терминал с таким номером уже существует');
+  const payments = await client.query(
+    `SELECT 1 FROM cashless_transactions
+     WHERE terminal_external_id = $1 OR terminal_id = $2 LIMIT 1`,
+    [before.serial, id],
+  );
+  if (payments.rowCount) {
+    throw conflict('TERMINAL_HAS_TRANSACTIONS', 'по прежнему номеру есть платежи; его нельзя менять без разбора истории');
+  }
+
+  const updated = await client.query('UPDATE terminals SET serial = $2 WHERE id = $1 RETURNING *', [id, serial]);
+  await auditUpdate(client, actor, 'terminal', id, before, updated.rows[0], { reason: 'serial_corrected' });
+  await rematchCashless(client, actor, { terminalId: id });
+  return updated.rows[0];
+}
+
+export async function retireTerminal(
+  client: Client,
+  actor: Actor,
+  id: number,
+): Promise<Record<string, unknown>> {
+  assertAdmin(actor);
+  const current = await client.query('SELECT * FROM terminals WHERE id = $1 FOR UPDATE', [id]);
+  if (!current.rowCount) throw notFound('терминал не существует');
+  const before = current.rows[0];
+  if (before.status === 'RETIRED') return before;
+  const active = await client.query(
+    'SELECT 1 FROM terminal_bindings WHERE terminal_id = $1 AND ended_at IS NULL', [id],
+  );
+  if (active.rowCount) throw conflict('TERMINAL_BOUND', 'сначала снимите терминал с аппарата');
+
+  const retired = await client.query(
+    `UPDATE terminals SET status = 'RETIRED' WHERE id = $1 RETURNING *`, [id],
+  );
+  await auditUpdate(client, actor, 'terminal', id, before, retired.rows[0], { reason: 'retired' });
+  return retired.rows[0];
 }
 
 /**
@@ -71,8 +125,9 @@ export async function bindTerminal(
 ): Promise<Record<string, unknown>> {
   assertAdmin(actor);
 
-  const terminal = await client.query('SELECT * FROM terminals WHERE id = $1', [input.terminalId]);
+  const terminal = await client.query('SELECT * FROM terminals WHERE id = $1 FOR UPDATE', [input.terminalId]);
   if (terminal.rowCount === 0) throw notFound('терминал не существует');
+  if (terminal.rows[0].status === 'RETIRED') throw conflict('TERMINAL_RETIRED', 'терминал выведен из оборота');
 
   const placement = await client.query(
     `SELECT p.id, p.location_id FROM machine_placements p
@@ -156,6 +211,9 @@ export async function unbindTerminal(
   input: { terminalId: number; endedAt: string },
 ): Promise<Record<string, unknown> | null> {
   assertAdmin(actor);
+
+  const terminal = await client.query('SELECT id FROM terminals WHERE id = $1 FOR UPDATE', [input.terminalId]);
+  if (!terminal.rowCount) throw notFound('терминал не существует');
 
   const unlocked = await client.query(
     `SELECT machine_number FROM terminal_bindings WHERE terminal_id = $1 AND ended_at IS NULL`,

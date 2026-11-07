@@ -39,7 +39,7 @@
     "id":"cashless", "title":"Безнал, iVend, терминалы и историческое сопоставление", "keywords":"безнал cashless ivend parser парсер терминал привязка синхронизация платеж",
     "entry":["api/src/routes/cashless.ts","api/src/commands/cashless.ts","api/src/commands/ivendSync.ts"],
     "related":["api/src/integrations/ivend.ts","api/src/commands/terminals.ts","api/src/server.ts","web/src/screens/admin/CashlessTab.tsx","web/src/screens/admin/TerminalsTab.tsx"],
-    "tests":["api/tests/ivend_sync.test.ts","api/tests/ivend_timeout.test.ts","api/tests/terminal_transfer.test.ts","api/tests/terminal_similar_serial.test.ts"], "decisions":["008","030","032","041","076","084"],
+    "tests":["api/tests/ivend_sync.test.ts","api/tests/ivend_timeout.test.ts","api/tests/terminal_transfer.test.ts","api/tests/terminal_similar_serial.test.ts"], "decisions":["008","030","032","041","076","084","105"],
     "note":"README о неготовом парсере устарел. Привязка терминала определяется на момент транзакции; настройки/учётные данные не читать ради навигации."
   },
   {
