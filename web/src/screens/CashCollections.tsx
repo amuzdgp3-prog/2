@@ -80,11 +80,15 @@ function TechnicianCard({ technician, history, onSaved }: { technician: Technici
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
       style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit' }}>
       <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><strong>{technician.full_name}{!technician.is_active ? ' · неактивен' : ''}</strong><span>{open ? 'Скрыть ⌃' : 'История и расчёт ⌄'}</span></span>
-      <span className="row" style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 12 }}>
-        <span><span className="muted" style={{ display: 'block' }}>Собрано наличными</span><strong style={{ fontSize: 21 }}>{rub(technician.current.cash)}</strong></span>
-        <span><span className="muted" style={{ display: 'block' }}>К сдаче после расходов</span><strong style={{ fontSize: 21 }}>{rub(technician.current.expected)}</strong></span>
+      <span style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+        <span style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
+          <span className="muted">Собрано наличными</span><strong style={{ fontSize: 19, whiteSpace: 'nowrap' }}>{rub(technician.current.cash)}</strong>
+        </span>
+        <span style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
+          <span className="muted">К сдаче после расходов</span><strong style={{ fontSize: 19, whiteSpace: 'nowrap' }}>{rub(technician.current.expected)}</strong>
+        </span>
       </span>
-      <span className="muted" style={{ display: 'block', marginTop: 8 }}>С {formatDate(technician.current.from)} · расходы {rub(technician.current.expenses)}{Number(technician.current.adjustment) !== 0 ? ` · корректировка ${rub(technician.current.adjustment)}` : ''}</span>
+      <span className="muted" style={{ display: 'block', marginTop: 8 }}>С {formatDate(technician.current.from)} · расходы и переводы {rub(technician.current.expenses)}{Number(technician.current.adjustment) !== 0 ? ` · корректировка ${rub(technician.current.adjustment)}` : ''}</span>
     </button>
     {open && <div style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
     <p className="muted">{technician.last_to ? `Предыдущая инкассация — по ${formatDate(technician.last_to)}. ` : 'Первая инкассация. '}Новый период с {formatDate(from)}.</p>
