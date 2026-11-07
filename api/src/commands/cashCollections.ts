@@ -125,14 +125,15 @@ export async function collectionOverview(client: Client, actor: Actor) {
      LEFT JOIN cash_collections c ON c.technician_id=st.id
      WHERE (st.role='TECHNICIAN' AND st.is_field_technician) OR c.id IS NOT NULL GROUP BY st.id ORDER BY st.full_name`,
   )).rows;
-  const totals = await Promise.all(technicians.map(async (technician: { id: number; last_to: string | null }) => {
+  const totals: Array<{ id: number; from: string; cash: string; expenses: string; adjustment: string; expected: string }> = [];
+  for (const technician of technicians as Array<{ id: number; last_to: string | null }>) {
     const from = technician.last_to ? new Date(Date.parse(technician.last_to) + 86400000).toISOString().slice(0, 10) : CASH_START;
     const current = from > today() ? { from, cash: '0.00', salary: '0.00', fuel: '0.00', other: '0.00',
       transferred: '0.00', adjustment: '0.00', expected: '0.00' } : await calculate(client, technician.id, today());
-    return { id: technician.id, from: current.from, cash: current.cash,
+    totals.push({ id: technician.id, from: current.from, cash: current.cash,
       expenses: money(cents(current.salary) + cents(current.fuel) + cents(current.other) + cents(current.transferred)),
-      adjustment: current.adjustment, expected: current.expected };
-  }));
+      adjustment: current.adjustment, expected: current.expected });
+  }
   const live = new Map(totals.map(row => [row.id, row]));
   const history = (await client.query(
     `SELECT c.*,st.full_name,(c.actual-c.expected)::numeric(14,2) AS difference,
