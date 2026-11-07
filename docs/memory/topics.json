@@ -66,8 +66,8 @@
   {
     "id":"tasks", "title":"Задачи и эффективность техников", "keywords":"задача задания эффективность техник tasks effectiveness forgotten",
     "entry":["api/src/commands/tasks.ts","api/src/domain/technicianEffectiveness.ts","web/src/screens/Tasks.tsx"],
-    "related":["web/src/screens/admin/TasksTab.tsx","web/src/screens/Forgotten.tsx","api/src/domain/serviceIntervals.ts"],
-    "tests":["api/tests/tasks.test.ts","api/tests/technician_effectiveness.test.ts","api/tests/technician_effectiveness_api.test.ts"], "decisions":["046","049","050","051","071","090"],
+    "related":["web/src/App.tsx","web/src/screens/admin/TasksTab.tsx","web/src/screens/Forgotten.tsx","api/src/domain/serviceIntervals.ts"],
+    "tests":["api/tests/tasks.test.ts","api/tests/technician_effectiveness.test.ts","api/tests/technician_effectiveness_api.test.ts"], "decisions":["046","049","050","051","071","090","106"],
     "note":"При работе с методикой эффективности читать 071 вместе с исходными решениями."
   },
   {
