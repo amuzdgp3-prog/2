@@ -13,6 +13,7 @@ export async function registerCashCollectionRoutes(app: FastifyInstance) {
   app.post<{ Body: Parameters<typeof createCollection>[2] }>('/api/cash-collections', {
     ...auth, schema: { body: { type: 'object', additionalProperties: false, required: ['technicianId', 'to', 'receivedOn', 'token'], properties: {
       technicianId: { type: 'integer', minimum: 1 }, to: { type: 'string' }, receivedOn: { type: 'string' }, token: { type: 'string', maxLength: 64 },
+      actual: { type: 'string' }, comment: { type: 'string', maxLength: 2000 },
     } } },
   }, request => withTransaction(client => createCollection(client, request.actor, request.body)));
   app.post<{ Params: { id: string }; Body: { actual: string; comment: string } }>('/api/cash-collections/:id/count', {

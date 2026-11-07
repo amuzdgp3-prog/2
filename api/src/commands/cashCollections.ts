@@ -79,11 +79,13 @@ export async function previewCollection(client: Client, actor: Actor, technician
 }
 
 export async function createCollection(client: Client, actor: Actor, input: {
-  technicianId: number; to: string; receivedOn: string; token: string;
+  technicianId: number; to: string; receivedOn: string; token: string; actual?: string; comment?: string;
 }) {
   assertAdmin(actor);
   date(input.receivedOn);
   if (input.receivedOn < input.to) throw badRequest('INVALID_RECEIVED_DATE', 'Дата получения не может быть раньше конца периода');
+  if (input.actual !== undefined) validateCount(input.actual, input.comment ?? '');
+  else if (input.comment) throw badRequest('INVALID_COMMENT', 'Комментарий к пересчёту требует фактическую сумму');
   // Serialise creation across admins before taking source-table locks (no lock upgrade).
   await client.query('SELECT pg_advisory_xact_lock(25025)');
   await client.query('LOCK TABLE services, business_expenses IN SHARE MODE');
@@ -91,18 +93,23 @@ export async function createCollection(client: Client, actor: Actor, input: {
   if (input.token !== token) throw conflict('PREVIEW_CHANGED', 'Данные изменились. Обновите расчёт и проверьте сумму перед фиксацией');
   if (cents(snapshot.expected) < 0n) throw badRequest('NEGATIVE_BAG', 'Расходы превышают наличные. Проверьте записи перед инкассацией');
   const row = (await client.query(
-    `INSERT INTO cash_collections (technician_id,period_from,period_to,received_on,expected,snapshot,created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [input.technicianId, snapshot.from, snapshot.to, input.receivedOn, snapshot.expected, JSON.stringify(snapshot), actor.id],
+    `INSERT INTO cash_collections (technician_id,period_from,period_to,received_on,expected,snapshot,created_by,actual,comment,counted_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $8::numeric IS NULL THEN NULL ELSE now() END) RETURNING *`,
+    [input.technicianId, snapshot.from, snapshot.to, input.receivedOn, snapshot.expected, JSON.stringify(snapshot), actor.id,
+      input.actual ?? null, input.comment ?? ''],
   )).rows[0];
   await auditInsert(client, actor, 'cash_collection', row.id, row);
   return row;
 }
 
+function validateCount(actual: string, comment: string) {
+  if (typeof actual !== 'string' || !/^\d{1,12}(\.\d{1,2})?$/.test(actual)) throw badRequest('INVALID_AMOUNT', 'Введите неотрицательную сумму, не более двух знаков после запятой');
+  if (typeof comment !== 'string' || comment.length > 2000) throw badRequest('INVALID_COMMENT', 'Комментарий — до 2000 символов');
+}
+
 export async function countCollection(client: Client, actor: Actor, id: number, input: { actual: string; comment: string }) {
   assertAdmin(actor);
-  if (typeof input.actual !== 'string' || !/^\d{1,12}(\.\d{1,2})?$/.test(input.actual)) throw badRequest('INVALID_AMOUNT', 'Введите неотрицательную сумму, не более двух знаков после запятой');
-  if (typeof input.comment !== 'string' || input.comment.length > 2000) throw badRequest('INVALID_COMMENT', 'Комментарий — до 2000 символов');
+  validateCount(input.actual, input.comment);
   const before = (await client.query('SELECT * FROM cash_collections WHERE id=$1 FOR UPDATE', [id])).rows[0];
   if (!before) throw notFound('Инкассация не найдена');
   if (before.actual !== null) throw conflict('ALREADY_COUNTED', 'Результат пересчёта уже сохранён');
@@ -118,6 +125,15 @@ export async function collectionOverview(client: Client, actor: Actor) {
      LEFT JOIN cash_collections c ON c.technician_id=st.id
      WHERE (st.role='TECHNICIAN' AND st.is_field_technician) OR c.id IS NOT NULL GROUP BY st.id ORDER BY st.full_name`,
   )).rows;
+  const totals = await Promise.all(technicians.map(async (technician: { id: number; last_to: string | null }) => {
+    const from = technician.last_to ? new Date(Date.parse(technician.last_to) + 86400000).toISOString().slice(0, 10) : CASH_START;
+    const current = from > today() ? { from, cash: '0.00', salary: '0.00', fuel: '0.00', other: '0.00',
+      transferred: '0.00', adjustment: '0.00', expected: '0.00' } : await calculate(client, technician.id, today());
+    return { id: technician.id, from: current.from, cash: current.cash,
+      expenses: money(cents(current.salary) + cents(current.fuel) + cents(current.other) + cents(current.transferred)),
+      adjustment: current.adjustment, expected: current.expected };
+  }));
+  const live = new Map(totals.map(row => [row.id, row]));
   const history = (await client.query(
     `SELECT c.*,st.full_name,(c.actual-c.expected)::numeric(14,2) AS difference,
        ((SELECT COALESCE(SUM(s.cash_amount),0) FROM services s WHERE s.technician_id=c.technician_id AND s.service_date BETWEEN c.period_from AND c.period_to)
@@ -125,5 +141,5 @@ export async function collectionOverview(client: Client, actor: Actor) {
        - ((c.snapshot->>'cash')::numeric - (c.snapshot->>'salary')::numeric - (c.snapshot->>'fuel')::numeric - (c.snapshot->>'other')::numeric - (c.snapshot->>'transferred')::numeric))::numeric(14,2) AS source_delta
      FROM cash_collections c JOIN staff st ON st.id=c.technician_id ORDER BY c.created_at DESC,c.id DESC`,
   )).rows;
-  return { start: CASH_START, technicians, history };
+  return { start: CASH_START, technicians: technicians.map(row => ({ ...row, current: live.get(row.id) })), history };
 }

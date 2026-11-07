@@ -77,6 +77,35 @@ describe('cash bag reconciliation', () => {
     assert.equal((await preview('2026-11-02', otherId)).from, '2026-11-01');
   });
 
+  it('updates open-period tile totals after services and expenses', async () => {
+    const read = async () => (await call('GET', '/api/cash-collections')).json().technicians
+      .find((row: { id: number }) => row.id === ctx.technicianId).current;
+    assert.deepEqual(await read(), { id: ctx.technicianId, from: '2026-11-01', cash: '0.00',
+      expenses: '0.00', adjustment: '0.00', expected: '0.00' });
+    await service('2026-11-01', '1000');
+    await expense('2026-11-01', 'FUEL', '150');
+    assert.equal((await read()).cash, '1000.00');
+    assert.equal((await read()).expected, '850.00');
+    await save('2026-11-01');
+    assert.equal((await read()).from, '2026-11-02');
+    assert.equal((await read()).cash, '0.00');
+  });
+
+  it('records the counted amount together with a handover', async () => {
+    await service('2026-11-01', '1000');
+    const data = await preview('2026-11-01');
+    const response = await call('POST', '/api/cash-collections', {
+      technicianId: ctx.technicianId, to: data.to, receivedOn: data.to, token: data.token,
+      actual: '900.00', comment: 'Пересчитано при получении',
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const overview = (await call('GET', '/api/cash-collections')).json();
+    assert.equal(overview.history[0].difference, '-100.00');
+    assert.equal(overview.history[0].comment, 'Пересчитано при получении');
+    assert.ok(overview.history[0].counted_at);
+    assert.equal((await call('POST', `/api/cash-collections/${response.json().id}/count`, { actual: '900', comment: '' })).statusCode, 409);
+  });
+
   it('uses the technician app day-close and item expenses without duplicating repeated salary submissions', async () => {
     await service('2026-11-01', '10000');
     for (const salary of ['5000', '4000']) {

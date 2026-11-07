@@ -9,7 +9,8 @@ type Calculation = {
   services: Item[]; expenses: Item[];
   corrections: Array<{ collectionId: number; from: string; to: string; delta: string }>;
 };
-type Technician = { id: number; full_name: string; is_active: boolean; last_to: string | null };
+type Technician = { id: number; full_name: string; is_active: boolean; last_to: string | null;
+  current: { from: string; cash: string; expenses: string; adjustment: string; expected: string } };
 type Collection = {
   id: number; technician_id: number; full_name: string; period_from: string; period_to: string; source_delta: string;
   expected: string; actual: string | null; difference: string | null; comment: string; snapshot: Calculation;
@@ -48,10 +49,13 @@ function Breakdown({ data }: { data: Calculation }) {
   </>;
 }
 
-function TechnicianCard({ technician, onSaved }: { technician: Technician; onSaved: () => Promise<void> }) {
+function TechnicianCard({ technician, history, onSaved }: { technician: Technician; history: Collection[]; onSaved: () => Promise<void> }) {
   const from = technician.last_to ? next(technician.last_to) : '2026-11-01';
+  const [open, setOpen] = useState(false);
   const [to, setTo] = useState(today);
   const [preview, setPreview] = useState<Calculation | null>(null);
+  const [actual, setActual] = useState('');
+  const [comment, setComment] = useState('');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -65,13 +69,24 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
     if (!preview || !ready) return;
     setBusy(true); setError('');
     try {
-      await api.post('/api/cash-collections', { technicianId: technician.id, to, receivedOn: today(), token: preview.token });
-      setPreview(null); setReady(false); await onSaved();
+      await api.post('/api/cash-collections', { technicianId: technician.id, to, receivedOn: today(), token: preview.token,
+        ...(actual ? { actual: actual.replace(',', '.'), comment } : {}) });
+      setPreview(null); setReady(false); setActual(''); setComment(''); await onSaved();
     } catch (error) { setError(message(error)); setPreview(null); setReady(false); }
     finally { setBusy(false); }
   };
+  const actualValid = !actual || /^\d{1,12}([.,]\d{1,2})?$/.test(actual);
   return <section className="card card-pad" style={{ marginBottom: 12 }}>
-    <h3>{technician.full_name}{!technician.is_active ? ' · неактивен' : ''}</h3>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+      style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: 0, color: 'inherit' }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><strong>{technician.full_name}{!technician.is_active ? ' · неактивен' : ''}</strong><span>{open ? 'Скрыть ⌃' : 'История и расчёт ⌄'}</span></span>
+      <span className="row" style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 12 }}>
+        <span><span className="muted" style={{ display: 'block' }}>Собрано наличными</span><strong style={{ fontSize: 21 }}>{rub(technician.current.cash)}</strong></span>
+        <span><span className="muted" style={{ display: 'block' }}>К сдаче после расходов</span><strong style={{ fontSize: 21 }}>{rub(technician.current.expected)}</strong></span>
+      </span>
+      <span className="muted" style={{ display: 'block', marginTop: 8 }}>С {formatDate(technician.current.from)} · расходы {rub(technician.current.expenses)}{Number(technician.current.adjustment) !== 0 ? ` · корректировка ${rub(technician.current.adjustment)}` : ''}</span>
+    </button>
+    {open && <div style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
     <p className="muted">{technician.last_to ? `Предыдущая инкассация — по ${formatDate(technician.last_to)}. ` : 'Первая инкассация. '}Новый период с {formatDate(from)}.</p>
     {from > today() ? <p>Все дни по сегодня уже закрыты.</p> : <>
       <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'end' }}>
@@ -81,12 +96,23 @@ function TechnicianCard({ technician, onSaved }: { technician: Technician; onSav
       {preview && <div style={{ marginTop: 16 }}>
         <p>Период: <strong>{formatDate(preview.from)}–{formatDate(preview.to)} включительно</strong></p>
         <Breakdown data={preview} />
+        <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'end', marginTop: 16 }}>
+          <label>Фактически пересчитано, ₽ (можно позже)<input inputMode="decimal" value={actual} disabled={busy} onChange={event => setActual(event.target.value)} placeholder="0,00" /></label>
+          {actual && <label>Комментарий<input value={comment} maxLength={2000} disabled={busy} onChange={event => setComment(event.target.value)} /></label>}
+        </div>
+        {actual && actualValid && <p>Расхождение: {rub((Number(actual.replace(',', '.')) - Number(preview.expected)).toFixed(2))} · плюс — излишек, минус — недостача</p>}
+        {!actualValid && <p role="alert" className="error">Введите сумму не больше 12 цифр и до двух знаков после запятой.</p>}
         <label style={{ display: 'flex', gap: 8, margin: '16px 0' }}><input type="checkbox" style={{ width: 'auto' }} checked={ready} disabled={busy} onChange={event => setReady(event.target.checked)} />Все обслуживания и расходы за период отправлены с телефона; расчёт проверен, мешок получен.</label>
         {Number(preview.expected) < 0 && <p role="alert">Расходы превышают наличные. Проверьте записи перед инкассацией.</p>}
-        <button className="primary" disabled={busy || !ready || Number(preview.expected) < 0} onClick={() => void save()}>Зафиксировать инкассацию · {rub(preview.expected)}</button>
+        <button className="primary" disabled={busy || !ready || !actualValid || Number(preview.expected) < 0} onClick={() => void save()}>Зафиксировать инкассацию · {rub(preview.expected)}</button>
       </div>}
     </>}
+    <h4 style={{ marginTop: 20 }}>История инкассации</h4>
+    <p className="muted">Плюс — излишек, минус — недостача. Расхождение не переносится автоматически как долг техника.</p>
+    {history.map(row => <HistoryCard key={row.id} row={row} onSaved={onSaved} />)}
+    {!history.length && <p className="muted">Инкассаций пока нет.</p>}
     {error && <p role="alert" className="error">{error}</p>}
+    </div>}
   </section>;
 }
 
@@ -131,7 +157,13 @@ export default function CashCollectionsScreen() {
     try { setData(await api.get<Overview>('/api/cash-collections')); setError(''); }
     catch (error) { setError(message(error)); }
   };
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    const refresh = () => { if (document.visibilityState === 'visible') void load(); };
+    const interval = window.setInterval(refresh, 30000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(interval); document.removeEventListener('visibilitychange', refresh); };
+  }, []);
   return <>
     <h2>Инкассация</h2>
     <p className="muted">Учёт с 01.11.2026, начальный остаток — 0 ₽. Только наличные по обслуживаниям, за вычетом зарплаты и расходов техника из собранных денег. Расчёт по данным программы; перед фиксацией дождитесь отправки записей с телефона.</p>
@@ -139,13 +171,9 @@ export default function CashCollectionsScreen() {
     {!data && !error && <p>Загрузка…</p>}
     {data && <>
       <label>Техник<select value={filter} onChange={event => setFilter(event.target.value)}><option value="">Все техники</option>{data.technicians.map(row => <option key={row.id} value={row.id}>{row.full_name}</option>)}</select></label>
-      <h3>Получение мешков</h3>
-      {data.technicians.filter(row => !filter || String(row.id) === filter).map(row => <TechnicianCard key={`${row.id}-${row.last_to}`} technician={row} onSaved={load} />)}
+      <h3>Техники</h3>
+      {data.technicians.filter(row => !filter || String(row.id) === filter).map(row => <TechnicianCard key={row.id} technician={row} history={data.history.filter(item => item.technician_id === row.id)} onSaved={load} />)}
       {!data.technicians.length && <p>Нет сотрудников с признаком полевого техника.</p>}
-      <h3>История и пересчёт</h3>
-      <p className="muted">Плюс — излишек, минус — недостача. Расхождения сохраняются для проверки и не переносятся автоматически как долг техника.</p>
-      {data.history.filter(row => !filter || String(row.technician_id) === filter).map(row => <HistoryCard key={row.id} row={row} onSaved={load} />)}
-      {!data.history.length && <p className="muted">Инкассаций пока нет.</p>}
     </>}
   </>;
 }
