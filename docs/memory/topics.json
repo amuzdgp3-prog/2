@@ -45,8 +45,8 @@
   {
     "id":"machines", "title":"Аппараты, локации, установки, замена и аренда", "keywords":"аппарат локация точка установка замена machine location placement аренда rent тип",
     "entry":["api/src/commands/machines.ts","api/src/commands/locations.ts","web/src/screens/admin/machines/MachinesTab.tsx"],
-    "related":["api/src/commands/locationRent.ts","api/src/commands/machineTypes.ts","api/src/routes/catalog.ts","web/src/screens/History.tsx","web/src/screens/history/ServiceHistory.tsx","web/src/screens/history/types.ts","web/src/screens/history/MachineCard.css","web/src/screens/ReplaceMachine.tsx","web/src/screens/admin/LocationsTab.tsx","web/src/screens/admin/machines/LocationRentCard.tsx","web/src/screens/admin/machines/MachineDialog.tsx","web/src/screens/admin/machines/MachinesTab.css"],
-    "tests":["api/tests/lifecycle.test.ts","api/tests/move_machine.test.ts","api/tests/location_history.test.ts","api/tests/locationRent.test.ts"], "decisions":["005","013","014","035","047","079","097","098","099","100"],
+    "related":["api/src/commands/locationRent.ts","api/src/commands/machineTypes.ts","api/src/routes/catalog.ts","web/src/screens/History.tsx","web/src/screens/history/ServiceHistory.tsx","web/src/screens/history/types.ts","web/src/screens/history/MachineCard.css","web/src/screens/ReplaceMachine.tsx","web/src/screens/admin/LocationsTab.tsx","web/src/screens/admin/machines/LocationRentCard.tsx","web/src/screens/admin/machines/MachineDialog.tsx","web/src/screens/admin/machines/MachinesTab.css","scripts/correct-machine-51-price-20261108.sql"],
+    "tests":["api/tests/lifecycle.test.ts","api/tests/move_machine.test.ts","api/tests/location_history.test.ts","api/tests/locationRent.test.ts"], "decisions":["005","013","014","035","047","079","097","098","099","100","110"],
     "note":"История Placement и интервалы требуют проверки соседних операций; номера аппаратов не переиспользуются."
   },
   {
