@@ -134,10 +134,11 @@ export default function MoneyScreen() {
 
   // Дни из очереди показываются поверх серверных: если техник только что поправил сумму, он
   // должен видеть свою правку, а не старое значение с сервера.
-  const queuedDates = new Set(queued.map((row) => row.workDate));
-  const rows = [...queued, ...days.filter((row) => !queuedDates.has(row.workDate))]
-    .sort((left, right) => right.workDate.localeCompare(left.workDate))
-    .slice(0, 14);
+  const currentMonth = today().slice(0, 7);
+  const queuedThisMonth = queued.filter((row) => row.workDate.startsWith(currentMonth));
+  const queuedDates = new Set(queuedThisMonth.map((row) => row.workDate));
+  const rows = [...queuedThisMonth, ...days.filter((row) => !queuedDates.has(row.workDate))]
+    .sort((left, right) => right.workDate.localeCompare(left.workDate));
 
   return (
     <div className="stack">
@@ -192,7 +193,7 @@ export default function MoneyScreen() {
         </button>
       </form>
 
-      <h3>Прочие расходы</h3>
+      <h3>Прочие расходы за текущий месяц</h3>
       <p className="muted" style={{ marginTop: -8 }}>
         Парковка, мойка, запчасть. За один день можно внести несколько — каждую отдельно. Дата
         берётся из поля «День» выше, так что вчерашнюю трату тоже можно записать. Чек по желанию.
@@ -269,7 +270,7 @@ export default function MoneyScreen() {
         </div>
       )}
 
-      <h3>Последние дни</h3>
+      <h3>Зарплата и бензин за текущий месяц</h3>
       {rows.length === 0 && <p className="muted">Пока ничего не внесено</p>}
       {rows.length > 0 && (
         <div className="table-wrap">

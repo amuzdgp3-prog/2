@@ -60,8 +60,8 @@
     "id":"expenses", "title":"Расходы, закрытие дня, бензин и зарплата", "keywords":"расход затраты зарплата бензин закрытие день чек expenses dayclose money деньги",
     "entry":["api/src/commands/expenses.ts","api/src/commands/dayClose.ts","api/src/routes/expenses.ts","web/src/screens/Money.tsx"],
     "related":["api/src/domain/monthlyExpenseItems.ts","web/src/screens/admin/ExpensesTab.tsx"],
-    "tests":["api/tests/expenses.test.ts","api/tests/day_close.test.ts","api/tests/monthly_expense_items.test.ts"], "decisions":["037","072","073","080"],
-    "note":"Перевод «на карту» не относится к расходам бизнеса (080)."
+    "tests":["api/tests/expenses.test.ts","api/tests/day_close.test.ts","api/tests/monthly_expense_items.test.ts"], "decisions":["037","072","073","080","109"],
+    "note":"Перевод «на карту» не относится к расходам бизнеса (080). Техник видит свою историю зарплаты, бензина и прочих трат за текущий календарный месяц (109)."
   },
   {
     "id":"tasks", "title":"Задачи и эффективность техников", "keywords":"задача задания эффективность техник tasks effectiveness forgotten",

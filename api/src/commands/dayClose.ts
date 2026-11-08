@@ -179,29 +179,28 @@ export async function removeOwnExpense(
   await auditDelete(client, actor, 'business_expense', id, removed.rows[0]);
 }
 
-/** Прочие траты техника за период — списком, с чеками. */
+/** Прочие траты техника за текущий календарный месяц — списком, с чеками. */
 export async function listMyOtherExpenses(
   client: Client,
   actor: Actor,
-  limitDays = 30,
 ): Promise<Array<Record<string, unknown>>> {
   if (actor.id === null) throw forbidden('нужна учётная запись сотрудника');
   const result = await client.query(
     `SELECT id, expense_date, amount, comment, photo_object_key
      FROM business_expenses
      WHERE staff_id = $1 AND source = 'TECHNICIAN' AND category = 'OTHER'
-       AND expense_date >= (now() - ($2::int || ' days')::interval)::date
+       AND expense_date >= date_trunc('month', CURRENT_DATE)::date
+       AND expense_date < (date_trunc('month', CURRENT_DATE) + interval '1 month')::date
      ORDER BY expense_date DESC, id DESC`,
-    [actor.id, limitDays],
+    [actor.id],
   );
   return result.rows;
 }
 
-/** Последние закрытые дни этого техника — чтобы он видел, что уже сдал, и не вводил второй раз. */
+/** Закрытые дни техника за текущий месяц — чтобы он видел всё, что уже сдал. */
 export async function listMyDayCloses(
   client: Client,
   actor: Actor,
-  limit = 14,
 ): Promise<DayCloseRow[]> {
   if (actor.id === null) throw forbidden('нужна учётная запись сотрудника');
   const result = await client.query(
@@ -210,10 +209,11 @@ export async function listMyDayCloses(
             COALESCE(SUM(amount) FILTER (WHERE category = 'FUEL'), 0)   AS fuel
      FROM business_expenses
      WHERE staff_id = $1 AND source = 'TECHNICIAN'
+       AND expense_date >= date_trunc('month', CURRENT_DATE)::date
+       AND expense_date < (date_trunc('month', CURRENT_DATE) + interval '1 month')::date
      GROUP BY expense_date
-     ORDER BY expense_date DESC
-     LIMIT $2`,
-    [actor.id, limit],
+     ORDER BY expense_date DESC`,
+    [actor.id],
   );
   return result.rows.map((row) => ({
     workDate: String(row.expense_date),

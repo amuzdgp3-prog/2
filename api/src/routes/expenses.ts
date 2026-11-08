@@ -48,11 +48,11 @@ export async function registerExpenseRoutes(app: FastifyInstance): Promise<void>
       })),
   );
 
-  /** Последние закрытые дни самого техника — чтобы видел, что уже сдал. */
-  app.get<{ Querystring: { limit?: string } }>('/api/day-close/mine', auth, async (request) => {
+  /** Закрытые дни самого техника за текущий календарный месяц. */
+  app.get('/api/day-close/mine', auth, async (request) => {
     const client = await pool.connect();
     try {
-      return await listMyDayCloses(client, request.actor, Number(request.query.limit) || 14);
+      return await listMyDayCloses(client, request.actor);
     } finally {
       client.release();
     }
@@ -88,10 +88,11 @@ export async function registerExpenseRoutes(app: FastifyInstance): Promise<void>
       })),
   );
 
-  app.get<{ Querystring: { days?: string } }>('/api/day-close/other', auth, async (request) => {
+  /** Прочие траты самого техника за текущий календарный месяц. */
+  app.get('/api/day-close/other', auth, async (request) => {
     const client = await pool.connect();
     try {
-      return await listMyOtherExpenses(client, request.actor, Number(request.query.days) || 30);
+      return await listMyOtherExpenses(client, request.actor);
     } finally {
       client.release();
     }
