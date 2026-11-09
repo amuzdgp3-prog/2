@@ -4,8 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
-import { lockPhoto, normalizePhoto, openRasterPhoto, photoPath, storeImmutablePhoto } from '../lib/photos.js';
-import { assertAdmin } from '../lib/scope.js';
+import { lockPhoto, normalizePhoto, openRasterPhoto, photoPath, photoThumbnail, storeImmutablePhoto } from '../lib/photos.js';
+import { assertAdmin, assertMachineInScope } from '../lib/scope.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,22 +23,26 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
     const file = await request.file();
     if (!file) throw badRequest('FILE_REQUIRED', 'нужен файл фотографии');
     const localId = (file.fields.localId as { value?: string } | undefined)?.value;
+    const machineNumber = (file.fields.machineNumber as { value?: string } | undefined)?.value;
     const slot = slotNumber((file.fields.slot as { value?: string } | undefined)?.value);
     if (!localId || !UUID.test(localId)) throw badRequest('LOCAL_ID_REQUIRED', 'нужен корректный localId');
+    if (!machineNumber) throw badRequest('MACHINE_REQUIRED', 'нужен номер аппарата');
 
     const photo = await normalizePhoto(await file.toBuffer());
     if (photo.bytes.length > config.maxPhotoBytes) throw badRequest('FILE_TOO_LARGE', 'фото аппарата слишком велико');
+    const thumbnail = await photoThumbnail(photo.bytes);
     const digest = createHash('sha256').update(String(request.actor.id)).update(':').update(photo.bytes).digest('hex');
     const objectKey = `visits/${localId.toLowerCase()}-${slot}-${digest}.${photo.extension}`;
 
     return withTransaction(async (client) => {
+      await assertMachineInScope(client, request.actor, machineNumber);
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended('visit-photo:' || $1, 0))", [`${localId}:${slot}`]);
-      const owner = await client.query<{ technician_id: number }>(
-        `SELECT technician_id FROM services WHERE local_id = $1
-         UNION ALL SELECT technician_id FROM service_reviews WHERE local_id = $1 LIMIT 1`,
+      const owner = await client.query<{ technician_id: number; machine_number: string }>(
+        `SELECT technician_id, machine_number FROM services WHERE local_id = $1
+         UNION ALL SELECT technician_id, machine_number FROM service_reviews WHERE local_id = $1 LIMIT 1`,
         [localId],
       );
-      if (owner.rows[0] && Number(owner.rows[0].technician_id) !== request.actor.id) {
+      if (owner.rows[0] && (Number(owner.rows[0].technician_id) !== request.actor.id || owner.rows[0].machine_number !== machineNumber)) {
         throw forbidden('обслуживание другого техника');
       }
       const existing = await client.query<{ object_key: string }>(
@@ -59,6 +63,7 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
         [objectKey, localId, request.actor.id, photo.bytes.length, photo.contentType],
       );
       await storeImmutablePhoto(photoPath(config.photoDir, objectKey), photo.bytes);
+      await storeImmutablePhoto(photoPath(config.photoDir, `${objectKey}.thumb.jpg`), thumbnail);
       await client.query(
         `INSERT INTO service_visit_photos (local_id, slot, object_key, uploaded_by)
          VALUES ($1, $2, $3, $4)
@@ -117,14 +122,8 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
     },
   );
 
-  const authenticateImage = async (request: Parameters<typeof app.authenticate>[0]) => {
-    const token = (request.query as { token?: string } | undefined)?.token;
-    if (token && !request.headers.authorization) request.headers.authorization = `Bearer ${token}`;
-    await app.authenticate(request);
-  };
-
-  app.get<{ Params: { localId: string; slot: string }; Querystring: { token?: string } }>(
-    '/api/service-photos/:localId/:slot', { preHandler: authenticateImage }, async (request, reply) => {
+  app.get<{ Params: { localId: string; slot: string }; Querystring: { thumbnail?: string } }>(
+    '/api/service-photos/:localId/:slot', auth, async (request, reply) => {
       if (!UUID.test(request.params.localId)) throw notFound('фото не найдено');
       const slot = slotNumber(request.params.slot);
       const result = await pool.query<{ object_key: string; uploaded_by: number }>(
@@ -137,7 +136,8 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
       if (request.actor.role !== 'ADMIN' && Number(row.uploaded_by) !== request.actor.id) {
         throw forbidden('фото другого техника');
       }
-      const opened = await openRasterPhoto(photoPath(config.photoDir, row.object_key));
+      const requestedKey = request.query.thumbnail === '1' ? `${row.object_key}.thumb.jpg` : row.object_key;
+      const opened = await openRasterPhoto(photoPath(config.photoDir, requestedKey));
       if (!opened) throw notFound('фото не найдено');
       return reply.type(opened.contentType)
         .header('Cache-Control', 'private, no-store')
@@ -152,12 +152,15 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
 export async function cleanupExpiredVisitPhotos(): Promise<number> {
   return withTransaction(async (client) => {
     const expired = await client.query<{ object_key: string }>(
-      `SELECT object_key FROM service_visit_photos
-       WHERE uploaded_at < now() - interval '30 days'
+      `SELECT object_key FROM service_visit_photos v
+       WHERE v.uploaded_at < now() - interval '30 days'
        ORDER BY uploaded_at LIMIT 100 FOR UPDATE SKIP LOCKED`,
     );
     for (const row of expired.rows) {
       await unlink(photoPath(config.photoDir, row.object_key)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      await unlink(photoPath(config.photoDir, `${row.object_key}.thumb.jpg`)).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'ENOENT') throw error;
       });
       await client.query('DELETE FROM photo_objects WHERE object_key = $1', [row.object_key]);

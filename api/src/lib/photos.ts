@@ -50,6 +50,23 @@ export async function normalizePhoto(input: Buffer) {
   return { bytes, extension: png ? 'png' : 'jpg', contentType: png ? 'image/png' : 'image/jpeg' };
 }
 
+/** Small gallery preview; the original remains available for zooming. */
+export async function photoThumbnail(input: Buffer): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const process = execFile('ffmpeg', [
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-xerror', '-filter_threads', '1',
+      '-threads', '1', '-protocol_whitelist', 'pipe', '-f', 'image2pipe', '-i', 'pipe:0',
+      '-frames:v', '1', '-map_metadata', '-1', '-vf', 'scale=480:480:force_original_aspect_ratio=decrease',
+      '-threads:v', '1', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1',
+    ], { encoding: 'buffer', maxBuffer: 2 * 1024 * 1024, timeout: 8000, windowsHide: true }, (error, output) => {
+      if (error) reject(error);
+      else resolve(output);
+    });
+    process.stdin?.on('error', reject);
+    process.stdin?.end(input);
+  }).catch(() => { throw badRequest('INVALID_PHOTO', 'не удалось подготовить миниатюру фото'); });
+}
+
 export function immutablePhotoKey(localId: string, actorId: number | null, bytes: Buffer, extension: string): string {
   const digest = createHash('sha256').update(String(actorId)).update(':').update(bytes).digest('hex');
   return `services/${localId.toLowerCase()}-${digest}.${extension}`;

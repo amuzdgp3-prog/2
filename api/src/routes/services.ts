@@ -342,6 +342,7 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
     { preHandler: authenticatePhoto },
     async (request, reply) => {
       const objectKey = request.params['*'];
+      if (objectKey.startsWith('visits/')) return reply.code(404).send({ error: 'NOT_FOUND' });
       const target = photoPath(config.photoDir, objectKey);
 
       const stored = await pool.query(
