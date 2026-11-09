@@ -1,0 +1,23 @@
+.service-photos h2 { margin: 8px 0; }
+.service-photo-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin: 18px 0 22px; }
+.service-photo-filters label { display: flex; flex-direction: column; gap: 5px; min-width: 135px; font-size: 13px; }
+.service-photo-filters label:last-of-type { flex: 1; min-width: 220px; }
+.service-photo-filters input, .service-photo-filters select { min-height: 40px; }
+.service-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 23px 18px; }
+.service-photo-pair-images { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.service-photo-pair-images button { padding: 0; border: 0; border-radius: 7px; overflow: hidden; background: #e7edf3; cursor: zoom-in; aspect-ratio: 1 / 1; }
+.service-photo-image { width: 100%; height: 100%; display: grid; place-items: center; color: #718096; font-size: 12px; }
+.service-photo-pair-images img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.service-photo-empty { background: #edf1f5; color: #718096; display: grid; place-items: center; border-radius: 7px; }
+.service-photo-caption { margin-top: 6px; font-size: 13px; line-height: 1.4; }
+.service-photo-pages { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 22px 0; }
+.service-photo-viewer { position: fixed; inset: 0; z-index: 200; background: rgba(9, 16, 26, .96); color: white; display: flex; flex-direction: column; }
+.service-photo-viewer-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+.service-photo-viewer-bar span { flex: 1; line-height: 1.4; }
+.service-photo-viewer button { color: white; background: rgba(255,255,255,.13); border: 0; border-radius: 7px; cursor: pointer; min-width: 42px; min-height: 42px; font-size: 24px; }
+.service-photo-viewer button:disabled { opacity: .3; cursor: default; }
+.service-photo-viewer-body { display: flex; align-items: center; flex: 1; min-height: 0; gap: 8px; padding: 0 12px; }
+.service-photo-zoom { flex: 1; height: 100%; overflow: auto; display: flex; align-items: center; }
+.service-photo-zoom img { display: block; max-width: none; height: auto; max-height: 78vh; object-fit: contain; margin: auto; }
+.service-photo-viewer-count { text-align: center; padding: 10px; }
+@media (max-width: 420px) { .service-photo-grid { grid-template-columns: 1fr; } .service-photo-viewer-bar { flex-wrap: wrap; } .service-photo-viewer-bar span { flex-basis: 100%; } }

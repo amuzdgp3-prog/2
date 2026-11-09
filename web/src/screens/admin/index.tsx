@@ -9,13 +9,14 @@ import { ExpenseSummaryTab } from './ExpenseSummaryTab';
 import { LocationsTab } from './LocationsTab';
 import { MachineTypesTab } from './MachineTypesTab';
 import { MachinesTab } from './machines/MachinesTab';
+import { PhotosTab } from './PhotosTab';
 import { ReviewsTab } from './ReviewsTab';
 import { StaffTab } from './staff/StaffTab';
 import { TasksTab } from './TasksTab';
 import { TerminalsTab } from './TerminalsTab';
 import { ToysTab } from './ToysTab';
 
-type Tab = 'machines' | 'reviews' | 'tasks' | 'types' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'expenses' | 'expense-summary' | 'audit';
+type Tab = 'photos' | 'machines' | 'reviews' | 'tasks' | 'types' | 'locations' | 'catalog' | 'terminals' | 'staff' | 'cashless' | 'toys' | 'consumption' | 'expenses' | 'expense-summary' | 'audit';
 
 export default function AdminScreen() {
   const [tab, setTab] = useState<Tab>('machines');
@@ -34,6 +35,7 @@ export default function AdminScreen() {
   return (
     <>
       <div className="tabs admin-tabs">
+        <button className={tab === 'photos' ? 'active' : ''} onClick={() => setTab('photos')}>Фото</button>
         <button className={tab === 'machines' ? 'active' : ''} onClick={() => setTab('machines')}>Аппараты</button>
         <button className={tab === 'reviews' ? 'active' : ''} onClick={() => setTab('reviews')}>Проверка</button>
         <button className={tab === 'tasks' ? 'active' : ''} onClick={() => setTab('tasks')}>Задачи</button>
@@ -53,6 +55,7 @@ export default function AdminScreen() {
       {notice && <div className="alert ok">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
 
+      {tab === 'photos' && <PhotosTab onDone={report} onError={fail} />}
       {tab === 'machines' && <MachinesTab onDone={report} onError={fail} />}
       {tab === 'reviews' && <ReviewsTab onDone={report} onError={fail} />}
       {tab === 'tasks' && <TasksTab onDone={report} onError={fail} />}

@@ -22,6 +22,7 @@ import {
   readCachedMachines,
   readCachedToys,
   savePhotoDraft,
+  saveVisitPhotoDraft,
   type CachedMachine,
 } from '../db';
 import { bytesToPhoto, EmptyPhotoError, photoToBytes } from '../photoBytes';
@@ -40,6 +41,20 @@ interface ToyLine {
 const pad = (value: number) => String(value).padStart(2, '0');
 const toDateInput = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const toTimeInput = (date: Date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+function VisitPhotoPreview({ photo, slot }: { photo: Blob | null; slot: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!photo) { setUrl(null); return; }
+    const objectUrl = URL.createObjectURL(photo);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [photo]);
+  return url ? <>
+    <img src={url} alt={`Фото аппарата ${slot}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
+    <span style={{ position: 'absolute', bottom: 6, left: 6, right: 6, padding: 4, borderRadius: 5, background: 'rgba(0,0,0,.65)', color: '#fff' }}>Фото {slot} ✓</span>
+  </> : <span>＋ Фото {slot}</span>;
+}
 
 export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }) {
   const { machineNumber = '', localId: editLocalId } = useParams();
@@ -62,6 +77,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [lines, setLines] = useState<ToyLine[]>([]);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [existingPhoto, setExistingPhoto] = useState<Blob | null>(null);
+  const [visitPhotos, setVisitPhotos] = useState<[Blob | null, Blob | null]>([null, null]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Показывать предупреждение о недостающем фото только после попытки сохранить без него — до
@@ -150,6 +166,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       setNotes(draft.notes);
       setLines(draft.toys.map((line) => ({ toyId: line.toyId, quantity: String(line.quantity) })));
       setExistingPhoto(draft.photo);
+      setVisitPhotos(draft.visitPhotos ?? [null, null]);
       if (draft.claw) setDraftClaw(draft.claw);
     });
   }, [editLocalId]);
@@ -169,6 +186,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         return;
       }
       setExistingPhoto(draft.photo);
+      setVisitPhotos(draft.visitPhotos ?? [null, null]);
     });
   }, [editLocalId, machineNumber]);
 
@@ -289,8 +307,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     if (!photo && !existingPhoto && attemptedSubmit) {
       list.push('Фото счётчика не загружено — без него обслуживание не сохранится.');
     }
+    if (attemptedSubmit && visitPhotos.some((item) => !item)) {
+      list.push('Прикрепите два фото аппарата из галереи.');
+    }
     return list;
-  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto, attemptedSubmit]);
+  }, [machine, preview, prizeCounter, previousPrizeCounter, dateContext, isFutureDate, photo, existingPhoto, visitPhotos, attemptedSubmit]);
 
   /**
    * Выбор фото из Камеры/Галереи. Файл сразу читается в память и дальше живёт копией оттуда: на iOS
@@ -318,9 +339,28 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
     }
   };
 
+  const handleVisitPhotoChosen = async (event: ChangeEvent<HTMLInputElement>, slot: 0 | 1) => {
+    markDirty();
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const copy = bytesToPhoto(await photoToBytes(file), file.type);
+      await saveVisitPhotoDraft(machineNumber, slot, copy);
+      setVisitPhotos((previous) => {
+        const next: [Blob | null, Blob | null] = [...previous];
+        next[slot] = copy;
+        return next;
+      });
+      setError(null);
+    } catch (caught) {
+      setError(caught instanceof EmptyPhotoError ? caught.message : 'Не удалось прочитать фото аппарата. Выберите его ещё раз.');
+    }
+    event.target.value = '';
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!machine || (!photo && !existingPhoto)) {
+    if (!machine || (!photo && !existingPhoto) || visitPhotos.some((item) => !item)) {
       setAttemptedSubmit(true);
       return;
     }
@@ -354,6 +394,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
           .map((line) => ({ toyId: line.toyId, quantity: Number(line.quantity) })),
         photo: chosenPhoto,
         photoType: chosenPhoto.type || 'image/jpeg',
+        visitPhotos: visitPhotos as [Blob, Blob],
         queuedAt: new Date().toISOString(),
         status: 'PENDING',
         claw: machine.claw_state && claw ? changedClaw(machine.claw_state, claw) : undefined,
@@ -613,7 +654,26 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         />
       </div>
 
-      <div className="section-head"><span className="num">{machine.claw_state ? 7 : 6}</span><h3>Комментарий</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">{machine.claw_state ? 7 : 6}</span><h3>Фото до и после</h3><span className="line" /></div>
+      <p className="muted">Прикрепите два фото аппарата из галереи.</p>
+      <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+        {([0, 1] as const).map((slot) => (
+          <div key={slot} style={{ width: 150 }}>
+            <label htmlFor={`visit-photo-${slot}`} className="photo-slot" style={{ cursor: 'pointer', minHeight: 100, position: 'relative', overflow: 'hidden' }}>
+              <VisitPhotoPreview photo={visitPhotos[slot]} slot={slot + 1} />
+            </label>
+            <input
+              id={`visit-photo-${slot}`}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style={{ display: 'none' }}
+              onChange={(event) => void handleVisitPhotoChosen(event, slot)}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="section-head"><span className="num">{machine.claw_state ? 8 : 7}</span><h3>Комментарий</h3><span className="line" /></div>
       <textarea
         rows={3}
         placeholder="Необязательно — что заметили на точке"

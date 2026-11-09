@@ -136,6 +136,18 @@ async function uploadOne(item: QueuedService): Promise<'STORED' | 'IN_REVIEW'> {
     throw error;
   }
 
+  // Older offline drafts may predate this feature. New forms always queue both gallery photos.
+  if (item.visitPhotos) {
+    for (const [index, photo] of item.visitPhotos.entries()) {
+      const visitForm = new FormData();
+      visitForm.append('localId', item.localId);
+      visitForm.append('machineNumber', item.machineNumber);
+      visitForm.append('slot', String(index + 1));
+      visitForm.append('file', photo, `${item.localId}-${index + 1}.jpg`);
+      await api.upload('/api/service-photos', visitForm);
+    }
+  }
+
   const response = await api.post<{ inReview?: boolean }>('/api/services', {
     localId: item.localId,
     machineNumber: item.machineNumber,

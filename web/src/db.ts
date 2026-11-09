@@ -48,6 +48,8 @@ export interface QueuedService {
   toys: Array<{ toyId: number; quantity: number }>;
   photo: Blob;
   photoType: string;
+  /** Two gallery images of the machine, in selection order. Older queued services lack this field. */
+  visitPhotos?: [Blob, Blob];
   queuedAt: string;
   status: 'PENDING' | 'REJECTED';
   error?: string;
@@ -68,8 +70,12 @@ export interface QueuedService {
  * `Blob` из IndexedDB бывает пустым (см. photoBytes.ts). Поле `photo` осталось только у записей,
  * поставленных в очередь до этого изменения: их читаем как раньше.
  */
-type StoredService = Omit<QueuedService, 'photo'> & { photo?: Blob; photoBytes?: ArrayBuffer };
-type StoredPhotoDraft = Omit<PhotoDraft, 'photo'> & { photo?: Blob; photoBytes?: ArrayBuffer };
+type StoredService = Omit<QueuedService, 'photo' | 'visitPhotos'> & {
+  photo?: Blob; photoBytes?: ArrayBuffer; visitPhotoBytes?: [ArrayBuffer, ArrayBuffer]; visitPhotoTypes?: [string, string];
+};
+type StoredPhotoDraft = Omit<PhotoDraft, 'photo' | 'visitPhotos'> & {
+  photo?: Blob; photoBytes?: ArrayBuffer; visitPhotoBytes?: ArrayBuffer[]; visitPhotoTypes?: string[];
+};
 
 interface MonitorSchema extends DBSchema {
   machines: { key: string; value: CachedMachine };
@@ -93,8 +99,9 @@ interface MonitorSchema extends DBSchema {
  */
 export interface PhotoDraft {
   machineNumber: string;
-  photo: Blob;
+  photo: Blob | null;
   photoType: string;
+  visitPhotos?: [Blob | null, Blob | null];
   savedAt: string;
 }
 
@@ -195,14 +202,22 @@ export async function readCachedToys() {
 }
 
 export async function enqueueService(service: QueuedService): Promise<void> {
-  const { photo, ...rest } = service;
+  const { photo, visitPhotos, ...rest } = service;
   const photoBytes = await photoToBytes(photo);
-  await (await db()).put('outbox', { ...rest, photoBytes });
+  const visitPhotoBytes = visitPhotos
+    ? await Promise.all(visitPhotos.map(photoToBytes)) as [ArrayBuffer, ArrayBuffer]
+    : undefined;
+  const visitPhotoTypes = visitPhotos?.map((item) => item.type) as [string, string] | undefined;
+  await (await db()).put('outbox', { ...rest, photoBytes, visitPhotoBytes, visitPhotoTypes });
 }
 
 function fromStoredService(stored: StoredService): QueuedService {
-  const { photoBytes, photo, ...rest } = stored;
-  return { ...rest, photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo as Blob) };
+  const { photoBytes, photo, visitPhotoBytes, visitPhotoTypes, ...rest } = stored;
+  return {
+    ...rest,
+    photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo as Blob),
+    visitPhotos: visitPhotoBytes?.map((bytes, slot) => bytesToPhoto(bytes, visitPhotoTypes?.[slot] ?? 'image/jpeg')) as [Blob, Blob] | undefined,
+  };
 }
 
 /** Used to prefill the form when a technician edits a draft that hasn't synced yet. */
@@ -213,14 +228,41 @@ export async function getQueuedByLocalId(localId: string): Promise<QueuedService
 
 export async function savePhotoDraft(machineNumber: string, photo: Blob, photoType: string): Promise<void> {
   const photoBytes = await photoToBytes(photo);
-  await (await db()).put('photoDrafts', { machineNumber, photoBytes, photoType, savedAt: new Date().toISOString() });
+  const instance = await db();
+  const tx = instance.transaction('photoDrafts', 'readwrite');
+  const existing = await tx.store.get(machineNumber);
+  await tx.store.put({ ...existing, machineNumber, photoBytes, photoType, savedAt: new Date().toISOString() });
+  await tx.done;
+}
+
+export async function saveVisitPhotoDraft(machineNumber: string, slot: 0 | 1, photo: Blob): Promise<void> {
+  const bytes = await photoToBytes(photo);
+  const instance = await db();
+  const tx = instance.transaction('photoDrafts', 'readwrite');
+  const existing = await tx.store.get(machineNumber);
+  const visitPhotoBytes = existing?.visitPhotoBytes ?? [];
+  const visitPhotoTypes = existing?.visitPhotoTypes ?? [];
+  visitPhotoBytes[slot] = bytes;
+  visitPhotoTypes[slot] = photo.type;
+  await tx.store.put({
+    ...existing, machineNumber, visitPhotoBytes, visitPhotoTypes,
+    photoType: existing?.photoType ?? 'image/jpeg', savedAt: new Date().toISOString(),
+  });
+  await tx.done;
 }
 
 export async function getPhotoDraft(machineNumber: string): Promise<PhotoDraft | undefined> {
   const stored = await (await db()).get('photoDrafts', machineNumber);
   if (!stored) return undefined;
-  const { photoBytes, photo, ...rest } = stored;
-  return { ...rest, photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo as Blob) };
+  const { photoBytes, photo, visitPhotoBytes, visitPhotoTypes, ...rest } = stored;
+  return {
+    ...rest,
+    photo: photoBytes ? bytesToPhoto(photoBytes, stored.photoType) : (photo ?? null),
+    visitPhotos: visitPhotoBytes
+      ? [visitPhotoBytes[0] ? bytesToPhoto(visitPhotoBytes[0], visitPhotoTypes?.[0] ?? 'image/jpeg') : null,
+        visitPhotoBytes[1] ? bytesToPhoto(visitPhotoBytes[1], visitPhotoTypes?.[1] ?? 'image/jpeg') : null]
+      : undefined,
+  };
 }
 
 export async function clearPhotoDraft(machineNumber: string): Promise<void> {
