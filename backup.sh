@@ -90,6 +90,8 @@ log "дамп выгружен в $REMOTE/db/"
 # Счётчики и чеки: только новые, без распространения локальных удалений на облако.
 rclone copy "$PROJECT_DIR/data/photos" "$REMOTE/photos/" --exclude '/visits/**' --quiet \
   || fail "не удалось догрузить фотографии счётчиков и чеков"
+rclone mkdir "$REMOTE/photos/visits/" --quiet \
+  || fail "не удалось подготовить папку фото аппаратов в облаке"
 if [ -d "$PROJECT_DIR/data/photos/visits" ]; then
   rclone copy "$PROJECT_DIR/data/photos/visits" "$REMOTE/photos/visits/" --quiet \
     || fail "не удалось догрузить фото аппаратов"
