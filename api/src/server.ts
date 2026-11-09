@@ -20,6 +20,7 @@ import { registerReportRoutes } from './routes/reports.js';
 import { registerTelegramOutboxRoutes } from './routes/telegramOutbox.js';
 import { startDailySummaryScheduler } from './jobs/dailySummaryScheduler.js';
 import { registerServiceRoutes } from './routes/services.js';
+import { registerServiceVisitPhotoRoutes, startVisitPhotoCleanup } from './routes/serviceVisitPhotos.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -180,6 +181,7 @@ export async function buildServer() {
   await registerAuthRoutes(app);
   await registerCatalogRoutes(app);
   await registerServiceRoutes(app);
+  await registerServiceVisitPhotoRoutes(app);
   await registerCashlessRoutes(app);
   await registerReportRoutes(app);
   await registerTelegramOutboxRoutes(app);
@@ -300,6 +302,7 @@ if (isMain) {
     await app.listen({ port: config.port, host: config.host });
     startParserScheduler();
     startDailySummaryScheduler();
+    startVisitPhotoCleanup();
   };
   start().catch((error) => {
     console.error(error);

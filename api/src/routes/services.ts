@@ -394,6 +394,9 @@ export async function registerServiceRoutes(app: FastifyInstance): Promise<void>
          )
          AND NOT EXISTS (
            SELECT 1 FROM service_reviews r WHERE r.photo_object_key = po.object_key
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM service_visit_photos v WHERE v.object_key = po.object_key
          )`,
       [config.orphanPhotoTtlHours],
     );
