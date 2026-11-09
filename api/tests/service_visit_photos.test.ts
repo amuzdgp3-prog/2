@@ -61,6 +61,11 @@ it('keeps two photos beside a service, filters the gallery, and expires only tho
   assert.equal(gallery.json().total, 1);
   assert.equal(gallery.json().rows[0].photo_1, first.json().objectKey);
   assert.equal(gallery.json().rows[0].photo_2, second.json().objectKey);
+  // Later reassignment of a service must not detach its photos from the gallery.
+  await pool.query('UPDATE services SET technician_id = NULL WHERE local_id = $1', [localId]);
+  const reassigned = await context.app.inject({ url: '/api/service-photos', headers: authHeader(context.adminToken) });
+  assert.equal(reassigned.json().rows[0].photo_1, first.json().objectKey);
+  await pool.query('UPDATE services SET technician_id = $2 WHERE local_id = $1', [localId, context.technicianId]);
   assert.equal((await context.app.inject({
     url: '/api/service-photos?from=2026-11-07&to=2026-11-07', headers: authHeader(context.adminToken),
   })).json().total, 0);

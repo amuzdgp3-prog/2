@@ -102,10 +102,10 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
         JOIN locations l ON l.id = p.location_id
         LEFT JOIN staff st ON st.id = s.technician_id
         LEFT JOIN service_visit_photos first_photo ON first_photo.local_id = s.local_id
-          AND first_photo.slot = 1 AND first_photo.uploaded_by = s.technician_id
+          AND first_photo.slot = 1
           AND first_photo.uploaded_at >= now() - interval '30 days'
         LEFT JOIN service_visit_photos second_photo ON second_photo.local_id = s.local_id
-          AND second_photo.slot = 2 AND second_photo.uploaded_by = s.technician_id
+          AND second_photo.slot = 2
           AND second_photo.uploaded_at >= now() - interval '30 days'
         WHERE (first_photo.object_key IS NOT NULL OR second_photo.object_key IS NOT NULL) ${condition}`;
       const [rows, total] = await Promise.all([
