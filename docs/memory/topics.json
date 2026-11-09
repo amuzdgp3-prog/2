@@ -9,9 +9,9 @@
   {
     "id":"services", "title":"Обслуживание, фото, счётчики и пересчёт", "keywords":"обслуживание фото счетчик счётчик выручка counter service photo каскад",
     "entry":["web/src/screens/ServiceForm.tsx","api/src/routes/services.ts","api/src/commands/services.ts"],
-    "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","web/src/calc.ts","web/src/photoBytes.ts","web/src/components/PreviousService.tsx"],
-    "tests":["api/tests/counter_cascade.test.ts","api/tests/counter_divisor.test.ts","api/tests/counter_monotonicity.test.ts","api/tests/service_log.test.ts"],
-    "decisions":["001","004","007","013","027","059","101","102"],
+    "related":["api/src/domain/counterChain.ts","api/src/domain/counterMonotonicity.ts","api/src/domain/referenceCalc.ts","api/src/routes/serviceVisitPhotos.ts","api/src/migrations/027_service_visit_photos.sql","web/src/calc.ts","web/src/photoBytes.ts","web/src/db.ts","web/src/sync.ts","web/src/screens/admin/PhotosTab.tsx","web/src/components/PreviousService.tsx"],
+    "tests":["api/tests/counter_cascade.test.ts","api/tests/counter_divisor.test.ts","api/tests/counter_monotonicity.test.ts","api/tests/service_log.test.ts","api/tests/service_visit_photos.test.ts"],
+    "decisions":["001","004","007","013","027","059","101","102","111"],
     "note":"Деньги/игры округляются в SQL; перед правкой посмотреть потребителей расчёта и порядок блокировок."
   },
   {
