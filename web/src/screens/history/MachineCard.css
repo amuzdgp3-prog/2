@@ -69,8 +69,6 @@
 .machine-card-overview .mch-sub { display: block; color: var(--ink-soft); font-size: 11px; margin-top: 4px; }
 .machine-card-overview .mch-roi { display: inline-block; padding: 3px 7px; border-radius: 6px; background: var(--mch-soft); font-size: 12px; }
 .machine-card-overview .mch-final,
-.machine-card-overview .mch-anomaly-flag { display: inline-block; margin: 5px 5px 0 0; border-radius: 4px; padding: 2px 5px; background: var(--mch-soft); font-size: 11px; }
-.machine-card-overview .mch-anomaly-flag { color: var(--bad); background: var(--bad-soft); }
 .machine-card-overview .mch-expand { display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--ink-soft); min-width: 30px; min-height: 30px; padding: 4px; }
 .machine-card-overview .mch-chevron { display: inline-block; font-size: 20px; }
 .machine-card-overview .mch-chevron-open { transform: rotate(180deg); }

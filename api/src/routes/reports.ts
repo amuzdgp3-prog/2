@@ -172,15 +172,6 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
          FROM terminals`,
       );
 
-      const scope = machineScopePredicate(request.actor, 's.machine_number', 1);
-      const anomalies = await client.query(
-        `SELECT s.id, s.machine_number, s.service_date, s.revenue, s.cashless_amount, s.cash_amount
-         FROM services s
-         WHERE s.is_financial_anomaly AND ${scope.sql}
-         ORDER BY s.occurred_at DESC LIMIT 20`,
-        scope.params,
-      );
-
       const revenueRow = (row: (typeof monthRows)[number]) => ({
         machineNumber: row.machineNumber,
         locationName: row.locationName,
@@ -218,11 +209,21 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
           .map(({ machineNumber, locationName, roi }) => ({ machineNumber, locationName, roi })),
         worstRoi: byRoiAsc.slice(0, 10)
           .map(({ machineNumber, locationName, roi }) => ({ machineNumber, locationName, roi })),
-        anomalies: anomalies.rows,
       };
     } finally {
       client.release();
     }
+  });
+
+  app.get('/api/admin/financial-anomalies', auth, async (request) => {
+    assertAdmin(request.actor);
+    const result = await pool.query(
+      `SELECT id, machine_number, service_date, revenue, cashless_amount, cash_amount
+       FROM services
+       WHERE is_financial_anomaly
+       ORDER BY occurred_at DESC, id DESC`,
+    );
+    return { rows: result.rows };
   });
 
   app.get<{ Querystring: Record<string, string> }>('/api/audit', auth, async (request) => {

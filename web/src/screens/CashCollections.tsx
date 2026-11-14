@@ -104,7 +104,7 @@ function TechnicianCard({ technician, history, onSaved }: { technician: Technici
           <label>Фактически пересчитано, ₽ (можно позже)<input inputMode="decimal" value={actual} disabled={busy} onChange={event => setActual(event.target.value)} placeholder="0,00" /></label>
           {actual && <label>Комментарий<input value={comment} maxLength={2000} disabled={busy} onChange={event => setComment(event.target.value)} /></label>}
         </div>
-        {actual && actualValid && <p>Расхождение: {rub((Number(actual.replace(',', '.')) - Number(preview.expected)).toFixed(2))} · плюс — излишек, минус — недостача</p>}
+        {actual && actualValid && <p>Разница: {rub((Number(actual.replace(',', '.')) - Number(preview.expected)).toFixed(2))} · плюс — излишек, минус — недостача</p>}
         {!actualValid && <p role="alert" className="error">Введите сумму не больше 12 цифр и до двух знаков после запятой.</p>}
         <label style={{ display: 'flex', gap: 8, margin: '16px 0' }}><input type="checkbox" style={{ width: 'auto' }} checked={ready} disabled={busy} onChange={event => setReady(event.target.checked)} />Все обслуживания и расходы за период отправлены с телефона; расчёт проверен, мешок получен.</label>
         {Number(preview.expected) < 0 && <p role="alert">Расходы превышают наличные. Проверьте записи перед инкассацией.</p>}
@@ -112,7 +112,7 @@ function TechnicianCard({ technician, history, onSaved }: { technician: Technici
       </div>}
     </>}
     <h4 style={{ marginTop: 20 }}>История инкассации</h4>
-    <p className="muted">Плюс — излишек, минус — недостача. Расхождение не переносится автоматически как долг техника.</p>
+    <p className="muted">Плюс — излишек, минус — недостача. Разница не переносится автоматически как долг техника.</p>
     {history.map(row => <HistoryCard key={row.id} row={row} onSaved={onSaved} />)}
     {!history.length && <p className="muted">Инкассаций пока нет.</p>}
     {error && <p role="alert" className="error">{error}</p>}
@@ -143,7 +143,7 @@ function HistoryCard({ row, onSaved }: { row: Collection; onSaved: () => Promise
         <label>Комментарий<input value={comment} maxLength={2000} disabled={busy} onChange={event => setComment(event.target.value)} /></label>
         <button disabled={busy || !/^\d{1,12}([.,]\d{1,2})?$/.test(actual)} onClick={() => void save()}>Сохранить пересчёт</button>
       </div>
-      {/^\d+([.,]\d{1,2})?$/.test(actual) && <p>Расхождение: {rub((Number(actual.replace(',', '.')) - Number(row.expected)).toFixed(2))} · плюс — излишек, минус — недостача</p>}
+      {/^\d+([.,]\d{1,2})?$/.test(actual) && <p>Разница: {rub((Number(actual.replace(',', '.')) - Number(row.expected)).toFixed(2))} · плюс — излишек, минус — недостача</p>}
     </> : <>
       <p>Пересчитано: <strong>{rub(row.actual)}</strong> · {Number(row.difference) === 0 ? 'Сошлось' : `${Number(row.difference) < 0 ? 'Недостача' : 'Излишек'} ${rub(String(Math.abs(Number(row.difference))))}`}</p>
       {row.comment && <p>{row.comment}</p>}

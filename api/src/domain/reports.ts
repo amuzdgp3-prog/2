@@ -50,7 +50,6 @@ export interface MachineRow {
   cashless: string;
   cash: string;
   toyCost: string;
-  anomalies: number;
   /**
    * «Отношение выручка / себестоимость» последнего обслуживания в выборке. Нормативно метрика
    * определена для одного обслуживания (10_ТЗ §10), а способ её агрегации за период документами
@@ -196,7 +195,6 @@ export async function queryMachineRows(
             SUM(s.cashless_amount)                  AS cashless,
             SUM(s.cash_amount)                      AS cash,
             SUM(s.toy_cost)                         AS toy_cost,
-            COUNT(*) FILTER (WHERE s.is_financial_anomaly)::int AS anomalies,
             (array_agg(s.revenue_to_cost_ratio ORDER BY s.occurred_at DESC, s.id DESC))[1]
                                                     AS last_revenue_to_cost_ratio,
             (SELECT COALESCE(tm.target_payout_percent, tt.target_payout_percent)
@@ -227,7 +225,6 @@ export async function queryMachineRows(
     cashless: String(row.cashless ?? '0'),
     cash: String(row.cash ?? '0'),
     toyCost: String(row.toy_cost ?? '0'),
-    anomalies: row.anomalies,
     lastRevenueToCostRatio:
       row.last_revenue_to_cost_ratio === null || row.last_revenue_to_cost_ratio === undefined
         ? null
@@ -657,7 +654,6 @@ export function toCsv(rows: MachineRow[]): string {
     'cashless',
     'cash',
     'toy_cost',
-    'anomalies',
     'revenue_to_cost_ratio',
   ];
   const lines = rows.map((row) =>
@@ -674,7 +670,6 @@ export function toCsv(rows: MachineRow[]): string {
       row.cashless,
       row.cash,
       row.toyCost,
-      row.anomalies,
       // «нет данных» is exported literally, never as a misleading zero.
       row.lastRevenueToCostRatio ?? 'нет данных',
     ].join(','),

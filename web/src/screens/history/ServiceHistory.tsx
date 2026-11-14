@@ -39,7 +39,6 @@ export function ServiceHistory({ rows, isAdmin, editing, onEdit, onRemove, rende
                 <span className="mch-date">{formatDate(row.service_date)} <span className="mch-time">· {formatTime(row.occurred_at)}</span></span>
                 <span className="mch-sub">{row.technician_name || 'Техник не указан'}</span>
                 {row.kind === 'FINAL' && <span className="mch-final">Финальное</span>}
-                {row.is_financial_anomaly && <span className="mch-anomaly-flag">Расхождение безнала</span>}
               </td>
               <td className="mch-num mch-service-revenue"><span className="mch-mobile-label">Выручка</span><strong>{formatMoney(row.revenue)}<span className="mch-mobile-unit"> ₽</span></strong></td>
               <td className="mch-num"><span className="mch-mobile-label">Нал / безнал, ₽</span>{formatMoney(row.cash_amount)} / {formatMoney(row.cashless_amount)}</td>
@@ -85,7 +84,6 @@ function ServiceDetails({ row, isAdmin, editing, onEdit, onRemove, children }: {
   const [showPhoto, setShowPhoto] = useState(false);
   return (
     <div className="mch-service-details">
-      {row.is_financial_anomaly && <div className="alert warn">Безнал больше выручки — расхождение отмечено, значения не подгонялись.</div>}
       <dl className="mch-detail-grid">
         <div><dt>Счётчик игр</dt><dd>{row.game_counter}</dd></div>
         <div><dt>Счётчик призов</dt><dd>{row.prize_counter}</dd></div>

@@ -24,8 +24,8 @@
   {
     "id":"reports", "title":"Отчёт владельца, Excel, xlsx, ROI и расходы за месяц", "keywords":"отчет отчёт владелец excel xlsx roi месячный месячная выгрузка прибыль отчетность",
     "entry":["api/src/routes/reports.ts","api/src/domain/ownerMonthReport.ts","api/src/domain/monthlyExcelReport.ts","web/src/screens/OwnerReport.tsx"],
-    "related":["api/src/domain/ownerMonthRoi.ts","api/src/domain/ownerMonthPayout.ts","api/src/domain/monthlyExpenseItems.ts","web/src/screens/OwnerReportSections.tsx","web/src/ownerMonthReport.ts","web/src/screens/Reports.tsx","api/src/domain/reports.ts"],
-    "tests":["api/tests/monthly_report.test.ts","api/tests/monthly_expense_items.test.ts","api/tests/owner_month_report.test.ts","api/tests/owner_month_roi.test.ts"], "decisions":["012","037","080","091"],
+    "related":["api/src/domain/ownerMonthRoi.ts","api/src/domain/ownerMonthPayout.ts","api/src/domain/monthlyExpenseItems.ts","web/src/screens/OwnerReportSections.tsx","web/src/ownerMonthReport.ts","web/src/screens/Reports.tsx","api/src/domain/reports.ts","web/src/screens/admin/FinancialAnomaliesTab.tsx"],
+    "tests":["api/tests/monthly_report.test.ts","api/tests/monthly_expense_items.test.ts","api/tests/owner_month_report.test.ts","api/tests/owner_month_roi.test.ts"], "decisions":["012","037","080","091","112"],
     "note":"Страница отчёта владельца и общие Отчёты — разные точки входа. Формат xlsx менялся в Git после последнего DECISION: смотреть конкретный генератор и его тесты."
   },
   {
@@ -81,7 +81,7 @@
     "id":"ui", "title":"Интерфейс, навигация, журнал, таблицы и стили", "keywords":"интерфейс дизайн ui css таблица журнал телефон мобильный экран navigation layout дата даты формат date",
     "entry":["web/src/App.tsx","web/src/styles.css","web/src/screens/ServiceLog.tsx"],
     "related":["web/src/screens/Dashboard.tsx","web/src/screens/admin/index.tsx","web/src/screens/admin/index.css","web/src/components/ui/PhotoLightbox.tsx","web/src/dateFormat.ts"],
-    "tests":["api/tests/design_screens.test.ts","api/tests/ui_feedback.test.ts","api/tests/service_log.test.ts","api/tests/date_format.test.ts"], "decisions":["016","019","029","042","053","054","082","090","095","096","106","107"],
+    "tests":["api/tests/design_screens.test.ts","api/tests/ui_feedback.test.ts","api/tests/service_log.test.ts","api/tests/date_format.test.ts"], "decisions":["016","019","029","042","053","054","082","090","095","096","106","107","112"],
     "note":"Журнал на телефоне остаётся таблицей. Проверки исходников не заменяют визуальную проверку интерфейса."
   },
   {

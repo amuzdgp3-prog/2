@@ -1,4 +1,3 @@
-import { formatDate } from '../dateFormat';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { formatMoney } from '../calc';
@@ -24,7 +23,6 @@ interface DashboardData {
   worstRevenue: RevenueRow[];
   topRoi: RoiRow[];
   worstRoi: RoiRow[];
-  anomalies: Array<{ id: number; machine_number: string; service_date: string; revenue: string; cashless_amount: string }>;
 }
 
 function RankedTable({ title, rows, metric }: { title: string; rows: RevenueRow[] | RoiRow[]; metric: 'revenue' | 'roi' }) {
@@ -96,31 +94,6 @@ export default function DashboardScreen() {
           <div className="val mono">{formatMoney(data.revenue.yearToDate)} ₽</div>
         </div>
       </div>
-
-      {data.anomalies.length > 0 && (
-        <div className="card card-pad" style={{ marginBottom: 16 }}>
-          <div className="alert warn" style={{ marginBottom: 10 }}>
-            Финансовые расхождения: безнал больше выручки. Данные не подгоняются автоматически.
-          </div>
-          <div className="table-wrap scroll-x">
-            <table>
-              <thead>
-                <tr><th>Аппарат</th><th>Дата</th><th className="right">Выручка</th><th className="right">Безнал</th></tr>
-              </thead>
-              <tbody>
-                {data.anomalies.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.machine_number}</td>
-                    <td>{formatDate(row.service_date)}</td>
-                    <td className="right mono">{formatMoney(row.revenue)}</td>
-                    <td className="right mono">{formatMoney(row.cashless_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       <div className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
         Рейтинги — за текущий месяц (с 1 числа по сегодня)
