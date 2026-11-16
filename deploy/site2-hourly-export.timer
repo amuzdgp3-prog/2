@@ -1,0 +1,10 @@
+[Unit]
+Description=Почасовой снимок базы 2.apixspb.ru
+
+[Timer]
+OnCalendar=*-*-* *:00:00 Europe/Moscow
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Распознавание фото счётчиков и отправка показаний на прод
+After=network-online.target site2-hourly-sync.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=s
+EnvironmentFile=/etc/site2-local/sync.env
+Environment=OMP_NUM_THREADS=2
+ExecStart=/home/s/.local/share/site2-ocr/venv/bin/python /home/s/Work/sites/2/scripts/counter-photo-ocr.py
+TimeoutStartSec=1200
+Nice=5

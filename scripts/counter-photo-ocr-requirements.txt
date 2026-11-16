@@ -1,0 +1,2 @@
+rapidocr==3.4.2
+onnxruntime==1.23.2

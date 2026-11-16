@@ -1,0 +1,12 @@
+[Unit]
+Description=Обновление локальной базы и фото счётчиков из прода
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=s
+EnvironmentFile=/etc/site2-local/sync.env
+ExecStart=/home/s/Work/sites/2/scripts/sync-hourly-from-prod.sh
+TimeoutStartSec=420

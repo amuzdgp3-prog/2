@@ -1,0 +1,10 @@
+[Unit]
+Description=Почасовая сверка фото счётчиков
+
+[Timer]
+OnCalendar=*-*-* *:10:00 Europe/Moscow
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
