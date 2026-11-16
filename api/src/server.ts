@@ -14,6 +14,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerCashlessRoutes } from './routes/cashless.js';
 import { registerCatalogRoutes } from './routes/catalog.js';
 import { registerClientEventRoutes } from './routes/clientEvents.js';
+import { registerCounterPhotoRoutes } from './routes/counterPhotoChecks.js';
 import { registerExpenseRoutes } from './routes/expenses.js';
 import { registerCashCollectionRoutes } from './routes/cashCollections.js';
 import { registerReportRoutes } from './routes/reports.js';
@@ -188,6 +189,7 @@ export async function buildServer() {
   await registerExpenseRoutes(app);
   await registerCashCollectionRoutes(app);
   await registerClientEventRoutes(app);
+  await registerCounterPhotoRoutes(app);
 
   return app;
 }

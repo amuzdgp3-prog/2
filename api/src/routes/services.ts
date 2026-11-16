@@ -39,6 +39,7 @@ const serviceBodySchema = {
     occurredAt: { type: 'string' },
     gameCounter: { type: 'integer', minimum: 0 },
     prizeCounter: { type: 'integer', minimum: 0 },
+    prizeCounterEntered: { type: 'boolean' },
     testGames: { type: 'integer', minimum: 0 },
     photoObjectKey: { type: 'string', minLength: 1 },
     notes: { type: 'string' },

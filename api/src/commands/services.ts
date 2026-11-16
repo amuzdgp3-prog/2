@@ -1,5 +1,6 @@
 import type { Client } from '../db/pool.js';
 import { clearDraftIssue } from './draftIssues.js';
+import { queueCounterPhoto } from './counterPhotoChecks.js';
 import { recordClawFromService, type ClawInput } from './clawSettings.js';
 import { assertNoCounterJump } from '../domain/counterAnomaly.js';
 import { assertCountersMoveForward } from '../domain/counterMonotonicity.js';
@@ -38,6 +39,7 @@ export interface ServiceInput {
   occurredAt: string;
   gameCounter: number;
   prizeCounter: number;
+  prizeCounterEntered?: boolean;
   testGames?: number;
   toys?: ToyLine[];
   photoObjectKey: string;
@@ -363,6 +365,9 @@ export async function createService(
 
   const stored = await reloadService(client, serviceId);
   await auditInsert(client, actor, 'service', serviceId, stored);
+  if (actor.role === 'TECHNICIAN') {
+    await queueCounterPhoto(client, serviceId, input.gameCounter, input.prizeCounterEntered ? input.prizeCounter : null);
+  }
   return { service: stored, idempotentReplay: false };
 }
 
