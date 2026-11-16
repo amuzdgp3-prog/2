@@ -29,6 +29,13 @@
     "note":"Страница отчёта владельца и общие Отчёты — разные точки входа. Формат xlsx менялся в Git после последнего DECISION: смотреть конкретный генератор и его тесты."
   },
   {
+    "id":"counter-photo-checks", "title":"Сверка показаний с фото и почасовая копия прода", "keywords":"ocr ии распознавание сверка фото счётчиков счетчиков почасовой vpn доступ прод",
+    "entry":["scripts/counter-photo-ocr.py","api/src/commands/counterPhotoChecks.ts"],
+    "related":["api/src/migrations/028_counter_photo_checks.sql","api/src/routes/counterPhotoChecks.ts","web/src/screens/admin/CounterPhotoReview.tsx","scripts/sync-hourly-from-prod.sh"],
+    "tests":["api/tests/counter_photo_checks.test.ts"], "decisions":["086","089","113"],
+    "note":"Продовой снимок :00, локальная копия :05, OCR :10 МСК. Большее число — игры, меньшее — призы. Доступ при VPN: docs/operations/prod-access.md."
+  },
+  {
     "id":"offline", "title":"Оффлайн, очередь, синхронизация, черновики и отзывы проверок", "keywords":"офлайн оффлайн очередь синхронизация черновик завис pending outbox offline sync indexeddb проверка обслуживание",
     "entry":["web/src/db.ts","web/src/sync.ts","web/src/screens/Queue.tsx"],
     "related":["web/src/api.ts","web/src/serviceReviews.ts","api/src/commands/draftIssues.ts","api/src/commands/serviceReviews.ts","web/vite.config.ts"],
