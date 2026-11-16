@@ -46,7 +46,7 @@ def read_above_label(engine, image, box):
             continue
         scale = min(3, 1600 / max(crop.shape[:2]))
         enlarged = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        values = six_digit_readings(engine(enlarged, use_cls=False))
+        values = six_digit_readings(engine(enlarged, use_det=True, use_cls=False))
         if len(values) == 1:
             votes[values[0]] += 1
     if len(votes) <= 1 and sum(votes.values()) < 2:
@@ -85,7 +85,8 @@ def read_pair(engine, photo):
     votes = Counter()
     labels = {}
     for index, crop in enumerate(crops):
-        result = engine(crop, use_cls=False)
+        # RapidOCR retains the mode of the preceding call on this engine.
+        result = engine(crop, use_det=True, use_cls=False)
         if result.txts is None:
             continue
         if index == 0:
