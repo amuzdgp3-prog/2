@@ -46,8 +46,9 @@ test('сверка сохранённых обслуживаний и разбо
   const matched = await save(10, 1010, 101);
   const mismatch = await save(11, 1020, 102, true);
   const unreadable = await save(12, 1030, 103);
+  const ambiguous = await save(13, 1040, 104);
   const pending = await app.inject({ url: `${base}/pending`, headers: worker });
-  assert.deepEqual(pending.json(), [matched, mismatch, unreadable]);
+  assert.deepEqual(pending.json(), [matched, mismatch, unreadable, ambiguous]);
 
   const result = async (id: number, values: [number, number] | null) => {
     const response = await app.inject({
@@ -59,11 +60,12 @@ test('сверка сохранённых обслуживаний и разбо
   assert.equal(await result(matched.id, [104, 1010]), 'MATCH');
   assert.equal(await result(mismatch.id, [101, 1020]), 'MISMATCH');
   assert.equal(await result(mismatch.id, [1020, 102]), 'MISMATCH');
-  assert.equal(await result(unreadable.id, [1030, 1030]), 'UNREADABLE');
+  assert.equal(await result(unreadable.id, null), 'UNREADABLE');
+  assert.equal(await result(ambiguous.id, [1040, 1040]), 'UNREADABLE');
   const reviews = await app.inject({ url: `${base}/reviews`, headers: admin });
-  assert.deepEqual(reviews.json().map((row: { id: number }) => row.id), [unreadable.id, mismatch.id]);
-  assert.equal(reviews.json()[1].currentPrizes, 102);
-  assert.equal(reviews.json()[1].detectedPrizes, 101);
+  assert.deepEqual(reviews.json().map((row: { id: number }) => row.id), [ambiguous.id, unreadable.id, mismatch.id]);
+  assert.equal(reviews.json()[2].currentPrizes, 102);
+  assert.equal(reviews.json()[2].detectedPrizes, 101);
 
   const patch = await app.inject({
     method: 'PATCH', url: `/api/services/${mismatch.id}`, headers: admin,

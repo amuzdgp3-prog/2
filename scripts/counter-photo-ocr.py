@@ -23,11 +23,59 @@ def make_engine():
     })
 
 
+def six_digit_readings(result):
+    if result.txts is None:
+        return []
+    return [
+        int(text) for text, score in zip(result.txts, result.scores)
+        if score >= 0.90 and re.fullmatch(r"[0-9]{6}", text)
+    ]
+
+
+def read_above_label(engine, image, box):
+    x0, y0 = box.min(axis=0)
+    x1, y1 = box.max(axis=0)
+    width, height = x1 - x0, y1 - y0
+    votes = Counter()
+    for side, top in ((0.40, 5), (0.65, 6), (0.85, 4.5)):
+        crop = image[
+            max(0, int(y0 - top * height)):max(0, int(y0 - 0.25 * height)),
+            max(0, int(x0 - side * width)):int(x1 + side * width),
+        ]
+        if crop.size == 0:
+            continue
+        scale = min(3, 1600 / max(crop.shape[:2]))
+        enlarged = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        values = six_digit_readings(engine(enlarged, use_cls=False))
+        if len(values) == 1:
+            votes[values[0]] += 1
+    if len(votes) <= 1 and sum(votes.values()) < 2:
+        # Reflections sometimes make the detector split a row of digits. Read the
+        # narrow strip above the label directly in that case.
+        for side, top, bottom in ((0.33, 4, 1.7), (0.44, 4, 1.9), (0.62, 4.2, 2.2), (0.34, 3.7, 1.5)):
+            strip = image[
+                max(0, int(y0 - top * height)):max(0, int(y0 - bottom * height)),
+                max(0, int(x0 - side * width)):int(x1 + side * width),
+            ]
+            if strip.size == 0:
+                continue
+            values = six_digit_readings(engine(strip, use_det=False, use_cls=False))
+            if len(values) == 1:
+                votes[values[0]] += 1
+    if len(votes) == 1:
+        value, count = votes.most_common(1)[0]
+        if count >= 2:
+            return value
+    return None
+
+
 def read_pair(engine, photo):
     image = cv2.imread(str(photo))
     if image is None:
         return None
     height, width = image.shape[:2]
+    if min(height, width) < 16:
+        return None
     crops = (
         image,
         image[height // 12:height * 11 // 12, width // 12:width * 11 // 12],
@@ -35,16 +83,19 @@ def read_pair(engine, photo):
         image[height // 6:height * 5 // 6, :],
     )
     votes = Counter()
-    for crop in crops:
+    labels = {}
+    for index, crop in enumerate(crops):
         result = engine(crop, use_cls=False)
         if result.txts is None:
             continue
+        if index == 0:
+            for text, box in zip(result.txts, result.boxes):
+                label = re.sub(r"[^A-Z]", "", text.upper())
+                if label in {"COININ", "PRIZEOUT"}:
+                    labels[label] = box
         # The mechanical counters display six wheels. Ignore shorter fragments, prices
         # and phone numbers. Never fill a missing digit using the technician's entry.
-        numbers = [
-            int(text) for text, score in zip(result.txts, result.scores)
-            if score >= 0.90 and re.fullmatch(r"[0-9]{6}", text)
-        ]
+        numbers = six_digit_readings(result)
         if len(numbers) != 2 or numbers[0] == numbers[1]:
             continue
         pair = tuple(sorted(numbers))
@@ -53,6 +104,14 @@ def read_pair(engine, photo):
         pair, count = votes.most_common(1)[0]
         if count >= 2:
             return pair
+    if len(labels) == 2 and len(votes) <= 1:
+        # Use the printed text only to locate the windows. Ordering still comes
+        # from the detected values, including on panels with reversed counters.
+        left, right = (read_above_label(engine, image, box) for box in labels.values())
+        if left is not None and right is not None and left != right:
+            pair = tuple(sorted((left, right)))
+            if not votes or pair in votes:
+                return pair
     return None
 
 
