@@ -72,6 +72,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
   const [time, setTime] = useState(toTimeInput(now));
   const [gameCounter, setGameCounter] = useState('');
   const [prizeCounter, setPrizeCounter] = useState('');
+  const [prizeCounterEntered, setPrizeCounterEntered] = useState(false);
   const [testGames, setTestGames] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<ToyLine[]>([]);
@@ -162,6 +163,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
       setTime(toTimeInput(occurred));
       setGameCounter(String(draft.gameCounter));
       setPrizeCounter(String(draft.prizeCounter));
+      setPrizeCounterEntered(draft.prizeCounterEntered ?? false);
       setTestGames(String(draft.testGames));
       setNotes(draft.notes);
       setLines(draft.toys.map((line) => ({ toyId: line.toyId, quantity: String(line.quantity) })));
@@ -387,6 +389,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         occurredAt,
         gameCounter: Number(gameCounter),
         prizeCounter: prizeCounter ? Number(prizeCounter) : previousPrizeCounter,
+        prizeCounterEntered,
         testGames: Number(testGames) || 0,
         notes,
         toys: lines
@@ -490,7 +493,11 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
             className="mono-input"
             inputMode="numeric"
             value={prizeCounter}
-            onChange={(event) => { markDirty(); setPrizeCounter(event.target.value); }}
+            onChange={(event) => {
+              markDirty();
+              setPrizeCounter(event.target.value);
+              setPrizeCounterEntered(event.target.value !== '');
+            }}
             placeholder={String(previousPrizeCounter)}
           />
         </div>

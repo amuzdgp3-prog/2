@@ -43,6 +43,7 @@ export interface QueuedService {
   occurredAt: string;
   gameCounter: number;
   prizeCounter: number;
+  prizeCounterEntered?: boolean;
   testGames: number;
   notes: string;
   toys: Array<{ toyId: number; quantity: number }>;

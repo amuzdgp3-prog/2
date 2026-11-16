@@ -9,6 +9,7 @@ import {
   type ReviewStatus,
 } from '../../serviceReviews';
 import type { TabProps, Toy } from './types';
+import { CounterPhotoReview, type CounterPhotoReviewRow } from './CounterPhotoReview';
 
 /**
  * Обслуживания на проверке у администратора (DECISION-086). Сюда попадает всё, что сервер не
@@ -20,9 +21,17 @@ export function ReviewsTab({ onDone, onError }: TabProps) {
   const [rows, setRows] = useState<ReviewListItem[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [toys, setToys] = useState<Toy[]>([]);
+  const [photoRows, setPhotoRows] = useState<CounterPhotoReviewRow[]>([]);
+  const [showUnreadable, setShowUnreadable] = useState(false);
+  const visiblePhotoRows = photoRows.filter((row) =>
+    showUnreadable ? row.status === 'UNREADABLE' : row.status === 'MISMATCH',
+  );
 
   const load = () => {
     api.get<ReviewListItem[]>(`/api/service-reviews?status=${status}`).then(setRows).catch(onError);
+    if (status === 'PENDING') {
+      api.get<CounterPhotoReviewRow[]>('/api/counter-photo-checks/reviews').then(setPhotoRows).catch(onError);
+    }
   };
   useEffect(load, [status]);
   useEffect(() => {
@@ -52,11 +61,21 @@ export function ReviewsTab({ onDone, onError }: TabProps) {
         ))}
       </div>
 
-      {rows.length === 0 && (
+      {status === 'PENDING' && photoRows.some((row) => row.status === 'UNREADABLE') && (
+        <button className="btn btn-ghost" onClick={() => setShowUnreadable(!showUnreadable)}>
+          {showUnreadable ? 'Вернуться к расхождениям' : 'Фото, которые не удалось прочитать'}
+        </button>
+      )}
+
+      {rows.length === 0 && (status !== 'PENDING' || visiblePhotoRows.length === 0) && (
         <div className="card muted">
           {status === 'PENDING' ? 'Записей на проверке нет.' : 'Пока пусто.'}
         </div>
       )}
+
+      {status === 'PENDING' && visiblePhotoRows.map((row) => (
+        <CounterPhotoReview key={row.id} row={row} onResolved={resolved} onError={onError} />
+      ))}
 
       {rows.map((row) => (
         <div className="card" key={row.localId}>

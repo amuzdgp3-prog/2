@@ -154,6 +154,7 @@ async function uploadOne(item: QueuedService): Promise<'STORED' | 'IN_REVIEW'> {
     occurredAt: item.occurredAt,
     gameCounter: item.gameCounter,
     prizeCounter: item.prizeCounter,
+    prizeCounterEntered: item.prizeCounterEntered,
     testGames: item.testGames,
     notes: item.notes,
     toys: item.toys,
