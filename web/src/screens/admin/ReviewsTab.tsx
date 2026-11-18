@@ -22,10 +22,6 @@ export function ReviewsTab({ onDone, onError }: TabProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [toys, setToys] = useState<Toy[]>([]);
   const [photoRows, setPhotoRows] = useState<CounterPhotoReviewRow[]>([]);
-  const [showUnreadable, setShowUnreadable] = useState(false);
-  const visiblePhotoRows = photoRows.filter((row) =>
-    showUnreadable ? row.status === 'UNREADABLE' : row.status === 'MISMATCH',
-  );
 
   const load = () => {
     api.get<ReviewListItem[]>(`/api/service-reviews?status=${status}`).then(setRows).catch(onError);
@@ -61,19 +57,13 @@ export function ReviewsTab({ onDone, onError }: TabProps) {
         ))}
       </div>
 
-      {status === 'PENDING' && photoRows.some((row) => row.status === 'UNREADABLE') && (
-        <button className="btn btn-ghost" onClick={() => setShowUnreadable(!showUnreadable)}>
-          {showUnreadable ? 'Вернуться к расхождениям' : 'Фото, которые не удалось прочитать'}
-        </button>
-      )}
-
-      {rows.length === 0 && (status !== 'PENDING' || visiblePhotoRows.length === 0) && (
+      {rows.length === 0 && (status !== 'PENDING' || photoRows.length === 0) && (
         <div className="card muted">
           {status === 'PENDING' ? 'Записей на проверке нет.' : 'Пока пусто.'}
         </div>
       )}
 
-      {status === 'PENDING' && visiblePhotoRows.map((row) => (
+      {status === 'PENDING' && photoRows.map((row) => (
         <CounterPhotoReview key={row.id} row={row} onResolved={resolved} onError={onError} />
       ))}
 
