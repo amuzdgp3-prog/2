@@ -31,8 +31,8 @@
   {
     "id":"counter-photo-checks", "title":"Сверка показаний с фото и почасовая копия прода", "keywords":"ocr ии распознавание сверка фото счётчиков счетчиков почасовой vpn доступ прод",
     "entry":["scripts/counter-photo-ocr.py","api/src/commands/counterPhotoChecks.ts"],
-    "related":["api/src/migrations/028_counter_photo_checks.sql","api/src/routes/counterPhotoChecks.ts","web/src/screens/admin/CounterPhotoReview.tsx","scripts/sync-hourly-from-prod.sh"],
-    "tests":["api/tests/counter_photo_checks.test.ts"], "decisions":["086","089","113","114"],
+    "related":["api/src/migrations/028_counter_photo_checks.sql","api/src/routes/counterPhotoChecks.ts","web/src/screens/admin/CounterPhotoReview.tsx","scripts/sync-hourly-from-prod.sh","scripts/counter_photo_chatgpt.py"],
+    "tests":["api/tests/counter_photo_checks.test.ts","scripts/counter_photo_chatgpt_test.py"], "decisions":["086","089","113","114","115"],
     "note":"Продовой снимок :00, локальная копия :05, OCR :10 МСК. Большее число — игры, меньшее — призы. Доступ при VPN: docs/operations/prod-access.md."
   },
   {
