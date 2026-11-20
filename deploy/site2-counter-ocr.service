@@ -8,6 +8,9 @@ Type=oneshot
 User=s
 EnvironmentFile=/etc/site2-local/sync.env
 Environment=OMP_NUM_THREADS=2
+Environment=SITE2_CODEX_BIN=/usr/lib/chatgpt/resources/codex
+Environment=SITE2_CHATGPT_MODEL=gpt-6-luna
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/home/s/.local/share/site2-ocr/venv/bin/python /home/s/Work/sites/2/scripts/counter-photo-ocr.py
 TimeoutStartSec=1200
 Nice=5
