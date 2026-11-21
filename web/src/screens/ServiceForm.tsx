@@ -42,7 +42,7 @@ const pad = (value: number) => String(value).padStart(2, '0');
 const toDateInput = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const toTimeInput = (date: Date) => `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
-function VisitPhotoPreview({ photo, slot }: { photo: Blob | null; slot: number }) {
+function ServicePhotoPreview({ photo, label, alt }: { photo: Blob | null; label: string; alt: string }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!photo) { setUrl(null); return; }
@@ -51,9 +51,9 @@ function VisitPhotoPreview({ photo, slot }: { photo: Blob | null; slot: number }
     return () => URL.revokeObjectURL(objectUrl);
   }, [photo]);
   return url ? <>
-    <img src={url} alt={`Фото аппарата ${slot}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
-    <span style={{ position: 'absolute', bottom: 6, left: 6, right: 6, padding: 4, borderRadius: 5, background: 'rgba(0,0,0,.65)', color: '#fff' }}>Фото {slot} ✓</span>
-  </> : <span>＋ Фото {slot}</span>;
+    <img src={url} alt={alt} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }} />
+    <span style={{ position: 'absolute', bottom: 6, left: 6, right: 6, padding: 4, borderRadius: 5, background: 'rgba(0,0,0,.65)', color: '#fff' }}>{label} ✓</span>
+  </> : <span>＋ {label}</span>;
 }
 
 export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }) {
@@ -622,15 +622,14 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         </>
       )}
 
-      <div className="section-head"><span className="num">{machine.claw_state ? 6 : 5}</span><h3>Фото</h3><span className="line" /></div>
+      <div className="section-head"><span className="num">{machine.claw_state ? 6 : 5}</span><h3>Фото счетчика</h3><span className="line" /></div>
       <div style={{ maxWidth: 220 }}>
         {(photo || existingPhoto) && (
           <div
             className="photo-slot"
-            style={{ borderStyle: 'solid', borderColor: 'var(--good)', background: 'var(--good-soft)', color: 'var(--good)', marginBottom: 8 }}
+            style={{ borderStyle: 'solid', borderColor: 'var(--good)', marginBottom: 8, position: 'relative', overflow: 'hidden' }}
           >
-            <div className="ic">✓</div>
-            <div className="lbl">Счётчик снят</div>
+            <ServicePhotoPreview photo={photo ?? existingPhoto} label="Фото счетчика" alt="Фото счетчика" />
           </div>
         )}
         {/* Two separate pickers rather than one with `capture` — whether a camera app exposes a
@@ -667,7 +666,7 @@ export default function ServiceFormScreen({ onQueued }: { onQueued: () => void }
         {([0, 1] as const).map((slot) => (
           <div key={slot} style={{ width: 150 }}>
             <label htmlFor={`visit-photo-${slot}`} className="photo-slot" style={{ cursor: 'pointer', minHeight: 100, position: 'relative', overflow: 'hidden' }}>
-              <VisitPhotoPreview photo={visitPhotos[slot]} slot={slot + 1} />
+              <ServicePhotoPreview photo={visitPhotos[slot]} label={`Фото ${slot + 1}`} alt={`Фото аппарата ${slot + 1}`} />
             </label>
             <input
               id={`visit-photo-${slot}`}
