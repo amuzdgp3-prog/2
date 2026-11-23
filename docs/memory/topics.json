@@ -103,5 +103,12 @@
     "entry":["scripts/memory.mjs","scripts/memory-lib.mjs"],
     "related":["scripts/memory.test.mjs"], "tests":["scripts/memory.test.mjs"], "decisions":["092"],
     "note":"Документы — docs/memory/START.md и CURRENT.md. Проверки памяти работают без БД и сети; полную бизнес-корректность не проверяют."
+  },
+  {
+    "id":"review", "title":"Поэтапное ревью, карта покрытия и изолированные API-тесты", "keywords":"ревью аудит review audit покрытие baseline тестовая среда изоляция",
+    "entry":["scripts/review-isolated-api-tests.py","api/tests/helpers.ts"],
+    "related":["api/src/server.ts","api/src/config.ts","api/src/db/migrate.ts"],
+    "tests":["scripts/memory.test.mjs","api/tests/concurrency.test.ts","api/tests/day_close.test.ts"], "decisions":["092","104","109"],
+    "note":"Исходная версия и карта: docs/audits/2026-11-24/stage1.md. Runner требует локальные postgres:16-alpine и 2-api:latest, создаёт только собственные временные ресурсы, проверяет пустую отдельную БД до DROP SCHEMA. --preflight-only проверяет контур без API-тестов. Инвентаризация и baseline не доказывают бизнес-корректность и browser offline; day_close сверять с DECISION-109."
   }
 ]

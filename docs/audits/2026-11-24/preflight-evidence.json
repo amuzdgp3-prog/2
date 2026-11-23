@@ -1,0 +1,64 @@
+{
+  "run_id": "site2-audit-83f8f6bb838b",
+  "mode": "preflight",
+  "source_commit": "6be7f16da7afbcfe8234ed520cedfa9a217e132b",
+  "images": {
+    "postgres": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+    "runtime": "sha256:f43e5927a6f4581047fd8acc69bbe17539d5b49be1f948084f6afccb47085113"
+  },
+  "network": {
+    "id": "4434d2e03413b9d30e46b0c4bdeda4426417f2402cda91f4caf7fdb1fdcc6ea4",
+    "internal": true
+  },
+  "database": {
+    "container_id": "c52483b73048b8d254d90b4929580eff56b6e1ed3c2f069663856d71bece6d9e",
+    "mounts": [],
+    "tmpfs": {
+      "/var/lib/postgresql/data": "rw"
+    },
+    "published_ports": false,
+    "identity_before_tests": {
+      "database": "apixspb_test",
+      "user": "postgres",
+      "system_identifier": "7711495724845252649",
+      "user_table_count": 0
+    }
+  },
+  "test_exit_code": 0,
+  "sources_unchanged": true,
+  "cleanup": [
+    {
+      "kind": "container",
+      "id": "5898957ecdfee36fd00cc46ad4b7166bc24c8a2b89ce0dea42d64e86dd65231d",
+      "exit_code": 0
+    },
+    {
+      "kind": "container",
+      "id": "c52483b73048b8d254d90b4929580eff56b6e1ed3c2f069663856d71bece6d9e",
+      "exit_code": 0
+    },
+    {
+      "kind": "network",
+      "id": "4434d2e03413b9d30e46b0c4bdeda4426417f2402cda91f4caf7fdb1fdcc6ea4",
+      "exit_code": 0
+    }
+  ],
+  "runtime": {
+    "container_id": "5898957ecdfee36fd00cc46ad4b7166bc24c8a2b89ce0dea42d64e86dd65231d",
+    "network_mode": "container:c52483b73048b8d254d90b4929580eff56b6e1ed3c2f069663856d71bece6d9e",
+    "readonly_root": true,
+    "tmpfs_photos": true,
+    "clean_env": true,
+    "test_files": 0,
+    "state": {
+      "Status": "exited",
+      "Running": false,
+      "ExitCode": 0,
+      "OOMKilled": false,
+      "Error": ""
+    }
+  },
+  "source_hash_count": 162,
+  "source_hash_manifest_local": "/tmp/site2-audit-83f8f6bb838b-kbuqun4l/isolation.json",
+  "runner_sha256": "6b43a077a6de3000624f91227a6a929ef162c85cbcfbb8fcab4240b53b3cce55"
+}
