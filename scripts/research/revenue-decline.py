@@ -33,6 +33,17 @@ def ratio(a, b):
     return a / b - 1 if a is not None and b and b > 0 else None
 
 
+def address_for_placement(placement, locations):
+    location = locations.get(placement['location_id'], {}) if placement else {}
+    address = ((placement or {}).get('address') or location.get('address') or
+               location.get('name') or '').strip().rstrip(',')
+    if not address:
+        return 'Адрес в базе не указан'
+    if not any(character.isdigit() for character in address):
+        return f'{address} (адрес в базе неполный)'
+    return address
+
+
 def allocated(intervals, start, end, exclude_anomaly=False):
     selected = [(i, overlap(i['start'], i['end'], start, end)) for i in intervals
                 if not (exclude_anomaly and i['is_financial_anomaly'])]
@@ -146,6 +157,9 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
         observed_placements = {i['placement_id'] for i in ins if overlap(i['start'], i['end'], sep, end) > 0}
         observed_locations = {placements[p]['location_id'] for p in observed_placements}
         current_location = locations.get(active['location_id']) if active else None
+        historical_periods = [p for p in periods if dt(p['started_at']) < end]
+        display_placement = active or max(historical_periods, key=lambda p: dt(p['started_at']), default=None)
+        display_address = address_for_placement(display_placement, locations)
         recent_services = [i for i in ins if sep <= i['end'] <= snapshot]
         closing_tech_counts = Counter(staff.get(i['technician_id'], 'Не указан') for i in recent_services)
         rate_change = ratio(stats['recent28']['rate'], stats['prior28']['rate'])
@@ -184,7 +198,7 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
             status = 'structural_signal'
         elif recent_persistent:
             status = 'recent_signal'
-        row = {'machine_number':number,'machine_type':m['machine_type'],'machine_status':m['status'],'excluded':number in excluded_machines,'location':current_location['name'] if current_location else (locations[relevant_periods[-1]['location_id']]['name'] if relevant_periods else ''),'address':(active or {}).get('address') or (current_location or {}).get('address',''),'active_placement_id':active['id'] if active else None,'placement_ids':sorted(observed_placements),'stable_placement':strict_same_placement,'stable_location':stable_location,'eligible':eligible,'status':status,'recent_persistent':recent_persistent,'latest_observation':latest.isoformat() if latest else None,'gap_days':gap,'visits_since_sep':len(recent_services),'technicians':dict(closing_tech_counts.most_common()),'stats':stats,'change28':rate_change,'nov_vs_sep':nov_sep,'oct_vs_sep':oct_sep,'nov_vs_oct':nov_oct,'nov_vs_late_sep':ratio(stats['nov']['rate'],stats['late_sep']['rate']),'nov_vs_sep_ex_initial':ratio(stats['nov']['rate'],sep_consistent['rate']),'sep_ex_initial':sep_consistent,'initial_discontinuity_intervals':sum(i['initial_counter_discontinuity'] for i in ins if overlap(i['start'],i['end'],sep,end)>0),'first14_vs_prior28':first14,'second14_vs_prior28':second14,'games_change28':ratio(stats['recent28']['games_rate'],stats['prior28']['games_rate']),'price_changes':len(price_values)>1,'prices':sorted(price_values),'divisors':sorted(divisor_values),'confidence95':ci,'no_anomaly_change28':clean_change,'clean_survives':clean_survives,'anomaly_visits':sum(i['is_financial_anomaly'] for i in recent_services),'cashless_actual':cashless_stats,'cashless_actual_change28':ratio(cashless_stats['recent28']['rate'],cashless_stats['prior28']['rate']),'gap30_scenario':max(0,30*((stats['prior28']['rate'] or 0)-(stats['recent28']['rate'] or 0))) if window_support else None,'notes':[{'date':i['service_date'],'service_id':i['id'],'text':i['notes']} for i in recent_services if i['notes']]}
+        row = {'machine_number':number,'machine_type':m['machine_type'],'machine_status':m['status'],'excluded':number in excluded_machines,'location':current_location['name'] if current_location else (locations[relevant_periods[-1]['location_id']]['name'] if relevant_periods else ''),'address':display_address,'active_placement_id':active['id'] if active else None,'placement_ids':sorted(observed_placements),'stable_placement':strict_same_placement,'stable_location':stable_location,'eligible':eligible,'status':status,'recent_persistent':recent_persistent,'latest_observation':latest.isoformat() if latest else None,'gap_days':gap,'visits_since_sep':len(recent_services),'technicians':dict(closing_tech_counts.most_common()),'stats':stats,'change28':rate_change,'nov_vs_sep':nov_sep,'oct_vs_sep':oct_sep,'nov_vs_oct':nov_oct,'nov_vs_late_sep':ratio(stats['nov']['rate'],stats['late_sep']['rate']),'nov_vs_sep_ex_initial':ratio(stats['nov']['rate'],sep_consistent['rate']),'sep_ex_initial':sep_consistent,'initial_discontinuity_intervals':sum(i['initial_counter_discontinuity'] for i in ins if overlap(i['start'],i['end'],sep,end)>0),'first14_vs_prior28':first14,'second14_vs_prior28':second14,'games_change28':ratio(stats['recent28']['games_rate'],stats['prior28']['games_rate']),'price_changes':len(price_values)>1,'prices':sorted(price_values),'divisors':sorted(divisor_values),'confidence95':ci,'no_anomaly_change28':clean_change,'clean_survives':clean_survives,'anomaly_visits':sum(i['is_financial_anomaly'] for i in recent_services),'cashless_actual':cashless_stats,'cashless_actual_change28':ratio(cashless_stats['recent28']['rate'],cashless_stats['prior28']['rate']),'gap30_scenario':max(0,30*((stats['prior28']['rate'] or 0)-(stats['recent28']['rate'] or 0))) if window_support else None,'notes':[{'date':i['service_date'],'service_id':i['id'],'text':i['notes']} for i in recent_services if i['notes']]}
         results.append(row)
     results.sort(key=lambda r:(r['gap30_scenario'] or 0),reverse=True)
     cohort=[r for r in results if r['eligible']]
@@ -221,7 +235,7 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
     meta={'dataset_sha256':hashlib.sha256(dataset_path.read_bytes()).hexdigest(),'snapshot_reference':snapshot.isoformat(),'extracted_at':data['extracted_at'],'analysis_start':sep.isoformat(),'analysis_end_exclusive':end.isoformat(),'windows':{k:[a.isoformat(),b.isoformat()] for k,(a,b) in windows.items()},'overrides':overrides,'counts':{k:len(v) for k,v in data.items() if isinstance(v,list)},'intervals':len(intervals),'services_since_sep':sum(sep<=dt(s['occurred_at'])<=snapshot for s in data['services']),'status_counts':status_counts,'network':network,'criteria':{'coverage_days':{'sep':24,'oct':25,'nov':16,'prior28':21,'recent28':21,'halves14':9},'minimum_intervals_each28':3,'max_latest_gap_days':7,'persistent_drop28':-.20,'persistent_drop_nov_sep':-.20,'each_recent_half_vs_prior28':-.15,'bootstrap_repetitions':2000,'bootstrap_block_intervals':2,'confidence':'Descriptive 95% moving service-block bootstrap interval; no multiple-testing adjustment; not causal or predictive.'}}
     (out/'trend_results.json').write_text(json.dumps({'meta':meta,'machines':results,'weekly':weekly},ensure_ascii=False,indent=2,default=clean))
     (out/'trend_meta.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2,default=clean))
-    columns=['machine_number','machine_type','location','status','eligible','stable_placement','stable_location','gap_days','visits_since_sep','technicians','sep_rate','oct_rate','nov_rate','prior28_rate','recent28_rate','change28','nov_vs_sep','nov_vs_late_sep','nov_vs_sep_ex_initial','oct_vs_sep','nov_vs_oct','games_change28','cashless_actual_change28','relative_network_change28','gap30_scenario','ci_low','ci_high','price_changes','prices','anomaly_visits','no_anomaly_change28','sep_coverage','oct_coverage','nov_coverage','prior28_coverage','recent28_coverage','prior28_intervals','recent28_intervals']
+    columns=['machine_number','machine_type','location','address','status','eligible','stable_placement','stable_location','gap_days','visits_since_sep','technicians','sep_rate','oct_rate','nov_rate','prior28_rate','recent28_rate','change28','nov_vs_sep','nov_vs_late_sep','nov_vs_sep_ex_initial','oct_vs_sep','nov_vs_oct','games_change28','cashless_actual_change28','relative_network_change28','gap30_scenario','ci_low','ci_high','price_changes','prices','anomaly_visits','no_anomaly_change28','sep_coverage','oct_coverage','nov_coverage','prior28_coverage','recent28_coverage','prior28_intervals','recent28_intervals']
     with (out/'machine_ranking.csv').open('w',encoding='utf-8-sig',newline='') as stream:
         writer=csv.DictWriter(stream,fieldnames=columns);writer.writeheader()
         for r in results:
@@ -237,7 +251,7 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
     with (out/'intervals.csv').open('w',encoding='utf-8-sig',newline='') as stream:
         writer=csv.DictWriter(stream,fieldnames=interval_columns,extrasaction='ignore');writer.writeheader()
         writer.writerows({k:(clean(v) if isinstance(v,datetime) else v) for k,v in i.items()} for i in intervals)
-    chart={'meta':{'snapshot':snapshot.isoformat(),'analysis_end':end.date().isoformat(),'network':network,'status_counts':status_counts},'machines':[{k:r[k] for k in ('machine_number','machine_type','location','status','technicians','change28','relative_network_change28','nov_vs_sep','nov_vs_late_sep','nov_vs_sep_ex_initial','gap30_scenario','confidence95','latest_observation','gap_days','price_changes','anomaly_visits')} | {'monthly':{w:{k:r['stats'][w][k] for k in ('rate','coverage','count','revenue','games_rate')} for w in ('sep','oct','nov')},'prior28':r['stats']['prior28'],'recent28':r['stats']['recent28']} for r in results],'weekly':weekly}
+    chart={'meta':{'snapshot':snapshot.isoformat(),'analysis_end':end.date().isoformat(),'network':network,'status_counts':status_counts},'machines':[{k:r[k] for k in ('machine_number','machine_type','location','address','status','technicians','change28','relative_network_change28','nov_vs_sep','nov_vs_late_sep','nov_vs_sep_ex_initial','gap30_scenario','confidence95','latest_observation','gap_days','price_changes','anomaly_visits')} | {'monthly':{w:{k:r['stats'][w][k] for k in ('rate','coverage','count','revenue','games_rate')} for w in ('sep','oct','nov')},'prior28':r['stats']['prior28'],'recent28':r['stats']['recent28']} for r in results],'weekly':weekly}
     (out/'chart_data.json').write_text(json.dumps(chart,ensure_ascii=False,default=clean,separators=(',',':')))
     def compact_period(s):
         return [round(s['rate'],2) if s['rate'] is not None else None,
@@ -249,7 +263,7 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
     compact={'period_fields':['rub_per_observed_day','games_per_observed_day','covered_days','service_intervals','allocated_revenue','replenished_toy_proxy_per_observed_day','replenishment_cost_proxy_percent'],
              'notes':'Revenue/games allocated uniformly within completed counter intervals; no extrapolation after last service. Toy fields are replenishment-flow proxies assigned to the closing interval, not observed stock or true consumed prizes. Service intervals may overlap adjacent windows.',
              'windows':meta['windows'],'snapshot':snapshot.isoformat(),'network':{'machines':network['stable_location']['machines'],'common_cutoff':network['stable_location']['common_cutoff'],'recent_rolling_change':network['stable_location']['change28'],'recent_rolling_pooled_change':network['stable_location']['pooled_change28'],'recent_rolling_median_change':network['stable_location']['median_change28'],'monthly_sum_machine_rates':{w:network['stable_location']['periods'][w]['sum_machine_rates'] for w in ('sep','oct','nov')}},
-             'machines':[{'id':r['machine_number'],'location':r['location'],'type':r['machine_type'],'class':r['status'],'eligible':r['eligible'],'same_location':r['stable_location'],'p':{w:compact_period(r['stats'][w]) for w in ('sep','oct','nov','prior28','recent28')},'change28':r['change28'],'late_sep_change':r['nov_vs_late_sep'],'sep_ex_initial_change':r['nov_vs_sep_ex_initial'],'card_change28':r['cashless_actual_change28'],'gap30':r['gap30_scenario'],'last_observation':r['latest_observation'],'gap_days':r['gap_days']} for r in results],
+             'machines':[{'id':r['machine_number'],'location':r['location'],'address':r['address'],'type':r['machine_type'],'class':r['status'],'eligible':r['eligible'],'same_location':r['stable_location'],'p':{w:compact_period(r['stats'][w]) for w in ('sep','oct','nov','prior28','recent28')},'change28':r['change28'],'late_sep_change':r['nov_vs_late_sep'],'sep_ex_initial_change':r['nov_vs_sep_ex_initial'],'card_change28':r['cashless_actual_change28'],'gap30':r['gap30_scenario'],'last_observation':r['latest_observation'],'gap_days':r['gap_days']} for r in results],
              'weekly_fields':['machine_number','week_start','rub_per_observed_day','games_per_observed_day','covered_days','service_intervals'],
              'weekly':[[r['machine_number'],r['start'],round(r['rate'],2) if r['rate'] is not None else None,round(r['games_rate'],3) if r['games_rate'] is not None else None,round(r['coverage'],3),r['count']] for r in weekly if r['machine_number'] in signals]}
     (out/'compact_chart_data.json').write_text(json.dumps(compact,ensure_ascii=False,default=clean,separators=(',',':')))
@@ -266,7 +280,8 @@ def run(dataset_path: Path, out: Path, overrides_path: Path | None = None):
         pid=supplied['placement_id']
         closure_at=dt(supplied['closure_at'])
         selected=[i for i in intervals if i['placement_id']==pid]
-        closure_summary.append(dict(supplied,sep=allocated(selected,sep,oct1),oct=allocated(selected,oct1,nov1),
+        closure_summary.append(dict(supplied,address=address_for_placement(placements[pid],locations),
+                                    sep=allocated(selected,sep,oct1),oct=allocated(selected,oct1,nov1),
                                     last28_before_closure=allocated(selected,closure_at-timedelta(days=28),closure_at),
                                     observed_gap_to_new_placement_days=min(((dt(p['started_at'])-closure_at).total_seconds()/DAY for p in data['placements'] if p['id'] in supplied.get('new_placement_ids',[])),default=None)))
     (out/'closure_summary.json').write_text(json.dumps(closure_summary,ensure_ascii=False,indent=2,default=clean))
