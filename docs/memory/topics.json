@@ -29,6 +29,13 @@
     "note":"Страница отчёта владельца и общие Отчёты — разные точки входа. Формат xlsx менялся в Git после последнего DECISION: смотреть конкретный генератор и его тесты."
   },
   {
+    "id":"revenue-research", "title":"Исследование динамики выручки и факторов обслуживания", "keywords":"аналитика исследование выручка снижение деньги тренд техника игрушки корреляция research decline",
+    "entry":["api/src/domain/counterChain.ts","api/src/domain/technicianEffectiveness.ts"],
+    "related":["api/src/domain/clawStats.ts","api/src/domain/ownerMonthPayout.ts"],
+    "tests":["scripts/memory.test.mjs"], "decisions":["001","046","059","071","091"],
+    "note":"Инструкция: docs/operations/revenue-research.md; инструменты: scripts/research/revenue-extract.sql, revenue-decline.py, maintenance-revenue.py, validate-revenue.py. Только чтение и отдельный frozen JSON. Учётные данные, фото, рабочие выгрузки и результаты с пользовательскими данными в Git не включать. Незакрытый период не ноль; сравнивать покрытие и первые интервалы установок. Память проверяет навигацию, не бизнес-корректность расчётов."
+  },
+  {
     "id":"counter-photo-checks", "title":"Сверка показаний с фото и почасовая копия прода", "keywords":"ocr ии распознавание сверка фото счётчиков счетчиков почасовой vpn доступ прод",
     "entry":["scripts/counter-photo-ocr.py","api/src/commands/counterPhotoChecks.ts"],
     "related":["api/src/migrations/028_counter_photo_checks.sql","api/src/routes/counterPhotoChecks.ts","web/src/screens/admin/CounterPhotoReview.tsx","scripts/sync-hourly-from-prod.sh","scripts/counter_photo_chatgpt.py"],
