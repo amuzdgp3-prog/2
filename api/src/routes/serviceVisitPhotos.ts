@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { pool, withTransaction } from '../db/pool.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { lockPhoto, normalizePhoto, openRasterPhoto, photoPath, photoThumbnail, storeImmutablePhoto } from '../lib/photos.js';
-import { assertAdmin, assertMachineInScope } from '../lib/scope.js';
+import { assertAdmin, assertCanMutate, assertMachineInScope } from '../lib/scope.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,7 +19,7 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
   const auth = { preHandler: app.authenticate };
 
   app.post('/api/service-photos', auth, async (request) => {
-    if (request.actor.role !== 'TECHNICIAN') throw forbidden('фото обслуживания загружает техник');
+    assertCanMutate(request.actor);
     const file = await request.file();
     if (!file) throw badRequest('FILE_REQUIRED', 'нужен файл фотографии');
     const localId = (file.fields.localId as { value?: string } | undefined)?.value;
@@ -37,12 +37,15 @@ export async function registerServiceVisitPhotoRoutes(app: FastifyInstance): Pro
     return withTransaction(async (client) => {
       await assertMachineInScope(client, request.actor, machineNumber);
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended('visit-photo:' || $1, 0))", [`${localId}:${slot}`]);
-      const owner = await client.query<{ technician_id: number; machine_number: string }>(
+      const owner = await client.query<{ technician_id: number | null; machine_number: string }>(
         `SELECT technician_id, machine_number FROM services WHERE local_id = $1
          UNION ALL SELECT technician_id, machine_number FROM service_reviews WHERE local_id = $1 LIMIT 1`,
         [localId],
       );
-      if (owner.rows[0] && (Number(owner.rows[0].technician_id) !== request.actor.id || owner.rows[0].machine_number !== machineNumber)) {
+      // Admin-created services may have no technician or an explicitly assigned one.
+      // Both must allow retries after the service response was lost.
+      if (owner.rows[0] && (owner.rows[0].machine_number !== machineNumber
+        || (request.actor.role === 'TECHNICIAN' && Number(owner.rows[0].technician_id) !== request.actor.id))) {
         throw forbidden('обслуживание другого техника');
       }
       const existing = await client.query<{ object_key: string }>(
