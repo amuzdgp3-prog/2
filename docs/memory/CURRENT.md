@@ -1,5 +1,16 @@
 # Текущее состояние
 
+25.11.2026: сводка по согласованному макету — в работе, ветка
+codex/dashboard-live-summary-20261125. API: новый ADMIN-only GET
+/api/admin/daily-summary на расчёте Telegram; /api/dashboard сохраняет старые
+итоги и добавляет revenueBreakdown и cash/cashless в рейтингах. Схема БД не менялась.
+Сборка API и 20/20 профильных тестов прошли в новой пустой Docker-БД на tmpfs;
+доказательства /tmp/site2-audit-4e000de6571c-qu97os5f/isolation.json.
+Следующий шаг: клиент — плитка между KPI и рейтингами, нал/безнал, обновление
+раз в 5 секунд и при возврате/восстановлении связи; затем браузерная проверка,
+память, коммиты и push. Прод пока не обновлялся. Чужие README.md,
+sync-from-prod.sh, reports/ и research_notes/ не включать в коммиты.
+
 24.11.2026: анализ выручки — docs/operations/revenue-research.md.
 Данные вне Git; приложение не менялось.
 

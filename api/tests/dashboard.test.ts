@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { authHeader, bootstrap, createToy, installTestMachine, postService, type TestContext } from './helpers.js';
+import { authHeader, bootstrap, createToy, installTestMachine, pool, postService, type TestContext } from './helpers.js';
 
 /**
  * Dashboard KPIs (owner-requested): active machine/terminal counts, revenue over four fixed
@@ -39,6 +39,10 @@ describe('dashboard KPIs and rankings', () => {
       gameCounter: 1, prizeCounter: 0, occurredAt, toys: [{ toyId, quantity: 10 }],
     });
 
+    // Synthetic matched amounts include cents and a negative calculated cash balance.
+    await pool.query(`UPDATE services SET cashless_amount = CASE machine_number
+      WHEN 'DB-1' THEN 200.25 WHEN 'DB-2' THEN 900.50 ELSE 0 END`);
+
     const response = await context.app.inject({
       method: 'GET',
       url: '/api/dashboard',
@@ -48,8 +52,9 @@ describe('dashboard KPIs and rankings', () => {
     const body = response.json() as {
       counts: { activeMachines: number; totalMachines: number; activeTerminals: number; totalTerminals: number };
       revenue: { monthToDate: string; weekToDate: string; lastMonth: string; yearToDate: string };
-      topRevenue: Array<{ machineNumber: string; revenue: string }>;
-      worstRevenue: Array<{ machineNumber: string; revenue: string }>;
+      revenueBreakdown: Record<string, { cash: string; cashless: string }>;
+      topRevenue: Array<{ machineNumber: string; revenue: string; cash: string; cashless: string }>;
+      worstRevenue: Array<{ machineNumber: string; revenue: string; cash: string; cashless: string }>;
       topRoi: Array<{ machineNumber: string; roi: string }>;
       worstRoi: Array<{ machineNumber: string; roi: string }>;
     };
@@ -64,6 +69,17 @@ describe('dashboard KPIs and rankings', () => {
     assert.equal(body.revenue.weekToDate, '1600.00');
     assert.equal(body.revenue.yearToDate, '1600.00');
     assert.equal(body.revenue.lastMonth, '0.00');
+    assert.equal(response.headers['cache-control'], 'no-store');
+    for (const period of ['monthToDate', 'weekToDate', 'yearToDate']) {
+      assert.deepEqual(body.revenueBreakdown[period], { cash: '499.25', cashless: '1100.75' });
+    }
+    assert.deepEqual(body.revenueBreakdown.lastMonth, { cash: '0.00', cashless: '0.00' });
+    for (const rows of [body.topRevenue, body.worstRevenue]) {
+      const row = rows.find((r) => r.machineNumber === 'DB-2')!;
+      assert.equal(row.cash, '-400.50');
+      assert.equal(row.cashless, '900.50');
+      assert.equal(Number(row.cash) + Number(row.cashless), Number(row.revenue));
+    }
 
     assert.deepEqual(body.topRevenue.map((r) => r.machineNumber), ['DB-1', 'DB-2', 'DB-3']);
     assert.deepEqual(body.worstRevenue.map((r) => r.machineNumber), ['DB-3', 'DB-2', 'DB-1']);

@@ -17,6 +17,7 @@ import { machineToyConsumption, toyMonthlyTrend } from '../domain/toyAnalysis.js
 import { sendReportEmail } from '../integrations/email.js';
 import { enqueueTelegramMessage } from '../commands/telegramOutbox.js';
 import { enqueueDailySummaryNow } from '../commands/dailySummary.js';
+import { loadDailySummary } from '../domain/dailySummary.js';
 import { badRequest, forbidden } from '../lib/errors.js';
 import { assertAdmin, machineScopePredicate } from '../lib/scope.js';
 
@@ -147,7 +148,20 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
     };
   }
 
-  app.get('/api/dashboard', auth, async (request) => {
+  app.get('/api/admin/daily-summary', auth, async (request, reply) => {
+    assertAdmin(request.actor);
+    reply.header('cache-control', 'no-store');
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+    const client = await pool.connect();
+    try {
+      return await loadDailySummary(client, date);
+    } finally {
+      client.release();
+    }
+  });
+
+  app.get('/api/dashboard', auth, async (request, reply) => {
+    reply.header('cache-control', 'no-store');
     const client = await pool.connect();
     try {
       // Sequential, not Promise.all: these all share one pooled client, and a pg client can only
@@ -176,6 +190,8 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
         machineNumber: row.machineNumber,
         locationName: row.locationName,
         revenue: row.revenue,
+        cash: row.cash,
+        cashless: row.cashless,
       });
       const roiCandidates = monthRows
         .filter((row) => Number(row.toyCost) > 0)
@@ -202,6 +218,13 @@ export async function registerReportRoutes(app: FastifyInstance): Promise<void> 
           lastMonth: sumDecimal(lastMonthRows.map((row) => row.revenue), 2),
           yearToDate: sumDecimal(yearRows.map((row) => row.revenue), 2),
         },
+        revenueBreakdown: Object.fromEntries(
+          Object.entries({ monthToDate: monthRows, weekToDate: weekRows, lastMonth: lastMonthRows, yearToDate: yearRows })
+            .map(([period, rows]) => [period, {
+              cash: sumDecimal(rows.map((row) => row.cash), 2),
+              cashless: sumDecimal(rows.map((row) => row.cashless), 2),
+            }]),
+        ),
         // Ranked over the current month to date — the same period as the primary KPI above.
         topRevenue: byRevenueAsc.slice().reverse().slice(0, 10).map(revenueRow),
         worstRevenue: byRevenueAsc.slice(0, 10).map(revenueRow),
