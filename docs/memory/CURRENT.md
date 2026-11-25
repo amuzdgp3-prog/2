@@ -1,7 +1,8 @@
 # Текущее состояние
 
-25.11.2026: DECISION-120 — сводка готова; сборки, API 20/20 и браузер прошли.
-Далее: коммит/push и выпуск API/web (codex/dashboard-live-summary-20261125).
+25.11.2026: DECISION-120 — сводка выпущена на прод, b017949 в GitHub.
+Сборки, API 20/20, браузер, продовые RBAC/HTTPS — OK. Откат:
+release-20261125-dashboard-b017949-r3.
 
 24.11.2026: анализ выручки — docs/operations/revenue-research.md.
 Данные вне Git; приложение не менялось.
