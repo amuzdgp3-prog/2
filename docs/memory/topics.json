@@ -52,9 +52,9 @@
   {
     "id":"cashless", "title":"Безнал, iVend, терминалы и историческое сопоставление", "keywords":"безнал cashless ivend parser парсер терминал привязка синхронизация платеж",
     "entry":["api/src/routes/cashless.ts","api/src/commands/cashless.ts","api/src/commands/ivendSync.ts"],
-    "related":["api/src/integrations/ivend.ts","api/src/commands/terminals.ts","api/src/server.ts","web/src/screens/admin/CashlessTab.tsx","web/src/screens/admin/TerminalsTab.tsx"],
-    "tests":["api/tests/ivend_sync.test.ts","api/tests/ivend_timeout.test.ts","api/tests/terminal_transfer.test.ts","api/tests/terminal_similar_serial.test.ts"], "decisions":["008","030","032","041","076","084","105","119"],
-    "note":"README о неготовом парсере устарел. Привязка терминала определяется на момент транзакции; настройки/учётные данные не читать ради навигации."
+    "related":["api/src/integrations/ivend.ts","api/src/commands/terminals.ts","api/src/domain/counterChain.ts","api/src/commands/cashCollections.ts","api/src/server.ts","web/src/screens/admin/CashlessTab.tsx","web/src/screens/admin/TerminalsTab.tsx"],
+    "tests":["api/tests/ivend_sync.test.ts","api/tests/ivend_timeout.test.ts","api/tests/terminal_transfer.test.ts","api/tests/terminal_similar_serial.test.ts"], "decisions":["008","030","032","033","041","076","084","105","119"],
+    "note":"README о неготовом парсере устарел. Привязка терминала определяется на момент транзакции; настройки/учётные данные не читать ради навигации. Общий checkpoint парсера не обеспечивает backfill нового терминала (033); rematch работает только с уже загруженными строками. В read-only сверке 25.11.2026 iVend pages.totalRecords не совпадал с числом строк выбранного периода: проверять сами страницы до пустой, уникальность ID, границы времени и суммы, не считать metadata доказательством полноты. Платежи до привязки требуют подтверждения физической истории, DECISION-119 не разрешает двигать дату №150 автоматически."
   },
   {
     "id":"machines", "title":"Аппараты, локации, установки, замена и аренда", "keywords":"аппарат локация точка установка замена machine location placement аренда rent тип",
