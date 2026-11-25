@@ -117,5 +117,32 @@
     "related":["api/src/server.ts","api/src/config.ts","api/src/db/migrate.ts"],
     "tests":["scripts/memory.test.mjs","api/tests/concurrency.test.ts","api/tests/day_close.test.ts"], "decisions":["092","104","109"],
     "note":"Исходная версия и карта: docs/audits/2026-11-24/stage1.md. Runner требует локальные postgres:16-alpine и 2-api:latest, создаёт только собственные временные ресурсы, проверяет пустую отдельную БД до DROP SCHEMA. --preflight-only проверяет контур без API-тестов. Инвентаризация и baseline не доказывают бизнес-корректность и browser offline; day_close сверять с DECISION-109."
+  },
+  {
+    "id": "dashboard",
+    "title": "Сводка, итоги дня по техникам и нал/безнал",
+    "keywords": "сводка dashboard итоги дня выручка нал безнал техник обновление автоматически",
+    "entry": [
+      "web/src/screens/Dashboard.tsx",
+      "api/src/routes/reports.ts"
+    ],
+    "related": [
+      "web/src/screens/dashboard/useDashboard.ts",
+      "web/src/screens/dashboard/DailySummaryCard.tsx",
+      "web/src/screens/dashboard/types.ts",
+      "web/src/screens/dashboard/Dashboard.css",
+      "api/src/domain/dailySummary.ts"
+    ],
+    "tests": [
+      "api/tests/dashboard.test.ts",
+      "api/tests/dashboard_daily.test.ts",
+      "api/tests/daily_summary.test.ts",
+      "api/tests/rbac_cashless_reports.test.ts"
+    ],
+    "decisions": [
+      "029",
+      "120"
+    ],
+    "note": "Дневная плитка только ADMIN, между KPI и рейтингами. Общий расчёт Telegram; обновление видимой сводки раз в 5 секунд. Старые периоды, scope и ROI сохранены."
   }
 ]

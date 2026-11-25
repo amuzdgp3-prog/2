@@ -1,0 +1,37 @@
+.dashboard-kpis .val { font-size: clamp(18px, 2vw, 26px); overflow-wrap: anywhere; }
+.dashboard-breakdown { display: grid; gap: 3px; margin-top: 8px; font-size: 12px; }
+.dashboard-breakdown > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
+.dashboard-rank-breakdown { margin-top: 4px; font-size: 12px; white-space: normal; }
+.dashboard-rankings > div { min-width: 0; }
+.dashboard-day { padding: 16px 17px; margin-bottom: 20px; }
+.dashboard-day-header { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.dashboard-day-header h2 { margin: 0 0 4px; font-size: 18px; }
+.dashboard-day-header .muted { font-size: 12px; }
+.dashboard-day-totals { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin: 18px 0; }
+.dashboard-day-totals strong { display: block; margin-top: 4px; font-size: 21px; overflow-wrap: anywhere; }
+.dashboard-day-totals > div:first-child strong { font-size: 28px; }
+.dashboard-day-totals .muted { font-size: 12px; }
+.dashboard-day-table { width: 100%; font-size: 13px; }
+.dashboard-day-table th, .dashboard-day-table td { padding: 10px 8px; }
+.dashboard-day-table th:first-child, .dashboard-day-table td:first-child { padding-left: 0; }
+.dashboard-day-table th:last-child, .dashboard-day-table td:last-child { padding-right: 0; }
+.dashboard-range { display: block; margin-top: 3px; font-size: 11px; white-space: nowrap; }
+.dashboard-hours { white-space: nowrap; }
+.dashboard-day-note { font-size: 12px; margin: 12px 0 0; }
+.dashboard-mobile-label { display: none; }
+@media (max-width: 700px) {
+  .dashboard-ranked-table .table-wrap.scroll-x table { width: 100%; table-layout: fixed; }
+  .dashboard-ranked-table .table-wrap.scroll-x td { white-space: normal; overflow-wrap: anywhere; }
+  .dashboard-revenue-ranked tr { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .dashboard-revenue-ranked td:last-child { grid-column: 1 / -1; }
+  .dashboard-day-totals { grid-template-columns: 1fr 1fr; }
+  .dashboard-day-totals > div:first-child { grid-column: 1 / -1; }
+  .dashboard-day-table, .dashboard-day-table tbody { display: block; }
+  .dashboard-day-table thead { display: none; }
+  .dashboard-day-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; border-top: 1px solid var(--line); padding: 12px 0; }
+  .dashboard-day-table td, .dashboard-day-table td:first-child, .dashboard-day-table td:last-child { padding: 0; border: 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+  .dashboard-day-table td:first-child { grid-column: 1 / -1; }
+  .dashboard-day-table td:nth-child(3) { grid-column: 2 / -1; }
+  .dashboard-mobile-label { display: block; font-family: var(--f-body); font-weight: 400; color: var(--ink-soft); font-size: 11px; margin-bottom: 3px; }
+  .dashboard-day-table td.mono { font-size: 12px; }
+}
